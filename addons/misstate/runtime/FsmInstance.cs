@@ -47,6 +47,12 @@ public sealed class FsmInstance {
     public FsmState Current => _current?.Definition;
 
     /// <summary>
+    /// The transition that brought the machine into its current state, as authored — or null when it
+    /// got there another way: as the initial state, or sent by <see cref="GoTo"/>. For live debugging.
+    /// </summary>
+    public FsmTransition EnteredBy { get; private set; }
+
+    /// <summary>
     /// What each action of the current state last returned in the state's current run, in order;
     /// <see cref="MissStatusExtensions.NotTicked"/> for one the run has not reached. An action that is
     /// through keeps its result until the next run starts. For live debugging.
@@ -105,7 +111,7 @@ public sealed class FsmInstance {
 
         foreach (var transition in state.Transitions) {
             if (!Fires(transition, finished, ctx)) continue;
-            GoTo(transition.Definition.TargetStateId, ctx);
+            if (GoTo(Definition.Destination(transition.Definition.TargetStateId)?.Id, ctx)) EnteredBy = transition.Definition;
             break;
         }
     }
@@ -263,6 +269,7 @@ public sealed class FsmInstance {
     void Enter(RuntimeState state) {
         var left = _current?.Definition;
         _current = state;
+        EnteredBy = null;
 
         // A new visit: whatever the last one left behind is gone, and the actions run again.
         state.Result = null;

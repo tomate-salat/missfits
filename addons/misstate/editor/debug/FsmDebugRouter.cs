@@ -110,7 +110,7 @@ public sealed class FsmDebugRouter {
         // A runner of another machine: nothing of it can be shown in the open one.
         if (panel?.Machine != null && info.MachinePath != panel.Machine.ResourcePath) return true;
 
-        panel?.ShowLive(data[1].AsString(), data[2].AsByteArray());
+        panel?.ShowLive(data[1].AsString(), data[2].AsByteArray(), data.Count > 4 ? data[4].AsString() : "");
         return true;
     }
 

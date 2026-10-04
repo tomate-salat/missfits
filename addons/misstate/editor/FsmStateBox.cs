@@ -311,7 +311,7 @@ public static class FsmLabels {
     public static string Describe(FsmTransition transition, Fsm machine) {
         if (transition == null) return "";
 
-        var target = machine?.FindState(transition.TargetStateId);
+        var target = machine?.Destination(transition.TargetStateId);
         var targetName = target == null ? "?" : string.IsNullOrEmpty(target.Name) ? "(unnamed)" : target.Name;
         var on = transition.On switch {
             FsmTrigger.Finished => "when done",
@@ -343,7 +343,7 @@ public static class FsmLabels {
         if (transition == null) return "";
 
         var problems = new List<string>();
-        if (machine?.FindState(transition.TargetStateId) == null) problems.Add("leads nowhere — drag its port onto a state");
+        if (machine?.Destination(transition.TargetStateId) == null) problems.Add("leads nowhere — drag its port onto a state");
         if (transition.On == FsmTrigger.Always && !transition.Conditions.Any(c => c != null)) {
             problems.Add("fires on every tick, so the state is left after one");
         }

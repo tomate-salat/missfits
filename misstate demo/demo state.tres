@@ -2,11 +2,13 @@
 
 [ext_resource type="Script" uid="uid://coe1riq7exknh" path="res://addons/misscore/runtime/blackboard/BlackboardEntry.cs" id="1_1kn7y"]
 [ext_resource type="Script" uid="uid://dqi44n42kbdsa" path="res://addons/misstate/runtime/FsmState.cs" id="2_hp4so"]
+[ext_resource type="Script" uid="uid://bgsv7yrjdj5r" path="res://addons/misstate/runtime/FsmReroute.cs" id="2_poi4j"]
 [ext_resource type="Script" uid="uid://bltujy5uigex5" path="res://addons/misscore/runtime/nodes/MissNode.cs" id="3_c588d"]
 [ext_resource type="Script" uid="uid://b45c6miy28l77" path="res://addons/misstate/runtime/FsmTransition.cs" id="4_0i54f"]
 [ext_resource type="Script" uid="uid://bq85i2duuc8x8" path="res://misstate demo/StateLogAction.cs" id="4_omkeb"]
 [ext_resource type="Script" uid="uid://35450er1jth0" path="res://addons/misstate/runtime/Fsm.cs" id="5_8gqxr"]
 [ext_resource type="Script" uid="uid://dbsa67emujutd" path="res://misstate demo/StateClickCondition.cs" id="6_poi4j"]
+[ext_resource type="Script" uid="uid://defsjwwnycjh1" path="res://missbehave demo/BtDemoPlayerNear.cs" id="8_6f7wy"]
 
 [sub_resource type="Resource" id="Resource_6f7wy"]
 script = ExtResource("1_1kn7y")
@@ -21,6 +23,18 @@ Id = "8cc2c46a554c4005b2aff05cb29259be"
 Name = "Trans Message"
 VariantType = 4
 Default = "Trans State"
+
+[sub_resource type="Resource" id="Resource_o7ika"]
+script = ExtResource("2_poi4j")
+Id = "3fee7707bdd747c39c58e46544e7847b"
+TargetId = "c9528c12e41d4cbf97ecc0983e4c5047"
+GraphPosition = Vector2(1320, 420)
+
+[sub_resource type="Resource" id="Resource_s2u8a"]
+script = ExtResource("2_poi4j")
+Id = "1ab20dc7d83f4587b833136a0a8ff09b"
+TargetId = "c9528c12e41d4cbf97ecc0983e4c5047"
+GraphPosition = Vector2(1320, 780)
 
 [sub_resource type="Resource" id="Resource_xx1wx"]
 script = ExtResource("4_omkeb")
@@ -47,7 +61,7 @@ Id = "c9528c12e41d4cbf97ecc0983e4c5047"
 Name = "Enter"
 Actions = Array[ExtResource("3_c588d")]([SubResource("Resource_xx1wx")])
 Transitions = Array[ExtResource("4_0i54f")]([SubResource("Resource_fp6oi")])
-GraphPosition = Vector2(900, 440)
+GraphPosition = Vector2(940, 480)
 
 [sub_resource type="Resource" id="Resource_s31pr"]
 script = ExtResource("4_omkeb")
@@ -65,20 +79,31 @@ Id = "5f33347b2e70423fa2a00a5bdd74acd4"
 [sub_resource type="Resource" id="Resource_60s0w"]
 script = ExtResource("4_0i54f")
 Id = "9f97d8e0b1524861a35b90f364180aa6"
-TargetStateId = "c9528c12e41d4cbf97ecc0983e4c5047"
+TargetStateId = "3fee7707bdd747c39c58e46544e7847b"
 Conditions = Array[ExtResource("3_c588d")]([SubResource("Resource_wjd3p")])
+
+[sub_resource type="Resource" id="Resource_h1rwu"]
+script = ExtResource("8_6f7wy")
+Id = "b1005cf63f7c4cf688c53b1f56bd6bc6"
+
+[sub_resource type="Resource" id="Resource_e2o38"]
+script = ExtResource("4_0i54f")
+Id = "177368ce900a4ebd9322639902d99c71"
+TargetStateId = "1ab20dc7d83f4587b833136a0a8ff09b"
+Conditions = Array[ExtResource("3_c588d")]([SubResource("Resource_h1rwu")])
 
 [sub_resource type="Resource" id="Resource_omkeb"]
 script = ExtResource("2_hp4so")
 Id = "7362e3786a5040c3a0f1a78d68528b28"
 Name = "Transition"
 Actions = Array[ExtResource("3_c588d")]([SubResource("Resource_s31pr")])
-Transitions = Array[ExtResource("4_0i54f")]([SubResource("Resource_60s0w")])
-GraphPosition = Vector2(900, 700)
+Transitions = Array[ExtResource("4_0i54f")]([SubResource("Resource_60s0w"), SubResource("Resource_e2o38")])
+GraphPosition = Vector2(1240, 460)
 
 [resource]
 script = ExtResource("5_8gqxr")
 States = Array[ExtResource("2_hp4so")]([SubResource("Resource_jnu4i"), SubResource("Resource_omkeb")])
+Reroutes = Array[ExtResource("2_poi4j")]([SubResource("Resource_o7ika"), SubResource("Resource_s2u8a")])
 InitialStateId = "a09a1707a1d940fa8e69597d12a16a90"
 Blackboard = Array[ExtResource("1_1kn7y")]([SubResource("Resource_6f7wy"), SubResource("Resource_poi4j")])
 metadata/_custom_type_script = "uid://35450er1jth0"

@@ -120,6 +120,14 @@ enough.
   *or* the others, by the transition's mode. Right-click one to move or delete it.
 - **Wires.** Drag from the last, faint port to add a transition; drag from a transition's own port
   to lead it somewhere else. Dropping a wire on empty canvas makes a new state there.
+- **Reroutes** are small pills that lead a wire around the boxes. Double-click a wire to put one
+  into it — or right-click the wire and choose *Add reroute to this wire*; right-click the canvas
+  for a loose one. A reroute faces what it leads to: if that lies to its left, it turns round, so
+  wires arrive at its right end and leave from the left. The chevron shows which way. Any
+  number of wires may end at a reroute; the one wire that leaves it says where they all go, so
+  dragging that wire elsewhere takes every transition through it along. Drag a reroute by its
+  middle. Deleting one leaves the wires whole. A reroute does nothing at runtime: a transition
+  through it goes straight to the state at the end.
 - **Selecting** a state or a row shows exactly that in the Inspector: a state's name, mode and
   parallel switch, an action's parameters, a transition's trigger and mode, a condition's
   parameters. Nothing has to be unfolded there to get at it.
@@ -138,6 +146,11 @@ Open a machine, run the game, and the graph shows where the machine is: the stat
 amber outline, the others fade, and the actions of the current state take the colour of what they
 last returned — green Success, red Failure, amber Running. An action that is through keeps its
 colour until the state's next run starts.
+
+The wires tell the rest. The transition the machine came in by is green for as long as it stays in
+the state — so you see where it came from. The transitions out of the current state are amber with
+dots travelling along them: they are being checked on every tick, and none has fired yet. Both are
+followed through their reroutes. A state entered as the initial one, or by `GoTo`, has no green wire.
 
 Only the machine open in the dock sends anything, and only when something changed. When several
 actors run the same machine, pick which one to watch from the toolbar dropdown; if the watched actor

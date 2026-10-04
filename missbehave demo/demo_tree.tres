@@ -41,5 +41,5 @@ GraphPosition = Vector2(382.5, 149)
 [resource]
 script = ExtResource("7_xfbwf")
 Root = SubResource("Resource_gqxg5")
-RootGraphPosition = Vector2(387, 0)
+RootGraphPosition = Vector2(440, 20)
 Description = "Chase the player when close, otherwise idle. Shared by both demo enemies."

@@ -67,13 +67,15 @@ internal sealed class FsmDebugStream {
 
         // The throttle compares frames, so the state travels in it too: a change of state with the
         // same action statuses is still a change.
-        var id = Encoding.UTF8.GetBytes(stateId);
+        // So does the transition that led there: a state entered again by another way looks the same otherwise.
+        var enteredBy = instance.EnteredBy?.Id ?? "";
+        var id = Encoding.UTF8.GetBytes(stateId + enteredBy);
         var frame = new byte[id.Length + statuses.Length];
         id.CopyTo(frame, 0);
         statuses.CopyTo(frame, id.Length);
         if (!tracked.Throttle.TryTake(frame, _clock(), MinSendIntervalMsec)) return;
 
-        _send("state", [(long) tracked.Runner.GetInstanceId(), stateId, (byte[]) statuses.Clone(), tracked.TickCount]);
+        _send("state", [(long) tracked.Runner.GetInstanceId(), stateId, (byte[]) statuses.Clone(), tracked.TickCount, enteredBy]);
     }
 
     bool IsStreaming(Tracked tracked) {

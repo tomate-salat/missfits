@@ -206,7 +206,7 @@ public partial class FsmEditorPanel : VBoxContainer {
     // ---- live debugging ----------------------------------------------------------------------
 
     /// <summary>Shows where the watched runner's machine is. 0xFF in the statuses means the action was not ticked.</summary>
-    public void ShowLive(string stateId, byte[] statuses) => Graph?.ShowLive(stateId, statuses);
+    public void ShowLive(string stateId, byte[] statuses, string enteredBy = "") => Graph?.ShowLive(stateId, statuses, enteredBy);
 
     public void ClearLive() => Graph?.ClearLive();
 
@@ -487,6 +487,7 @@ public partial class FsmEditorPanel : VBoxContainer {
         }
 
         machine.States = saved.States;
+        machine.Reroutes = saved.Reroutes;
         machine.InitialStateId = saved.InitialStateId;
         machine.Description = saved.Description;
         machine.Blackboard = saved.Blackboard;

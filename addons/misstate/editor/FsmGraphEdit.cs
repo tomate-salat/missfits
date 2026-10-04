@@ -57,6 +57,8 @@ public partial class FsmGraphEdit : GraphEdit {
     internal const int MenuSetInitial = 1;
     internal const int MenuDeleteState = 2;
     internal const int MenuAddAction = 3;
+    internal const int MenuAddReroute = 4;
+    internal const int MenuDeleteReroute = 5;
     internal const int MenuRowUp = 10;
     internal const int MenuRowDown = 11;
     internal const int MenuRowDelete = 12;
@@ -70,6 +72,18 @@ public partial class FsmGraphEdit : GraphEdit {
     string _menuKind;
     string _menuRow;
 
+    /// <summary>The wire the canvas menu was opened on — the box and port it leaves — or null for none.</summary>
+    StringName _menuWireFrom;
+    int _menuWirePort;
+
+    /// <summary>
+    /// How far into a box a port can be grabbed. GraphEdit's own reach would cover a reroute from
+    /// end to end, leaving nowhere to drag it by.
+    /// </summary>
+    public const int PortReach = 10;
+
+    /// <summary>How close to a wire a right-click has to be to mean that wire.</summary>
+    const float WireReach = 10f;
 
     /// <summary>What the graph was last built from, so an edit made elsewhere is noticed.</summary>
     string _builtFrom = "";
@@ -78,11 +92,18 @@ public partial class FsmGraphEdit : GraphEdit {
     bool _live;
     string _liveState = "";
     byte[] _liveStatuses = [];
+    string _liveEnteredBy = "";
+
+    GodotObject _wireOverlay;
+
+    /// <summary>Paints the wires of a running machine. See <see cref="FsmWireOverlay"/>.</summary>
+    public FsmWireOverlay WireOverlay => ReloadSafe.Get<FsmWireOverlay>(ref _wireOverlay);
 
     public override void _Ready() {
         RightDisconnects = false;
         ShowArrangeButton = false;
         MinimapEnabled = false;
+        AddThemeConstantOverride("port_hotzone_inner_extent", PortReach);
 
         // Items are filled in per right-click.
         _menu = new PopupMenu { Name = "Menu" };
@@ -94,6 +115,12 @@ public partial class FsmGraphEdit : GraphEdit {
         _picker = picker;
         AddChild(picker, false, InternalMode.Back);
         picker.Connect(CreateNodeDialog.SignalName.TypeChosen, new Callable(this, MethodName.OnTypeChosen));
+
+        // An ordinary child, not an internal one — see PlaceWireOverlay.
+        var overlay = new FsmWireOverlay();
+        _wireOverlay = overlay;
+        AddChild(overlay);
+        PlaceWireOverlay();
 
         Wire(GraphEdit.SignalName.ConnectionRequest, MethodName.OnConnectionRequest);
         Wire(GraphEdit.SignalName.ConnectionToEmpty, MethodName.OnConnectionToEmpty);
@@ -119,12 +146,20 @@ public partial class FsmGraphEdit : GraphEdit {
     public FsmStateBox BoxFor(string stateId)
         => string.IsNullOrEmpty(stateId) ? null : Boxes().FirstOrDefault(b => b.Name == stateId);
 
+    IEnumerable<FsmRerouteBox> RerouteBoxes() => GetChildren().OfType<FsmRerouteBox>();
+
+    public FsmRerouteBox RerouteBoxFor(string rerouteId)
+        => string.IsNullOrEmpty(rerouteId) ? null : RerouteBoxes().FirstOrDefault(b => b.Name == rerouteId);
+
+    /// <summary>Whether a wire can end at this id: a state or a reroute that has a box.</summary>
+    bool HasBox(string id) => BoxFor(id) != null || RerouteBoxFor(id) != null;
+
     void ClearGraph() {
         ClearConnections();
 
         // RemoveChild before QueueFree: a doomed box is still a child until the end of the frame,
         // and Godot would rename its replacement to "<id>@2", breaking every ConnectNode that follows.
-        foreach (var box in Boxes().ToList()) {
+        foreach (var box in GetChildren().OfType<GraphNode>().ToList()) {
             RemoveChild(box);
             box.QueueFree();
         }
@@ -145,6 +180,7 @@ public partial class FsmGraphEdit : GraphEdit {
         var selectedState = selected?.Name.ToString();
         var pickedKind = selected?.PickedKind ?? "";
         var pickedId = selected?.PickedId ?? "";
+        var selectedReroutes = RerouteBoxes().Where(b => b.Selected).Select(b => b.Name.ToString()).ToList();
 
         ClearGraph();
 
@@ -162,6 +198,7 @@ public partial class FsmGraphEdit : GraphEdit {
                 box.Connect(FsmStateBox.SignalName.RowPicked, new Callable(this, MethodName.OnRowPicked));
                 box.Connect(FsmStateBox.SignalName.RowMenuRequested, new Callable(this, MethodName.OnRowMenu));
                 box.Connect(FsmStateBox.SignalName.AddActionRequested, new Callable(this, MethodName.OnAddActionRequested));
+                box.Connect(GraphElement.SignalName.PositionOffsetChanged, new Callable(this, MethodName.OnBoxMoved));
 
                 // A machine built in code has no positions yet; spread it out rather than piling it up.
                 box.PositionOffset = state.GraphPosition != Vector2.Zero || machine.States.Count == 1
@@ -170,24 +207,42 @@ public partial class FsmGraphEdit : GraphEdit {
                 spot++;
             }
 
+            foreach (var reroute in machine.Reroutes) {
+                if (reroute == null || HasBox(reroute.Id)) continue;
+
+                var box = new FsmRerouteBox { Name = reroute.Id };
+                AddChild(box);
+                box.Bind(reroute);
+                box.Connect(FsmRerouteBox.SignalName.MenuRequested, new Callable(this, MethodName.OnRerouteMenu));
+                box.Connect(GraphElement.SignalName.PositionOffsetChanged, new Callable(this, MethodName.OnBoxMoved));
+                box.PositionOffset = reroute.GraphPosition;
+            }
+
             foreach (var state in machine.States) {
                 if (state == null) continue;
                 var port = 0;
                 foreach (var transition in state.Transitions) {
                     if (transition == null) continue;
-                    if (BoxFor(transition.TargetStateId) != null) ConnectNode(state.Id, port, transition.TargetStateId, 0);
+                    if (HasBox(transition.TargetStateId)) ConnectNode(state.Id, port, transition.TargetStateId, 0);
                     port++;
                 }
+            }
+            foreach (var reroute in machine.Reroutes) {
+                if (reroute != null && HasBox(reroute.TargetId)) ConnectNode(reroute.Id, 0, reroute.TargetId, 0);
             }
         }
 
         _builtFrom = Shape();
         RefreshBoxes();
+        UpdateFlips();
         _rebuilding = false;
 
         if (BoxFor(selectedState) is { } again) {
             again.Selected = true;
             again.ShowPicked(pickedKind, pickedId);
+        }
+        foreach (var name in selectedReroutes) {
+            if (RerouteBoxFor(name) is { } reroute) reroute.Selected = true;
         }
 
         // A paused game sends nothing further, so an edit that rebuilds the graph has to repaint it.
@@ -223,27 +278,79 @@ public partial class FsmGraphEdit : GraphEdit {
         return string.Join("|", machine.States.Where(s => s != null).Select(s =>
             $"{s.Id}:{string.Join(",", s.Actions.Where(a => a != null).Select(a => a.Id))}"
             + $":{string.Join(",", s.Transitions.Where(t => t != null).Select(t =>
-                $"{t.Id}>{t.TargetStateId}[{string.Join(" ", t.Conditions.Where(c => c != null).Select(c => c.Id))}]"))}"));
+                $"{t.Id}>{t.TargetStateId}[{string.Join(" ", t.Conditions.Where(c => c != null).Select(c => c.Id))}]"))}"))
+            + "#" + string.Join("|", machine.Reroutes.Where(r => r != null).Select(r => $"{r.Id}>{r.TargetId}"));
     }
 
     // ---- live debugging ----------------------------------------------------------------------
 
     /// <summary>Shows where a running machine is: its current state and what that state's actions last returned.</summary>
-    public void ShowLive(string stateId, byte[] statuses) {
+    /// <param name="enteredBy">Id of the transition that brought the machine into the state, or empty.</param>
+    public void ShowLive(string stateId, byte[] statuses, string enteredBy = "") {
         _live = true;
         _liveState = stateId ?? "";
         _liveStatuses = statuses ?? [];
+        _liveEnteredBy = enteredBy ?? "";
         PaintLive();
     }
 
     void PaintLive() {
         foreach (var box in Boxes()) box.ShowLive(box.Name == _liveState, _liveStatuses);
+
+        PlaceWireOverlay();
+        WireOverlay?.ShowWires(LiveWires());
     }
 
     public void ClearLive() {
         if (!_live) return;
         _live = false;
         foreach (var box in Boxes()) box.ClearLive();
+        WireOverlay?.ClearWires();
+    }
+
+    /// <summary>
+    /// The wires to highlight: every way out of the current state, and the way the machine came in —
+    /// each followed through its reroutes. A transition that was edited away since the game started
+    /// is simply not found.
+    /// </summary>
+    List<LiveWire> LiveWires() {
+        var wires = new List<LiveWire>();
+        var machine = Machine;
+        if (machine == null) return wires;
+
+        foreach (var state in machine.States) {
+            if (state == null) continue;
+            var port = 0;
+            foreach (var transition in state.Transitions) {
+                if (transition == null) continue;
+
+                var taken = transition.Id == _liveEnteredBy && machine.Destination(transition.TargetStateId)?.Id == _liveState;
+                if (taken) Follow(wires, state.Id, port, transition.TargetStateId, taken: true);
+                if (state.Id == _liveState) Follow(wires, state.Id, port, transition.TargetStateId, taken: false);
+                port++;
+            }
+        }
+        return wires;
+    }
+
+    void Follow(List<LiveWire> wires, string from, int port, string targetId, bool taken) {
+        for (var hops = 0; hops <= Machine.Reroutes.Count && HasBox(targetId); hops++) {
+            wires.Add(new LiveWire(from, port, targetId, taken));
+            if (Machine.FindReroute(targetId) is not { } reroute) return;
+            (from, port, targetId) = (reroute.Id, 0, reroute.TargetId);
+        }
+    }
+
+    /// <summary>
+    /// Keeps the highlighted wires on top of the plain ones but beneath the boxes. GraphEdit draws
+    /// its wires in <c>_connection_layer</c>, an ordinary first child, so the overlay is an ordinary
+    /// child right after it; boxes are added behind it, never in front.
+    /// </summary>
+    void PlaceWireOverlay() {
+        var overlay = WireOverlay;
+        var layer = GetChildren().FirstOrDefault(c => c.Name == "_connection_layer");
+        if (overlay == null || layer == null || overlay.GetParent() != this) return;
+        if (overlay.GetIndex() != layer.GetIndex() + 1) MoveChild(overlay, layer.GetIndex() + 1);
     }
 
     // ---- selection ---------------------------------------------------------------------------
@@ -264,6 +371,7 @@ public partial class FsmGraphEdit : GraphEdit {
         if (box == null) return;
 
         foreach (var other in Boxes()) other.Selected = ReferenceEquals(other, box);
+        foreach (var reroute in RerouteBoxes()) reroute.Selected = false;
         box.ShowPicked(kind, id);
         EmitSignal(SignalName.SelectionMoved);
     }
@@ -290,9 +398,27 @@ public partial class FsmGraphEdit : GraphEdit {
         _menuPosition = (atPosition + ScrollOffset) / Zoom;
         _menuState = null;
         _menuRow = null;
+
+        // On a wire, a reroute is put into that wire; anywhere else it starts out loose.
+        var wire = GetClosestConnectionAtPoint(atPosition, WireReach);
+        _menuWireFrom = wire.Count > 0 ? wire["from_node"].AsStringName() : null;
+        _menuWirePort = wire.Count > 0 ? wire["from_port"].AsInt32() : 0;
+
         _menu.Clear();
         _menu.AddItem("Add state", MenuAddState);
+        _menu.AddItem(_menuWireFrom != null ? "Add reroute to this wire" : "Add reroute", MenuAddReroute);
         PopupAt(_menu, GetScreenPosition() + atPosition);
+    }
+
+    void OnRerouteMenu(StringName boxName, Vector2 screenPosition) {
+        if (RerouteBoxFor(boxName) == null) return;
+
+        _menuState = boxName;
+        _menuRow = null;
+        _menuPosition = screenPosition;
+        _menu.Clear();
+        _menu.AddItem("Delete", MenuDeleteReroute);
+        PopupAt(_menu, screenPosition);
     }
 
     void OnBoxMenu(StringName boxName, Vector2 screenPosition) {
@@ -348,6 +474,8 @@ public partial class FsmGraphEdit : GraphEdit {
             case MenuAddAction: OfferTypes(typeof(ActionNode), FsmRow.Action, _menuPosition); break;
             case MenuSetInitial: SetInitial(_menuState); break;
             case MenuDeleteState: DeleteStates([_menuState]); break;
+            case MenuAddReroute: AddReroute(_menuPosition, _menuWireFrom, _menuWirePort); break;
+            case MenuDeleteReroute: DeleteBoxes([_menuState]); break;
             case MenuRowUp: MoveRow(_menuState, _menuKind, _menuRow, -1); break;
             case MenuRowDown: MoveRow(_menuState, _menuKind, _menuRow, 1); break;
             case MenuRowDelete: DeleteRow(_menuState, _menuKind, _menuRow); break;
@@ -409,13 +537,39 @@ public partial class FsmGraphEdit : GraphEdit {
     /// Deletes states. Transitions that led to them are kept and flagged as leading nowhere, rather
     /// than silently taking their conditions with them.
     /// </summary>
-    public void DeleteStates(IEnumerable<StringName> boxNames) {
-        var doomed = boxNames.Select(n => BoxFor(n)?.State).Where(s => s != null).ToList();
-        if (doomed.Count == 0) return;
+    public void DeleteStates(IEnumerable<StringName> boxNames) => DeleteBoxes(boxNames);
 
-        Commit(doomed.Count == 1 ? $"Misstate: delete state {doomed[0].Name}" : "Misstate: delete states", () => {
-            foreach (var state in doomed) Machine.States.Remove(state);
+    /// <summary>
+    /// Deletes states and reroutes in one step. What led to a deleted reroute leads on to where the
+    /// reroute led, so taking one out of a wire leaves the wire whole.
+    /// </summary>
+    public void DeleteBoxes(IEnumerable<StringName> boxNames) {
+        var names = boxNames.ToList();
+        var states = names.Select(n => BoxFor(n)?.State).Where(s => s != null).ToList();
+        var reroutes = names.Select(n => RerouteBoxFor(n)?.Reroute).Where(r => r != null).ToList();
+        if (states.Count + reroutes.Count == 0) return;
+
+        var what = (states.Count, reroutes.Count) switch {
+            (1, 0) => $"delete state {states[0].Name}",
+            (_, 0) => "delete states",
+            (0, 1) => "delete reroute",
+            (0, _) => "delete reroutes",
+            _ => "delete",
+        };
+        Commit($"Misstate: {what}", () => {
+            foreach (var reroute in reroutes) Bypass(reroute);
+            foreach (var state in states) Machine.States.Remove(state);
         });
+    }
+
+    void Bypass(FsmReroute reroute) {
+        foreach (var transition in Machine.States.Where(s => s != null).SelectMany(s => s.Transitions)) {
+            if (transition?.TargetStateId == reroute.Id) transition.TargetStateId = reroute.TargetId;
+        }
+        foreach (var other in Machine.Reroutes) {
+            if (other != null && other.TargetId == reroute.Id) other.TargetId = reroute.TargetId;
+        }
+        Machine.Reroutes.Remove(reroute);
     }
 
     void OnDeleteNodesRequest(Godot.Collections.Array<StringName> nodes) {
@@ -427,7 +581,7 @@ public partial class FsmGraphEdit : GraphEdit {
             DeleteRow(picked.Name, picked.PickedKind, picked.PickedId);
             return;
         }
-        DeleteStates(nodes);
+        DeleteBoxes(nodes);
     }
 
     void OnEndNodeMove() {
@@ -436,6 +590,9 @@ public partial class FsmGraphEdit : GraphEdit {
         Commit("Misstate: move", () => {
             foreach (var box in Boxes()) {
                 if (box.State != null) box.State.GraphPosition = box.PositionOffset;
+            }
+            foreach (var box in RerouteBoxes()) {
+                if (box.Reroute != null) box.Reroute.GraphPosition = box.PositionOffset;
             }
         }, structural: false);
     }
@@ -458,36 +615,238 @@ public partial class FsmGraphEdit : GraphEdit {
     /// retargets that transition, from the spare port it adds a new one.
     /// </summary>
     void OnConnectionRequest(StringName fromNode, long fromPort, StringName toNode, long toPort) {
-        var from = BoxFor(fromNode)?.State;
-        var to = BoxFor(toNode)?.State;
-        if (from == null || to == null) return;
-        LeadTo(from, (int) fromPort, to);
+        if (!HasBox(toNode)) return;
+
+        if (BoxFor(fromNode)?.State is { } from) LeadTo(from, (int) fromPort, toNode);
+        else if (RerouteBoxFor(fromNode)?.Reroute is { } reroute) LeadOn(reroute, toNode);
     }
 
     /// <summary>Dropping a wire on empty canvas makes a new state there, and leads the transition to it.</summary>
     void OnConnectionToEmpty(StringName fromNode, long fromPort, Vector2 releasePosition) {
         var from = BoxFor(fromNode)?.State;
-        if (from == null) return;
+        var reroute = RerouteBoxFor(fromNode)?.Reroute;
+        if (from == null && reroute == null) return;
 
         var state = new FsmState { Name = UniqueName("State"), GraphPosition = (releasePosition + ScrollOffset) / Zoom };
         Commit($"Misstate: add state {state.Name}", () => {
             Machine.States.Add(state);
-            Lead(from, (int) fromPort, state);
+            if (from != null) Lead(from, (int) fromPort, state.Id);
+            else reroute.TargetId = state.Id;
         });
     }
 
     /// <summary>Leads the transition behind <paramref name="port"/> to a state, adding one for the spare port.</summary>
-    public void LeadTo(FsmState from, int port, FsmState to) {
-        var existing = TransitionAt(from, port);
-        if (existing != null && existing.TargetStateId == to.Id) return;
+    public void LeadTo(FsmState from, int port, FsmState to) => LeadTo(from, port, to.Id);
 
-        Commit(existing == null ? $"Misstate: add transition to {to.Name}" : $"Misstate: lead transition to {to.Name}",
-            () => Lead(from, port, to));
+    /// <summary>As above, to a state or a reroute by id.</summary>
+    public void LeadTo(FsmState from, int port, string targetId) {
+        var existing = TransitionAt(from, port);
+        if (existing != null && existing.TargetStateId == targetId) return;
+
+        Commit(existing == null ? $"Misstate: add transition to {TargetName(targetId)}" : $"Misstate: lead transition to {TargetName(targetId)}",
+            () => Lead(from, port, targetId));
     }
 
-    static void Lead(FsmState from, int port, FsmState to) {
-        if (TransitionAt(from, port) is { } transition) transition.TargetStateId = to.Id;
-        else from.Transitions.Add(new FsmTransition { TargetStateId = to.Id });
+    static void Lead(FsmState from, int port, string targetId) {
+        if (TransitionAt(from, port) is { } transition) transition.TargetStateId = targetId;
+        else from.Transitions.Add(new FsmTransition { TargetStateId = targetId });
+    }
+
+    string TargetName(string targetId) => Machine.FindState(targetId)?.Name ?? "a reroute";
+
+    // ---- reroutes ----------------------------------------------------------------------------
+
+    /// <summary>
+    /// Adds a reroute, centred on <paramref name="position"/>. Given the box and port a wire leaves,
+    /// the reroute is put into that wire: the wire now ends at it, and it leads on to where the wire went.
+    /// </summary>
+    public FsmReroute AddReroute(Vector2 position, StringName wireFrom = null, int wirePort = 0) {
+        if (Machine == null) return null;
+
+        var transition = BoxFor(wireFrom)?.State is { } state ? TransitionAt(state, wirePort) : null;
+        var before = RerouteBoxFor(wireFrom)?.Reroute;
+
+        var reroute = new FsmReroute {
+            GraphPosition = position - (FsmRerouteBox.BodySize / 2),
+            TargetId = transition?.TargetStateId ?? before?.TargetId ?? "",
+        };
+        Commit("Misstate: add reroute", () => {
+            Machine.Reroutes.Add(reroute);
+            if (transition != null) transition.TargetStateId = reroute.Id;
+            else if (before != null) before.TargetId = reroute.Id;
+        });
+        return reroute;
+    }
+
+    /// <summary>A double-click on a wire puts a reroute into it.</summary>
+    public override void _GuiInput(InputEvent @event) {
+        if (@event is not InputEventMouseButton { Pressed: true, DoubleClick: true, ButtonIndex: MouseButton.Left } click) return;
+        if (Machine == null) return;
+
+        var wire = GetClosestConnectionAtPoint(click.Position, WireReach);
+        if (wire.Count == 0) return;
+
+        AddReroute((click.Position + ScrollOffset) / Zoom, wire["from_node"].AsStringName(), wire["from_port"].AsInt32());
+        AcceptEvent();
+    }
+
+    // GraphEdit only knows wires that leave a box on the right and arrive on the left. A reroute
+    // that leads back to the left is turned round instead (FsmRerouteBox.Flipped), which takes
+    // three things: knowing when, drawing its wires from the other end, and grabbing them there.
+
+    bool _updatingFlips;
+
+    void OnBoxMoved() => UpdateFlips();
+
+    /// <summary>Turns every reroute to face what it leads to.</summary>
+    void UpdateFlips() {
+        if (_updatingFlips) return;
+        _updatingFlips = true;
+        foreach (var box in RerouteBoxes().ToList()) {
+            var flipped = LeadsLeft(box);
+            if (flipped == box.Flipped) continue;
+
+            box.Flipped = flipped;
+            // GraphEdit works out the wires of a box again when it has moved; this asks for just that.
+            box.EmitSignal(GraphElement.SignalName.PositionOffsetChanged);
+        }
+        _updatingFlips = false;
+    }
+
+    bool LeadsLeft(FsmRerouteBox box) {
+        var targetId = box.Reroute?.TargetId;
+        var centre = box.PositionOffset.X + FsmRerouteBox.BodySize.X / 2;
+        if (BoxFor(targetId) is { } state) return state.PositionOffset.X < centre;
+        if (RerouteBoxFor(targetId) is { } next) return next.PositionOffset.X < box.PositionOffset.X;
+        return false;
+    }
+
+    /// <summary>
+    /// Wires are drawn with corners instead of GraphEdit's curves. A wire leaves a flipped reroute
+    /// at its left end heading left, and arrives at one at its right end. The ends are told by
+    /// where they are: GraphEdit passes nothing but the two positions.
+    /// </summary>
+    public override Vector2[] _GetConnectionLine(Vector2 fromPosition, Vector2 toPosition) {
+        var (leaves, arrives) = (1f, 1f);
+        foreach (var box in RerouteBoxes()) {
+            if (!box.Flipped) continue;
+
+            var left = box.GetInputPortPosition(0) * Zoom;
+            var right = box.GetOutputPortPosition(0) * Zoom;
+            // Wires that exist are measured from the graph's origin, one being dragged from the view's.
+            foreach (var origin in new[] { box.PositionOffset * Zoom, box.Position }) {
+                if (leaves > 0 && fromPosition.DistanceSquaredTo(origin + right) < 1f) (fromPosition, leaves) = (origin + left, -1f);
+                if (arrives > 0 && toPosition.DistanceSquaredTo(origin + left) < 1f) (toPosition, arrives) = (origin + right, -1f);
+            }
+        }
+
+        return ElbowLine(fromPosition, leaves, toPosition, arrives, WireStub * Zoom, LaneOf(fromPosition, toPosition) * WireLane * Zoom);
+    }
+
+    /// <summary>
+    /// Which lane a wire out of a state takes, so that the wires of one state turn side by side
+    /// instead of on top of each other: the port nearest to where the wire is going turns first.
+    /// </summary>
+    int LaneOf(Vector2 fromPosition, Vector2 toPosition) {
+        foreach (var box in Boxes()) {
+            var ports = box.GetOutputPortCount();
+            for (var port = 0; port < ports; port++) {
+                var at = box.GetOutputPortPosition(port) * Zoom;
+                if (fromPosition.DistanceSquaredTo(box.PositionOffset * Zoom + at) >= 1f && fromPosition.DistanceSquaredTo(box.Position + at) >= 1f) continue;
+                return toPosition.Y > fromPosition.Y ? ports - 1 - port : port;
+            }
+        }
+        return 0;
+    }
+
+    /// <summary>How far apart the wires of one state turn.</summary>
+    const float WireLane = 8f;
+
+    /// <summary>How far a wire runs straight out of a port, and into one, before it may turn.</summary>
+    const float WireStub = 18f;
+
+    /// <summary>
+    /// A wire of horizontal and vertical runs only, as in the Missbehave graph. It leaves its port
+    /// heading <paramref name="leaves"/> (1 for right, -1 for left) and arrives heading
+    /// <paramref name="arrives"/>, with a straight bit at either end so it never turns right at a port.
+    /// </summary>
+    /// <param name="lane">How much further than the stub this wire runs before its first turn.</param>
+    static Vector2[] ElbowLine(Vector2 from, float leaves, Vector2 to, float arrives, float stub, float lane = 0) {
+        var start = from + new Vector2(leaves * (stub + lane), 0);
+        var end = to - new Vector2(arrives * stub, 0);
+        var points = new List<Vector2> { from };
+
+        if (leaves != arrives) {
+            // Out and back in from the same side: one turn-round, past whichever end sticks out further.
+            var x = leaves > 0 ? Mathf.Max(start.X, end.X) : Mathf.Min(start.X, end.X);
+            points.Add(new Vector2(x, from.Y));
+            points.Add(new Vector2(x, to.Y));
+        }
+        else if ((end.X - start.X) * leaves >= 0) {
+            // The target lies ahead: one step up or down, close to where the wire starts — halfway
+            // would often be behind a box that sits in between.
+            points.Add(start);
+            points.Add(new Vector2(start.X, to.Y));
+        }
+        else {
+            // The target lies behind: out, back across above both ends — a state's input sits at its
+            // top, so that clears the boxes — and in from the far side.
+            var y = Mathf.Min(from.Y, to.Y) - 3 * stub - lane;
+            points.Add(start);
+            points.Add(new Vector2(start.X, y));
+            points.Add(new Vector2(end.X, y));
+            points.Add(end);
+        }
+
+        points.Add(to);
+        return [.. points.Where((point, i) => i == 0 || !point.IsEqualApprox(points[i - 1]))];
+    }
+
+    public override bool _IsInInputHotzone(GodotObject inNode, int inPort, Vector2 mousePosition)
+        => inNode is GraphNode node && InHotzone(node, inPort, mousePosition, input: true);
+
+    public override bool _IsInOutputHotzone(GodotObject inNode, int inPort, Vector2 mousePosition)
+        => inNode is GraphNode node && InHotzone(node, inPort, mousePosition, input: false);
+
+    /// <summary>
+    /// Whether the mouse is where a port can be grabbed — as GraphEdit decides it, but with the ends
+    /// of a flipped reroute swapped. The mouse position comes divided by the zoom.
+    /// </summary>
+    bool InHotzone(GraphNode node, int port, Vector2 mouse, bool input) {
+        var reroute = node as FsmRerouteBox;
+        var onLeft = input != (reroute?.Flipped ?? false);
+        if (port < 0 || port >= (input ? node.GetInputPortCount() : node.GetOutputPortCount())) return false;
+
+        // Only a reroute is ever flipped, and it has the one port at either end.
+        var local = onLeft ? node.GetInputPortPosition(input ? port : 0) : node.GetOutputPortPosition(input ? 0 : port);
+        var at = (local * Zoom + node.Position) / Zoom;
+        var inner = GetThemeConstant("port_hotzone_inner_extent");
+        var outer = GetThemeConstant("port_hotzone_outer_extent");
+        var height = node.GetThemeIcon("port")?.GetHeight() ?? 10;
+        var zone = new Rect2(at.X - (onLeft ? outer : inner), at.Y - height / 2f, inner + outer, height);
+        if (!zone.HasPoint(mouse)) return false;
+
+        // What a box shows wins over the ports beside it: a click on a row is a click on that row.
+        foreach (var box in Boxes()) {
+            var within = (mouse * Zoom - box.Position) / Zoom;
+            if (!new Rect2(Vector2.Zero, box.Size).HasPoint(within)) continue;
+            if (box.GetChildren().OfType<Control>().Any(child => child.Visible && child.GetRect().HasPoint(within))) return false;
+        }
+        return true;
+    }
+
+    /// <summary>Leads a reroute on to a state or another reroute — unless that would send its wires round in a circle.</summary>
+    public void LeadOn(FsmReroute reroute, string targetId) {
+        if (reroute == null || reroute.TargetId == targetId) return;
+
+        var seen = 0;
+        for (var at = targetId; Machine.FindReroute(at) is { } next && seen <= Machine.Reroutes.Count; at = next.TargetId, seen++) {
+            if (!ReferenceEquals(next, reroute)) continue;
+            EmitSignal(SignalName.EditRejected, "A reroute cannot lead back to itself.");
+            return;
+        }
+
+        Commit($"Misstate: lead reroute to {TargetName(targetId)}", () => reroute.TargetId = targetId);
     }
 
     /// <summary>The transition behind an output port, or null for the spare port after the last one.</summary>
@@ -601,7 +960,7 @@ public partial class FsmGraphEdit : GraphEdit {
 
     /// <summary>
     /// The structure of the machine: its states in order, where each sits, its actions in order, its
-    /// transitions in order with where each leads and what it checks. The objects themselves travel
+    /// transitions in order with where each leads and what it checks — and its reroutes. The objects themselves travel
     /// along, so undo can bring a deleted one back as the same object.
     /// </summary>
     internal Godot.Collections.Dictionary TakeSnapshot() {
@@ -626,10 +985,21 @@ public partial class FsmGraphEdit : GraphEdit {
             });
         }
 
+        var reroutes = new Godot.Collections.Array();
+        foreach (var reroute in Machine.Reroutes) {
+            if (reroute == null) continue;
+            reroutes.Add(new Godot.Collections.Dictionary {
+                { "reroute", reroute },
+                { "pos", reroute.GraphPosition },
+                { "target", reroute.TargetId },
+            });
+        }
+
         return new Godot.Collections.Dictionary {
             { "machine", Machine },
             { "initial", Machine.InitialStateId },
             { "states", states },
+            { "reroutes", reroutes },
         };
     }
 
@@ -679,6 +1049,17 @@ public partial class FsmGraphEdit : GraphEdit {
         }
         Machine.States = states;
         Machine.InitialStateId = snapshot["initial"].AsString();
+
+        var reroutes = new Godot.Collections.Array<FsmReroute>();
+        foreach (var item in snapshot.TryGetValue("reroutes", out var kept) ? kept.AsGodotArray() : []) {
+            var data = item.AsGodotDictionary();
+            if (data["reroute"].AsGodotObject() is not FsmReroute reroute) continue;
+
+            reroute.GraphPosition = data["pos"].AsVector2();
+            reroute.TargetId = data["target"].AsString();
+            reroutes.Add(reroute);
+        }
+        Machine.Reroutes = reroutes;
 
         QueueRebuild();
         EmitSignal(SignalName.MachineDirtied);

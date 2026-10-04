@@ -61,6 +61,7 @@ public partial class FsmEditorSelfTest : Node {
         await InspectorEditsReachTheGraph();
         await UndoRestoresTheStructure();
         await DeletingAStateLeavesItsTransitionsFlagged();
+        await ReroutesLeadWiresAround();
         await NodesLinkToTheBlackboardBesideTheGraph();
         await OnlyOnePanelClaimsAParameter();
         await SavingAndRevertingFollowTheFile();
@@ -405,6 +406,86 @@ public partial class FsmEditorSelfTest : Node {
         await Settle();
     }
 
+    async System.Threading.Tasks.Task ReroutesLeadWiresAround() {
+        var before = _graph.TakeSnapshot();
+        var rejected = new List<string>();
+        _graph.EditRejected += rejected.Add;
+
+        // Idle's transition leads to Work; a reroute put into that wire takes its place.
+        var transition = _idle.Transitions[0];
+        var reroute = _graph.AddReroute(new Vector2(220, 60), _idle.Id, 0);
+        await Settle();
+        Check("a reroute put into a wire is where that wire now ends",
+            _machine.Reroutes.SequenceEqual([reroute]) && transition.TargetStateId == reroute.Id && Wires().Contains($"{_idle.Id}:0>{reroute.Id}"));
+        Check("and leads on to where the wire went", reroute.TargetId == _work.Id && Wires().Contains($"{reroute.Id}:0>{_work.Id}"));
+        Check("it has a box of its own, centred on where it was put",
+            _graph.RerouteBoxFor(reroute.Id)?.PositionOffset == new Vector2(220, 60) - FsmRerouteBox.BodySize / 2);
+        Check("the transition's row still names the state at the end", RowText(_idle, FsmRow.Transition, 0) == "→ Work"
+                                                                         && Rows(_idle, FsmRow.Transition)[0].Warning == "");
+        Check("a reroute is narrow, yet leaves room between its ports to drag it by",
+            _graph.RerouteBoxFor(reroute.Id).Size.X > 2 * FsmGraphEdit.PortReach + 16 && _graph.RerouteBoxFor(reroute.Id).Size.Y < 30);
+
+        // A second reroute into the wire that leaves the first.
+        var next = _graph.AddReroute(new Vector2(300, 140), reroute.Id, 0);
+        await Settle();
+        Check("a reroute can be put into the wire that leaves another", reroute.TargetId == next.Id && next.TargetId == _work.Id
+                                                                        && Wires().Contains($"{reroute.Id}:0>{next.Id}"));
+
+        _graph.LeadOn(next, reroute.Id);
+        await Settle();
+        Check("a reroute cannot lead back to itself", next.TargetId == _work.Id && rejected.Count == 1);
+
+        _graph.EmitSignal(GraphEdit.SignalName.ConnectionRequest, next.Id, 0, _idle.Id, 0);
+        await Settle();
+        Check("dragging its wire elsewhere takes every transition through it along",
+            next.TargetId == _idle.Id && RowText(_idle, FsmRow.Transition, 0) == "→ Idle");
+
+        _graph.EmitSignal(GraphEdit.SignalName.ConnectionRequest, _work.Id, 0, next.Id, 0);
+        await Settle();
+        Check("several wires may end at one reroute", _work.Transitions[0].TargetStateId == next.Id
+                                                     && Wires().Count(w => w.EndsWith($">{next.Id}")) == 2);
+
+        // Idle sits left of this reroute, Work right of the first one.
+        var turned = _graph.RerouteBoxFor(next.Id);
+        Check("a reroute that leads back to the left is turned round", turned.Flipped && !_graph.RerouteBoxFor(reroute.Id).Flipped);
+        var leftEnd = turned.PositionOffset + turned.GetInputPortPosition(0);
+        var rightEnd = turned.PositionOffset + turned.GetOutputPortPosition(0);
+        var leaving = _graph.GetConnectionLine(rightEnd, new Vector2(40, 40));
+        var arriving = _graph.GetConnectionLine(new Vector2(900, 40), leftEnd);
+        Check("its wire leaves at the left end, heading left", leaving[0].IsEqualApprox(leftEnd) && leaving[1].X < leftEnd.X);
+        Check("and wires arrive at its right end, from the right", arriving[^1].IsEqualApprox(rightEnd) && arriving[^2].X > rightEnd.X);
+        Check("so the ends to grab are swapped too",
+            _graph._IsInOutputHotzone(turned, 0, turned.Position + turned.GetInputPortPosition(0) - new Vector2(4, 0))
+            && !_graph._IsInOutputHotzone(turned, 0, turned.Position + turned.GetOutputPortPosition(0) + new Vector2(4, 0))
+            && _graph._IsInInputHotzone(turned, 0, turned.Position + turned.GetOutputPortPosition(0) + new Vector2(4, 0)));
+
+        turned.PositionOffset = new Vector2(-200, 300);
+        Check("moved to the other side of its target, it turns back", !turned.Flipped);
+
+        _graph.RerouteBoxFor(next.Id).PositionOffset = new Vector2(500, 300);
+        _graph.EmitSignal(GraphEdit.SignalName.EndNodeMove);
+        await Settle();
+        Check("moving a reroute is remembered", next.GraphPosition == new Vector2(500, 300));
+
+        _graph.EmitSignal(GraphEdit.SignalName.DeleteNodesRequest, new Godot.Collections.Array<StringName> { next.Id });
+        await Settle();
+        Check("deleting a reroute leaves the wires whole", _machine.Reroutes.SequenceEqual([reroute]) && reroute.TargetId == _idle.Id
+                                                           && _work.Transitions[0].TargetStateId == _idle.Id && _graph.RerouteBoxFor(next.Id) == null);
+
+        var loose = _graph.AddReroute(new Vector2(40, 400));
+        await Settle();
+        Check("a reroute added off any wire starts out loose", loose.TargetId == "" && _graph.RerouteBoxFor(loose.Id) != null);
+        _graph.EmitSignal(GraphEdit.SignalName.ConnectionToEmpty, loose.Id, 0, new Vector2(600, 400));
+        await Settle();
+        Check("a wire dropped on the canvas gives it a new state to lead to", _machine.FindState(loose.TargetId) != null && _machine.States.Count == 3);
+
+        _graph.EditRejected -= rejected.Add;
+        _graph.RestoreSnapshot(before);
+        await Settle();
+        Check("undo takes the reroutes away again", _machine.Reroutes.Count == 0 && transition.TargetStateId == _work.Id
+                                                    && Wires().SequenceEqual([$"{_idle.Id}:0>{_work.Id}", $"{_work.Id}:0>{_idle.Id}"]));
+    }
+
     // ---- blackboard --------------------------------------------------------------------------
 
     async System.Threading.Tasks.Task NodesLinkToTheBlackboardBesideTheGraph() {
@@ -499,6 +580,24 @@ public partial class FsmEditorSelfTest : Node {
         Check("the others fade", !idleBox.IsCurrent && idleBox.Modulate.A == FsmStateBox.DimmedAlpha);
         Check("its action shows what it last returned", workBox.Rows(FsmRow.Action).First().LiveStatus == MissStatus.Running);
 
+        var overlay = _graph.WireOverlay;
+        Check("the ways out of that state are highlighted as not taken yet",
+            overlay.Wires.SequenceEqual([new LiveWire(work.Id, 0, idle.Id, Taken: false)]) && overlay.IsProcessing());
+        Check("the overlay sits above the plain wires and below the boxes",
+            overlay.GetIndex() == _graph.GetNode("_connection_layer").GetIndex() + 1 && overlay.GetIndex() < workBox.GetIndex());
+
+        // The way in, through a reroute.
+        var via = _graph.AddReroute(new Vector2(220, 60), idle.Id, 0);
+        await Settle();
+        router.Handle("misstate:state", [42L, work.Id, new[] { (byte) MissStatus.Running }, 2, idle.Transitions[0].Id], _panel);
+        Check("the transition the machine came in by is highlighted as taken, reroutes included",
+            overlay.Wires.Where(w => w.Taken).SequenceEqual([new LiveWire(idle.Id, 0, via.Id, true), new LiveWire(via.Id, 0, work.Id, true)])
+            && overlay.Wires.Count(w => !w.Taken) == 1);
+        _graph.DeleteBoxes([via.Id]);
+        await Settle();
+        Check("and follows an edit of the graph", overlay.Wires.Where(w => w.Taken).SequenceEqual([new LiveWire(idle.Id, 0, work.Id, true)]));
+        router.Handle("misstate:state", [42L, work.Id, new[] { (byte) MissStatus.Running }, 3], _panel);
+
         _graph.AddState(new Vector2(40, 400), "Later");
         await Settle();
         Check("an edit that rebuilds the graph keeps the live picture",
@@ -527,7 +626,7 @@ public partial class FsmEditorSelfTest : Node {
 
         router.Reset(_panel);
         Check("when the game stops, the graph looks as it does while editing",
-            !_graph.BoxFor(work.Id).IsCurrent && _graph.BoxFor(idle.Id).Modulate.A == 1f && !picker.Visible
+            !_graph.BoxFor(work.Id).IsCurrent && _graph.BoxFor(idle.Id).Modulate.A == 1f && !picker.Visible && overlay.Wires.Count == 0
             && _graph.BoxFor(work.Id).GetThemeStylebox("panel") is StyleBoxFlat plain && plain.BorderColor != FsmRow.Running);
     }
 

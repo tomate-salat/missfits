@@ -37,6 +37,7 @@ public partial class FsmSelfTest : Node {
         ConditionsHoldTogetherOrOneIsEnough();
         LeavingAStateInterruptsItsNode();
         ATransitionToNowhereIsIgnored();
+        AReroutedTransitionGoesToTheStateAtTheEnd();
 
         // blackboard
         NodesLinkToTheMachinesBlackboard();
@@ -542,6 +543,8 @@ public partial class FsmSelfTest : Node {
         runner.Tick(Step);
         stream.SendState(runner);
         Check("a change of state is sent", sent.Count == before + 1 && sent[^1].Message == "state" && sent[^1].Data[1].AsString() == rest.Id);
+        Check("with the transition that led there", state.Data[4].AsString() == "" && sent[^1].Data[4].AsString() == work.Transitions[0].Id
+                                                     && runner.Instance.EnteredBy == work.Transitions[0]);
 
         before = sent.Count;
         stream.OnEditorMessage("watch_instance", [id + 1]);
@@ -605,6 +608,40 @@ public partial class FsmSelfTest : Node {
         run.Tick();
         run.Tick();
         Check("a loaded machine runs", run.Instance.Current?.Name == "Work" && run.Board.Get<int>("count") == 2);
+    }
+
+    void AReroutedTransitionGoesToTheStateAtTheEnd() {
+        var a = State("A");
+        var b = State("B");
+        var machine = Machine(a, b);
+        var second = new FsmReroute { TargetId = b.Id };
+        var first = new FsmReroute { TargetId = second.Id };
+        machine.Reroutes.Add(first);
+        machine.Reroutes.Add(second);
+        a.Transitions.Add(new FsmTransition { TargetStateId = first.Id });
+
+        Check("a chain of reroutes stands for the state at its end", machine.Destination(first.Id) == b && machine.Destination(b.Id) == b);
+        var run = new MachineRun(machine);
+        run.Tick();
+        run.Tick();
+        Check("a transition through reroutes arrives at that state", run.Instance.Current == b);
+        Check("and is no problem", !machine.Validate().Any(p => p.Contains("leads nowhere")));
+
+        const string path = "user://misstate_rerouted.tres";
+        ResourceSaver.Save(machine, path);
+        var loaded = ResourceLoader.Load<Fsm>(path, cacheMode: ResourceLoader.CacheMode.Ignore);
+        Check("reroutes are saved with the machine", loaded?.Reroutes.Count == 2 && loaded.Destination(first.Id)?.Name == "B");
+
+        second.TargetId = first.Id;
+        Check("reroutes in a circle lead nowhere", machine.Destination(first.Id) == null);
+        Check("which is reported", machine.Validate().Any(p => p.Contains("leads nowhere")));
+        run = new MachineRun(machine);
+        run.Tick();
+        run.Tick();
+        Check("and leaves the machine where it is", run.Instance.Current == a);
+
+        second.TargetId = "";
+        Check("a reroute that leads on to nothing leads nowhere", machine.Destination(first.Id) == null);
     }
 
     void ProblemsAreReported() {

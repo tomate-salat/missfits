@@ -14,6 +14,10 @@ public partial class Fsm : MissResource, IBlackboardSource {
     [Export]
     public Godot.Collections.Array<FsmState> States { get; set; } = [];
 
+    /// <summary>Waypoints for the wires of a graph editor. See <see cref="Destination"/>.</summary>
+    [Export]
+    public Godot.Collections.Array<FsmReroute> Reroutes { get; set; } = [];
+
     /// <summary>The state a runner starts in. Left empty, it is the first state.</summary>
     [Export]
     public string InitialStateId { get; set; } = "";
@@ -38,6 +42,28 @@ public partial class Fsm : MissResource, IBlackboardSource {
         return null;
     }
 
+    public FsmReroute FindReroute(string id) {
+        if (string.IsNullOrEmpty(id)) return null;
+        foreach (var reroute in Reroutes) {
+            if (reroute?.Id == id) return reroute;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// The state a transition's target stands for: the state of that id, or the one at the end of
+    /// the reroutes that start there. Null when the id names nothing, or the reroutes end nowhere
+    /// or run in a circle.
+    /// </summary>
+    public FsmState Destination(string targetId) {
+        for (var hops = 0; hops <= Reroutes.Count; hops++) {
+            if (FindState(targetId) is { } state) return state;
+            if (FindReroute(targetId) is not { } reroute) return null;
+            targetId = reroute.TargetId;
+        }
+        return null;
+    }
+
     public FsmState FindStateByName(string name) {
         foreach (var state in States) {
             if (state != null && state.Name == name) return state;
@@ -46,7 +72,7 @@ public partial class Fsm : MissResource, IBlackboardSource {
     }
 
     public override void _ValidateProperty(Godot.Collections.Dictionary property) {
-        if (property["name"].AsString() is nameof(Blackboard) or nameof(InitialStateId)) {
+        if (property["name"].AsString() is nameof(Blackboard) or nameof(InitialStateId) or nameof(Reroutes)) {
             property["usage"] = (int) PropertyUsageFlags.Storage;
         }
     }
@@ -103,7 +129,7 @@ public partial class Fsm : MissResource, IBlackboardSource {
             for (var i = 0; i < state.Transitions.Count; i++) {
                 var transition = state.Transitions[i];
                 if (transition == null) problems.Add($"{name}: transition #{i + 1} is empty.");
-                else if (FindState(transition.TargetStateId) == null) problems.Add($"{name}: transition #{i + 1} leads nowhere.");
+                else if (Destination(transition.TargetStateId) == null) problems.Add($"{name}: transition #{i + 1} leads nowhere.");
                 else if (transition.On == FsmTrigger.Always && !transition.Conditions.Any(c => c != null)) {
                     problems.Add($"{name}: transition #{i + 1} has neither a trigger nor a condition, so the state is left after one tick.");
                 }
