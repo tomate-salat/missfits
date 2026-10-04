@@ -228,7 +228,7 @@ public partial class SectionBox : MissGraphBox {
             switch (GetChild(slot)) {
                 case GraphRow { Kind: SpeakRow.Line } row:
                     var line = section.Lines.FirstOrDefault(l => l != null && l.Id == row.Id);
-                    row.Show(SpeakLabels.Says(line), SpeakLabels.Problem(line), IsPicked(row));
+                    row.Show(SpeakLabels.Says(line), SpeakLabels.Problem(line, dialogue), IsPicked(row));
                     break;
                 case GraphRow { Kind: SpeakRow.Action } row:
                     var action = section.Lines.Where(l => l != null).SelectMany(l => l.Actions).FirstOrDefault(a => a != null && a.Id == row.Id);
@@ -326,9 +326,14 @@ public static class SpeakLabels {
         return $"{lead} {Runs(condition)}";
     }
 
-    /// <summary>E.g. "“A sword.” → Buy sword" for a choice, "→ Hub" for the way on by itself, "→ end" where it leads nowhere.</summary>
+    /// <summary>
+    /// A choice reads as its text and where it leads, the way on by itself as "→ Hub"; "→ end"
+    /// where it leads nowhere, "↩ back" where it leads back.
+    /// </summary>
     public static string Describe(DialogueOption option, Dialogue dialogue) {
         if (option == null) return "";
+
+        if (option.Back) return option.IsChoice ? $"“{Short(option.Text)}” ↩ back" : "↩ back";
 
         var target = dialogue?.Destination(option.TargetSectionId);
         var where = string.IsNullOrEmpty(option.TargetSectionId) ? "end"
@@ -337,9 +342,10 @@ public static class SpeakLabels {
         return option.IsChoice ? $"“{Short(option.Text)}” → {where}" : $"→ {where}";
     }
 
-    public static string Problem(DialogueLine line) {
+    public static string Problem(DialogueLine line, Dialogue dialogue) {
         if (line == null) return "";
-        return string.IsNullOrEmpty(line.Text) && !line.Actions.Any(a => a != null) ? "says nothing and does nothing" : "";
+        if (string.IsNullOrEmpty(line.Text) && !line.Actions.Any(a => a != null)) return "says nothing and does nothing";
+        return dialogue != null && !dialogue.KnowsSpeaker(line.Speaker) ? $"{line.Speaker} is not among the dialogue's speakers" : "";
     }
 
     /// <summary>What is wrong with an action or a condition, one problem per line.</summary>
@@ -351,7 +357,7 @@ public static class SpeakLabels {
     }
 
     public static string Problem(DialogueOption option, Dialogue dialogue) {
-        if (option == null || string.IsNullOrEmpty(option.TargetSectionId)) return "";
+        if (option == null || option.Back || string.IsNullOrEmpty(option.TargetSectionId)) return "";
         return dialogue?.Destination(option.TargetSectionId) == null ? "leads nowhere — drag its port onto a section" : "";
     }
 }

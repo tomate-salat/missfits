@@ -194,6 +194,7 @@ public partial class DialogueEditorPanel : VBoxContainer, IRunnerDebugView {
         Blackboard.ShowSource(dialogue);
 
         RememberHistoryOf(dialogue);
+        RememberSpeakers();
         _title.Text = string.IsNullOrEmpty(dialogue.ResourcePath) ? "(unsaved dialogue)" : dialogue.ResourcePath;
         ShowDirtyState();
         SetStatus(Describe());
@@ -208,10 +209,13 @@ public partial class DialogueEditorPanel : VBoxContainer, IRunnerDebugView {
     /// <summary>Path of the open dialogue, for the debugger: empty for one without a file, null for none.</summary>
     public string WatchedPath => Dialogue?.ResourcePath;
 
-    /// <summary>What the game reported: the section's id, the line's, what the dialogue waits for, the tick, and the option that led there.</summary>
+    /// <summary>What the game reported: the section's id, the line's, what the dialogue waits for, the tick, the option that led there, the trail of options since the player last did something, and where leading back would go.</summary>
     public void ShowLive(Godot.Collections.Array state) {
         if (state.Count < 2) return;
-        Graph?.ShowLive(state[0].AsString(), state[1].AsString(), state.Count > 4 ? state[4].AsString() : "");
+        Graph?.ShowLive(state[0].AsString(), state[1].AsString(),
+            enteredBy: state.Count > 4 ? state[4].AsString() : "",
+            trail: state.Count > 5 ? state[5].AsStringArray() : null,
+            backTo: state.Count > 6 ? state[6].AsString() : "");
     }
 
     public void ClearLive() => Graph?.ClearLive();
@@ -273,6 +277,7 @@ public partial class DialogueEditorPanel : VBoxContainer, IRunnerDebugView {
         // after the first letter.
         var moved = HistoryMoved(edited);
         var changed = ContentChanged(edited);
+        FollowSpeakerRenames();
         Graph.SyncWithDialogue();
         if (moved || changed) MarkDirty();
     }
@@ -340,6 +345,7 @@ public partial class DialogueEditorPanel : VBoxContainer, IRunnerDebugView {
         return edited switch {
             Dialogue whole => ReferenceEquals(whole, dialogue),
             DialogueSection section => dialogue.Sections.Contains(section),
+            DialogueSpeaker speaker => dialogue.Speakers.Contains(speaker),
             DialogueLine line => dialogue.Sections.Any(s => s != null && s.Lines.Contains(line)),
             DialogueOption option => dialogue.Sections.Any(s => s != null && s.Options.Contains(option)),
             MissNode node => dialogue.AllNodes().Contains(node),
@@ -347,9 +353,49 @@ public partial class DialogueEditorPanel : VBoxContainer, IRunnerDebugView {
         };
     }
 
+    /// <summary>The name the lines carry for each listed speaker, by the speaker's instance id. A Godot dictionary so a reload keeps it.</summary>
+    Godot.Collections.Dictionary _speakerNames = [];
+
+    void RememberSpeakers() {
+        _speakerNames.Clear();
+        foreach (var speaker in Dialogue?.Speakers.Where(s => s != null) ?? []) _speakerNames[speaker.GetInstanceId()] = speaker.Name;
+    }
+
+    /// <summary>
+    /// A line names its speaker by name, so renaming a speaker in the Inspector has to rename it in
+    /// every line that meant that speaker. Undoing the rename comes by here as well, as a rename
+    /// back. While the new name is also another speaker's — typing "Smith" over "Sam" passes through
+    /// "S" — the lines are left as they are, or the two speakers' lines could no longer be told apart.
+    /// </summary>
+    void FollowSpeakerRenames() {
+        var dialogue = Dialogue;
+        if (dialogue == null) return;
+
+        var speakers = dialogue.Speakers.Where(s => s != null).ToList();
+        foreach (var speaker in speakers) {
+            var id = speaker.GetInstanceId();
+            if (!_speakerNames.TryGetValue(id, out var known)) {
+                _speakerNames[id] = speaker.Name;
+                continue;
+            }
+
+            var before = known.AsString();
+            if (before == speaker.Name) continue;
+            if (speakers.Any(other => !ReferenceEquals(other, speaker) && other.Name == speaker.Name)) continue;
+
+            if (before != "") {
+                foreach (var line in dialogue.Sections.Where(s => s != null).SelectMany(s => s.Lines)) {
+                    if (line != null && line.Speaker == before) line.Speaker = speaker.Name;
+                }
+            }
+            _speakerNames[id] = speaker.Name;
+        }
+    }
+
     /// <summary>The Inspector changed the dialogue or a part of it: bring the graph up to date.</summary>
     public void OnInspectorEdited() {
         if (Dialogue == null) return;
+        FollowSpeakerRenames();
         Graph.SyncWithDialogue();
         MarkDirty();
     }
@@ -493,6 +539,7 @@ public partial class DialogueEditorPanel : VBoxContainer, IRunnerDebugView {
         }
 
         dialogue.Sections = saved.Sections;
+        dialogue.Speakers = saved.Speakers;
         dialogue.Reroutes = saved.Reroutes;
         dialogue.StartSectionId = saved.StartSectionId;
         dialogue.SpeakerAsTranslationContext = saved.SpeakerAsTranslationContext;
@@ -500,6 +547,7 @@ public partial class DialogueEditorPanel : VBoxContainer, IRunnerDebugView {
         dialogue.Blackboard = saved.Blackboard;
 
         _unsaved.Remove(dialogue);
+        RememberSpeakers();
         Graph.LoadDialogue(dialogue);
         Blackboard.ShowSource(dialogue);
         dialogue.NotifyPropertyListChanged();

@@ -30,6 +30,7 @@ public partial class SpeakSelfTest : Node {
         ChoicesAreOfferedWhileTheirConditionsHold();
         WithoutAChoiceTheDialogueCarriesOnByItself();
         ASectionWhereNothingIsSaidIsABranch();
+        AnOptionCanLeadBackToTheLastChoice();
 
         // control
         CancellingEndsTheDialogue();
@@ -306,6 +307,53 @@ public partial class SpeakSelfTest : Node {
         talk.Free();
     }
 
+    void AnOptionCanLeadBackToTheLastChoice() {
+        var hub = Section("Hub", Line("Smith", "What now?"));
+        var weigh = Section("Weigh");
+        var lore = Section("Lore", Line("Smith", "An old forge."));
+        var deeper = Section("Deeper", Line("Smith", "Very old."));
+        var plain = Section("Plain", Line("Smith", "That is all."));
+        Choice(hub, "Tell me more.", weigh);
+        Choice(hub, "Enough.", plain);
+        Link(weigh, lore);
+        Choice(lore, "How old?", deeper);
+        var back = Link(lore, null);
+        back.Back = true;
+        var deeperBack = Choice(deeper, "I see.", null);
+        deeperBack.Back = true;
+        var talk = new Talk(this, Dialogue(hub, weigh, lore, deeper, plain));
+
+        talk.Runner.Start();
+        talk.Runner.Choose(1);
+        Check("an option does not lead back unless it says so: without a target it ends the talk", talk.Runner.Advance() && !talk.Runner.IsActive);
+
+        talk.Runner.Start();
+        talk.Runner.Choose(0);
+        talk.Runner.Tick(Step);
+        Check("a choice leads on, through a branch", talk.Runner.Text == "An old forge.");
+        Check("the trail runs from the choice through the branch the dialogue passed by itself",
+            talk.Runner.Instance.Trail.SequenceEqual([hub.Options[0], weigh.Options[0]]) && talk.Runner.Instance.EnteredBy == weigh.Options[0]);
+        talk.Runner.Choose(0);
+        Check("and a further choice further", talk.Runner.Text == "Very old.");
+        Check("the way here is kept from the player's last act on: through the branch, the trail holds both options",
+            talk.Runner.Instance.BackTarget == lore && talk.Runner.Instance.Trail.SequenceEqual([lore.Options[0]]));
+        Check("an option that leads back returns to the section the last choice was made in", talk.Runner.Choose(0) && talk.Runner.Instance.Current == lore);
+        Check("where it would go next is known beforehand, for the debugger", talk.Runner.Instance.BackTarget == hub && talk.Runner.Instance.Trail.SequenceEqual([deeperBack]));
+        Check("which starts over", talk.Runner.Text == "An old forge." && talk.Runner.Choices.SequenceEqual(["How old?"]));
+
+        lore.Options.Remove(lore.Options[0]);
+        talk.Runner.Rebuild();
+        talk.Runner.Start();
+        talk.Runner.Choose(0);
+        talk.Runner.Tick(Step);
+        Check("leading back skips the sections passed through without a choice", talk.Runner.Advance() && talk.Runner.Instance.Current == hub && talk.Runner.Text == "What now?");
+
+        talk.Runner.Start(section: "Lore");
+        Check("with no choice made on the way there is nowhere to go back to, and the talk ends", talk.Runner.Advance() && !talk.Runner.IsActive);
+        Check("leading back is no problem to report", Dialogue(hub, weigh, lore, deeper, plain).Validate().Length == 0);
+        talk.Free();
+    }
+
     // ---- control -----------------------------------------------------------------------------
 
     void CancellingEndsTheDialogue() {
@@ -390,6 +438,13 @@ public partial class SpeakSelfTest : Node {
         var texts = dialogue.TranslatableTexts().ToList();
         Check("a dialogue lists its texts for translation: speakers, lines and choices, each once",
             texts.SequenceEqual([("Smith", ""), ("That makes {gold} coins.", ""), ("Guard", ""), ("Yes.", ""), ("Pay.", "")]));
+        dialogue.Speakers.Add(new DialogueSpeaker { Name = "Narrator" });
+        Check("a speaker the dialogue lists is translated too, spoken yet or not", dialogue.TranslatableTexts().First() == ("Narrator", ""));
+        Check("the names to pick a speaker from are the listed ones, then those the lines use", dialogue.SpeakerNames().SequenceEqual(["Narrator", "Smith", "Guard"]));
+        Check("once speakers are listed, a line by anyone else is a problem",
+            !dialogue.KnowsSpeaker("Smith") && dialogue.KnowsSpeaker("Narrator") && dialogue.KnowsSpeaker("") && dialogue.Validate().Any(p => p.Contains("not among")));
+        dialogue.Speakers.Clear();
+
         dialogue.SpeakerAsTranslationContext = true;
         texts = [.. dialogue.TranslatableTexts()];
         Check("with the speaker as context where the dialogue asks for it",
@@ -545,6 +600,8 @@ public partial class SpeakSelfTest : Node {
         stream.SendState(talk.Runner);
         Check("a change of section is sent with the option that led there",
             sent[^1].Data[1].AsString() == answer.Id && sent[^1].Data[5].AsString() == choice.Id && talk.Runner.Instance.EnteredBy == choice);
+        Check("along with the trail of options taken, and where leading back would go",
+            sent[^1].Data[6].AsStringArray().SequenceEqual([choice.Id]) && sent[^1].Data[7].AsString() == ask.Id);
 
         now += 100;
         talk.Runner.Advance();

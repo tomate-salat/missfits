@@ -10,6 +10,33 @@ namespace Misscore.Editor;
 /// </summary>
 [Tool]
 public abstract partial class MissGraphBox : GraphNode {
+    static readonly Color HintColor = new("#8ab4f8");
+
+    bool _hinted;
+
+    /// <summary>
+    /// Marks the box, quietly, as where what is selected leads — the target of the picked option or
+    /// transition, or of the selected reroute. A thin outline a little outside its own.
+    /// </summary>
+    public bool Hinted {
+        get => _hinted;
+        set {
+            if (_hinted == value) return;
+            _hinted = value;
+            QueueRedraw();
+        }
+    }
+
+    public override void _Draw() {
+        if (!_hinted) return;
+
+        var around = new Rect2(Vector2.Zero, Size).Grow(4);
+        var style = new StyleBoxFlat { DrawCenter = false, BorderColor = new Color(HintColor, 0.6f) };
+        style.SetBorderWidthAll(2);
+        style.SetCornerRadiusAll(9);
+        DrawStyleBox(style, around);
+    }
+
     /// <summary>
     /// Takes the title bar out of the picture. The title itself stays set — it is what the editor
     /// and tooltips refer to — but is not drawn. Without the bar the body has no upper edge of its

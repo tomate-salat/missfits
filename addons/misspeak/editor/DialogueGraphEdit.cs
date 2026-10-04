@@ -54,12 +54,15 @@ public partial class DialogueGraphEdit : MissGraphEdit {
     internal const int MenuAddLine = 3;
     internal const int MenuAddReroute = 4;
     internal const int MenuDeleteReroute = 5;
+    internal const int MenuAddPort = 7;
+    internal const int MenuTogglePort = 8;
     internal const int MenuAddOption = 6;
     internal const int MenuRowUp = 10;
     internal const int MenuRowDown = 11;
     internal const int MenuRowDelete = 12;
     internal const int MenuAddCondition = 13;
     internal const int MenuAddAction = 14;
+    internal const int MenuToggleBack = 15;
 
     PopupMenu _menu;
     bool _rebuilding;
@@ -182,12 +185,12 @@ public partial class DialogueGraphEdit : MissGraphEdit {
                 var port = 0;
                 foreach (var option in section.Options) {
                     if (option == null) continue;
-                    if (HasBox(option.TargetSectionId)) ConnectNode(section.Id, port, option.TargetSectionId, 0);
+                    if (!option.Back && HasBox(option.TargetSectionId)) ConnectNode(section.Id, port, option.TargetSectionId, 0);
                     port++;
                 }
             }
             foreach (var reroute in dialogue.Reroutes) {
-                if (reroute != null && HasBox(reroute.TargetId)) ConnectNode(reroute.Id, 0, reroute.TargetId, 0);
+                if (IsWired(reroute) && HasBox(reroute.TargetId)) ConnectNode(reroute.Id, 0, reroute.TargetId, 0);
             }
         }
 
@@ -204,6 +207,8 @@ public partial class DialogueGraphEdit : MissGraphEdit {
             if (RerouteBoxFor(name) is { } reroute) reroute.Selected = true;
         }
 
+        UpdateHint();
+
         // A paused game sends nothing further, so an edit that rebuilds the graph has to repaint it.
         if (_live) PaintLive();
     }
@@ -216,13 +221,22 @@ public partial class DialogueGraphEdit : MissGraphEdit {
     string _liveLine = "";
     string _liveEnteredBy = "";
 
-    /// <summary>Shows where a running dialogue is: its section, the line it is at, and the option that led there.</summary>
+    /// <summary>The options taken since the player last did something, in order, and where leading back would go.</summary>
+    string[] _liveTrail = [];
+    string _liveBackTo = "";
+
+    /// <summary>Shows where a running dialogue is: its section, the line it is at, and how it got there.</summary>
     /// <param name="sectionId">Empty while the runner has no dialogue under way.</param>
-    public void ShowLive(string sectionId, string lineId, string enteredBy = "") {
+    /// <param name="enteredBy">The option that led into the section.</param>
+    /// <param name="trail">Every option taken since the player last did something, that one last. Null for just that one.</param>
+    /// <param name="backTo">The section an option that leads back would go to, or empty.</param>
+    public void ShowLive(string sectionId, string lineId, string enteredBy = "", string[] trail = null, string backTo = "") {
         _live = true;
         _liveSection = sectionId ?? "";
         _liveLine = lineId ?? "";
         _liveEnteredBy = enteredBy ?? "";
+        _liveTrail = trail is { Length: > 0 } ? trail : _liveEnteredBy == "" ? [] : [_liveEnteredBy];
+        _liveBackTo = backTo ?? "";
         PaintLive();
     }
 
@@ -247,29 +261,64 @@ public partial class DialogueGraphEdit : MissGraphEdit {
     }
 
     /// <summary>
-    /// The wires to highlight: every way out of the current section, and the way the dialogue came
-    /// in — each followed through its reroutes. An option that was edited away since the game
-    /// started is simply not found.
+    /// The wires to highlight. As taken: every option on the trail, so the way is drawn from where
+    /// the player last did something, through any sections the dialogue passed by itself. As
+    /// waiting: every way out of the current section. Wires that ports hide and ways that lead back
+    /// are drawn all the same — while a game runs, where it goes matters more than tidiness. An
+    /// option that was edited away since the game started is simply not found.
     /// </summary>
     List<LiveWire> LiveWires() {
         var wires = new List<LiveWire>();
         var dialogue = Dialogue;
         if (dialogue == null) return wires;
 
-        foreach (var section in dialogue.Sections) {
-            if (section == null) continue;
-            var port = 0;
-            foreach (var option in section.Options) {
-                if (option == null) continue;
+        for (var i = 0; i < _liveTrail.Length; i++) {
+            if (!Find(_liveTrail[i], out var from, out var port, out var option)) continue;
 
-                var taken = option.Id == _liveEnteredBy && dialogue.Destination(option.TargetSectionId)?.Id == _liveSection;
-                if (taken) FollowWire(wires, section.Id, port, option.TargetSectionId, taken: true);
-                if (section.Id == _liveSection) FollowWire(wires, section.Id, port, option.TargetSectionId, taken: false);
+            // Where the option led: the section the next one on the trail leaves, or the current one.
+            var led = i + 1 < _liveTrail.Length && Find(_liveTrail[i + 1], out var next, out _, out _) ? next.Id : _liveSection;
+            if (option.Back) wires.Add(new LiveWire(from.Id, port, led, Taken: true));
+            else if (dialogue.Destination(option.TargetSectionId)?.Id == led) FollowWire(wires, from.Id, port, option.TargetSectionId, taken: true);
+        }
+
+        if (dialogue.FindSection(_liveSection) is { } current) {
+            var port = 0;
+            foreach (var option in current.Options) {
+                if (option == null) continue;
+                if (!option.Back) FollowWire(wires, current.Id, port, option.TargetSectionId, taken: false);
+                else if (HasBox(_liveBackTo)) wires.Add(new LiveWire(current.Id, port, _liveBackTo, Taken: false));
                 port++;
             }
         }
         return wires;
     }
+
+    /// <summary>An option of the dialogue by its id, with the section it leaves and the port it has there.</summary>
+    bool Find(string optionId, out DialogueSection section, out int port, out DialogueOption option) {
+        foreach (var candidate in Dialogue.Sections) {
+            if (candidate == null) continue;
+            port = 0;
+            foreach (var item in candidate.Options) {
+                if (item == null) continue;
+                if (item.Id == optionId) {
+                    (section, option) = (candidate, item);
+                    return true;
+                }
+                port++;
+            }
+        }
+        (section, port, option) = (null, 0, null);
+        return false;
+    }
+
+    /// <summary>Marks, quietly, the section the picked option leads to — or the selected reroute or port.</summary>
+    void UpdateHint() {
+        var box = Boxes().FirstOrDefault(b => b.Selected);
+        var option = box?.PickedKind == SpeakRow.Option ? box.Section?.Options.FirstOrDefault(o => o != null && o.Id == box.PickedId) : null;
+        HintTarget(option == null || option.Back ? null : option.TargetSectionId);
+    }
+
+    // ---- keeping up with the dialogue --------------------------------------------------------
 
     void QueueRebuild() {
         if (_rebuildQueued) return;
@@ -280,6 +329,10 @@ public partial class DialogueGraphEdit : MissGraphEdit {
     /// <summary>Re-reads names, texts and warnings without rebuilding.</summary>
     public void RefreshBoxes() {
         foreach (var box in Boxes()) box.Refresh(Dialogue);
+        foreach (var port in RerouteBoxes().Where(box => box.IsPort)) {
+            var target = Dialogue?.Destination(port.Reroute.TargetId);
+            port.ShowTarget(target == null ? null : string.IsNullOrEmpty(target.Name) ? "(unnamed)" : target.Name);
+        }
     }
 
     /// <summary>
@@ -300,18 +353,22 @@ public partial class DialogueGraphEdit : MissGraphEdit {
         static string Ids(IEnumerable<MissNode> nodes) => string.Join(" ", nodes.Where(n => n != null).Select(n => n.Id));
         return string.Join("|", dialogue.Sections.Where(s => s != null).Select(s =>
                    $"{s.Id}:{string.Join(",", s.Lines.Where(l => l != null).Select(l => $"{l.Id}[{Ids(l.Conditions)}][{Ids(l.Actions)}]"))}"
-                   + $":{string.Join(",", s.Options.Where(o => o != null).Select(o => $"{o.Id}>{o.TargetSectionId}[{Ids(o.Conditions)}]"))}"))
-               + "#" + string.Join("|", dialogue.Reroutes.Where(r => r != null).Select(r => $"{r.Id}>{r.TargetId}"));
+                   + $":{string.Join(",", s.Options.Where(o => o != null).Select(o => $"{o.Id}>{(o.Back ? "<back" : o.TargetSectionId)}[{Ids(o.Conditions)}]"))}"))
+               + "#" + string.Join("|", dialogue.Reroutes.Where(r => r != null).Select(r => $"{r.Id}>{r.TargetId}{(r.Wireless ? "~" : "")}"));
     }
 
     // ---- selection ---------------------------------------------------------------------------
 
     void OnNodeSelected(Node node) {
-        if (!_rebuilding) EmitSignal(SignalName.SelectionMoved);
+        if (_rebuilding) return;
+        UpdateHint();
+        EmitSignal(SignalName.SelectionMoved);
     }
 
     void OnNodeDeselected(Node node) {
-        if (!_rebuilding) EmitSignal(SignalName.SelectionMoved);
+        if (_rebuilding) return;
+        UpdateHint();
+        EmitSignal(SignalName.SelectionMoved);
     }
 
     void OnRowPicked(StringName boxName, string kind, string id) => Pick(boxName, kind, id);
@@ -324,6 +381,7 @@ public partial class DialogueGraphEdit : MissGraphEdit {
         foreach (var other in Boxes()) other.Selected = ReferenceEquals(other, box);
         foreach (var reroute in RerouteBoxes()) reroute.Selected = false;
         box.ShowPicked(kind, id);
+        UpdateHint();
         EmitSignal(SignalName.SelectionMoved);
     }
 
@@ -354,6 +412,7 @@ public partial class DialogueGraphEdit : MissGraphEdit {
         _menu.Clear();
         _menu.AddItem("Add section", MenuAddSection);
         _menu.AddItem(_menuWireFrom != null ? "Add reroute to this wire" : "Add reroute", MenuAddReroute);
+        _menu.AddItem(_menuWireFrom != null ? "Add port to this wire" : "Add port", MenuAddPort);
         PopupAt(_menu, GetScreenPosition() + atPosition);
     }
 
@@ -364,6 +423,8 @@ public partial class DialogueGraphEdit : MissGraphEdit {
         _menuRow = null;
         _menuPosition = screenPosition;
         _menu.Clear();
+        _menu.AddItem(RerouteBoxFor(boxName).IsPort ? "Show its wire (make it a reroute)" : "Hide its wire (make it a port)", MenuTogglePort);
+        _menu.AddSeparator();
         _menu.AddItem("Delete", MenuDeleteReroute);
         PopupAt(_menu, screenPosition);
     }
@@ -405,6 +466,11 @@ public partial class DialogueGraphEdit : MissGraphEdit {
             _menu.AddSeparator();
             if (kind == SpeakRow.Line) _menu.AddItem("Add action…", MenuAddAction);
             _menu.AddItem("Add condition…", MenuAddCondition);
+            if (kind == SpeakRow.Option) {
+                _menu.AddCheckItem("Lead back", MenuToggleBack);
+                _menu.SetItemChecked(_menu.ItemCount - 1, section.Options[index]?.Back == true);
+                _menu.SetItemTooltip(_menu.ItemCount - 1, "Back to the section in which the player last made a choice");
+            }
         }
 
         _menu.AddSeparator();
@@ -427,10 +493,13 @@ public partial class DialogueGraphEdit : MissGraphEdit {
             case MenuDeleteSection:
             case MenuDeleteReroute: DeleteBoxes([_menuBox]); break;
             case MenuAddReroute: AddReroute(_menuPosition, _menuWireFrom, _menuWirePort); break;
+            case MenuAddPort: AddReroute(_menuPosition, _menuWireFrom, _menuWirePort, port: true); break;
+            case MenuTogglePort: SetPort(_menuBox, RerouteBoxFor(_menuBox)?.IsPort != true); break;
             case MenuRowUp: MoveRow(_menuBox, _menuKind, _menuRow, -1); break;
             case MenuRowDown: MoveRow(_menuBox, _menuKind, _menuRow, 1); break;
             case MenuRowDelete: DeleteRow(_menuBox, _menuKind, _menuRow); break;
             case MenuAddAction: OfferTypes(typeof(ActionNode), SpeakRow.Action); break;
+            case MenuToggleBack: SetBack(_menuBox, _menuRow, BoxFor(_menuBox)?.Section?.Options.FirstOrDefault(o => o?.Id == _menuRow)?.Back != true); break;
             case MenuAddCondition: OfferTypes(typeof(ConditionNode), _menuKind == SpeakRow.Line ? SpeakRow.LineCondition : SpeakRow.OptionCondition); break;
         }
     }
@@ -632,15 +701,31 @@ public partial class DialogueGraphEdit : MissGraphEdit {
     /// <summary>As above, to a section or a reroute by id.</summary>
     public void LeadTo(DialogueSection from, int port, string targetId) {
         var existing = OptionAt(from, port);
-        if (existing != null && existing.TargetSectionId == targetId) return;
+        if (existing != null && existing.TargetSectionId == targetId && !existing.Back) return;
 
         Commit(existing == null ? $"Misspeak: add option to {TargetName(targetId)}" : $"Misspeak: lead option to {TargetName(targetId)}",
             () => Lead(from, port, targetId));
     }
 
     static void Lead(DialogueSection from, int port, string targetId) {
-        if (OptionAt(from, port) is { } option) option.TargetSectionId = targetId;
-        else from.Options.Add(new DialogueOption { TargetSectionId = targetId });
+        if (OptionAt(from, port) is { } option) {
+            // A wire says where to: that is the end of leading back.
+            option.TargetSectionId = targetId;
+            option.Back = false;
+        }
+        else {
+            from.Options.Add(new DialogueOption { TargetSectionId = targetId });
+        }
+    }
+
+    /// <summary>
+    /// Has an option lead back — to the section in which the player last made a choice — instead of
+    /// along a wire, or stops it doing so. Where its wire led is kept, in case it is wanted again.
+    /// </summary>
+    public void SetBack(StringName boxName, string optionId, bool back) {
+        var option = BoxFor(boxName)?.Section?.Options.FirstOrDefault(o => o != null && o.Id == optionId);
+        if (option == null || option.Back == back) return;
+        Commit(back ? "Misspeak: lead option back" : "Misspeak: stop leading option back", () => option.Back = back);
     }
 
     /// <summary>The option behind an output port, or null for the spare port after the last one.</summary>
@@ -657,22 +742,31 @@ public partial class DialogueGraphEdit : MissGraphEdit {
     /// Adds a reroute, centred on <paramref name="position"/>. Given the box and port a wire leaves,
     /// the reroute is put into that wire: the wire now ends at it, and it leads on to where the wire went.
     /// </summary>
-    public MissReroute AddReroute(Vector2 position, StringName wireFrom = null, int wirePort = 0) {
+    /// <param name="port">Makes it a port: its outgoing wire is not drawn, it names its target instead.</param>
+    public MissReroute AddReroute(Vector2 position, StringName wireFrom = null, int wirePort = 0, bool port = false) {
         if (Dialogue == null) return null;
 
         var option = BoxFor(wireFrom)?.Section is { } section ? OptionAt(section, wirePort) : null;
         var before = RerouteBoxFor(wireFrom)?.Reroute;
 
         var reroute = new MissReroute {
+            Wireless = port,
             GraphPosition = position - (RerouteBox.BodySize / 2),
             TargetId = option?.TargetSectionId ?? before?.TargetId ?? "",
         };
-        Commit("Misspeak: add reroute", () => {
+        Commit(port ? "Misspeak: add port" : "Misspeak: add reroute", () => {
             Dialogue.Reroutes.Add(reroute);
             if (option != null) option.TargetSectionId = reroute.Id;
             else if (before != null) before.TargetId = reroute.Id;
         });
         return reroute;
+    }
+
+    /// <summary>Turns a reroute into a port — its wire hidden, its target named — or back.</summary>
+    public void SetPort(StringName boxName, bool port) {
+        var reroute = RerouteBoxFor(boxName)?.Reroute;
+        if (reroute == null || reroute.Wireless == port) return;
+        Commit(port ? "Misspeak: hide a reroute's wire" : "Misspeak: show a reroute's wire", () => reroute.Wireless = port);
     }
 
     /// <summary>A double-click on a wire puts a reroute into it.</summary>
@@ -818,6 +912,7 @@ public partial class DialogueGraphEdit : MissGraphEdit {
                 options.Add(new Godot.Collections.Dictionary {
                     { "option", option },
                     { "target", option.TargetSectionId },
+                    { "back", option.Back },
                     { "conditions", Nodes(option.Conditions) },
                 });
             }
@@ -836,6 +931,7 @@ public partial class DialogueGraphEdit : MissGraphEdit {
                 { "reroute", reroute },
                 { "pos", reroute.GraphPosition },
                 { "target", reroute.TargetId },
+                { "wireless", reroute.Wireless },
             });
         }
 
@@ -894,6 +990,7 @@ public partial class DialogueGraphEdit : MissGraphEdit {
                 var kept = entry.AsGodotDictionary();
                 if (kept["option"].AsGodotObject() is not DialogueOption option) continue;
                 option.TargetSectionId = kept["target"].AsString();
+                if (kept.TryGetValue("back", out var back)) option.Back = back.AsBool();
                 option.Conditions = NodesFrom(kept["conditions"]);
                 options.Add(option);
             }
@@ -910,6 +1007,7 @@ public partial class DialogueGraphEdit : MissGraphEdit {
 
             reroute.GraphPosition = data["pos"].AsVector2();
             reroute.TargetId = data["target"].AsString();
+            if (data.TryGetValue("wireless", out var wireless)) reroute.Wireless = wireless.AsBool();
             reroutes.Add(reroute);
         }
         Dialogue.Reroutes = reroutes;

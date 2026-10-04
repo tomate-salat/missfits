@@ -59,6 +59,8 @@ public partial class FsmGraphEdit : MissGraphEdit {
     internal const int MenuAddAction = 3;
     internal const int MenuAddReroute = 4;
     internal const int MenuDeleteReroute = 5;
+    internal const int MenuAddPort = 7;
+    internal const int MenuTogglePort = 8;
     internal const int MenuRowUp = 10;
     internal const int MenuRowDown = 11;
     internal const int MenuRowDelete = 12;
@@ -195,7 +197,7 @@ public partial class FsmGraphEdit : MissGraphEdit {
                 }
             }
             foreach (var reroute in machine.Reroutes) {
-                if (reroute != null && HasBox(reroute.TargetId)) ConnectNode(reroute.Id, 0, reroute.TargetId, 0);
+                if (IsWired(reroute) && HasBox(reroute.TargetId)) ConnectNode(reroute.Id, 0, reroute.TargetId, 0);
             }
         }
 
@@ -212,6 +214,8 @@ public partial class FsmGraphEdit : MissGraphEdit {
             if (RerouteBoxFor(name) is { } reroute) reroute.Selected = true;
         }
 
+        UpdateHint();
+
         // A paused game sends nothing further, so an edit that rebuilds the graph has to repaint it.
         if (_live) PaintLive();
     }
@@ -225,6 +229,10 @@ public partial class FsmGraphEdit : MissGraphEdit {
     /// <summary>Re-reads names, summaries and warnings without rebuilding.</summary>
     public void RefreshBoxes() {
         foreach (var box in Boxes()) box.Refresh(Machine);
+        foreach (var port in RerouteBoxes().Where(box => box.IsPort)) {
+            var target = Machine?.Destination(port.Reroute.TargetId);
+            port.ShowTarget(target == null ? null : string.IsNullOrEmpty(target.Name) ? "(unnamed)" : target.Name);
+        }
     }
 
     /// <summary>
@@ -246,7 +254,7 @@ public partial class FsmGraphEdit : MissGraphEdit {
             $"{s.Id}:{string.Join(",", s.Actions.Where(a => a != null).Select(a => a.Id))}"
             + $":{string.Join(",", s.Transitions.Where(t => t != null).Select(t =>
                 $"{t.Id}>{t.TargetStateId}[{string.Join(" ", t.Conditions.Where(c => c != null).Select(c => c.Id))}]"))}"))
-            + "#" + string.Join("|", machine.Reroutes.Where(r => r != null).Select(r => $"{r.Id}>{r.TargetId}"));
+            + "#" + string.Join("|", machine.Reroutes.Where(r => r != null).Select(r => $"{r.Id}>{r.TargetId}{(r.Wireless ? "~" : "")}"));
     }
 
     // ---- live debugging ----------------------------------------------------------------------
@@ -303,11 +311,22 @@ public partial class FsmGraphEdit : MissGraphEdit {
     // ---- selection ---------------------------------------------------------------------------
 
     void OnNodeSelected(Node node) {
-        if (!_rebuilding) EmitSignal(SignalName.SelectionMoved);
+        if (_rebuilding) return;
+        UpdateHint();
+        EmitSignal(SignalName.SelectionMoved);
     }
 
     void OnNodeDeselected(Node node) {
-        if (!_rebuilding) EmitSignal(SignalName.SelectionMoved);
+        if (_rebuilding) return;
+        UpdateHint();
+        EmitSignal(SignalName.SelectionMoved);
+    }
+
+    /// <summary>Marks, quietly, the state the picked transition leads to — or the selected reroute or port.</summary>
+    void UpdateHint() {
+        var box = Boxes().FirstOrDefault(b => b.Selected);
+        var transition = box?.PickedKind == FsmRow.Transition ? box.State?.Transitions.FirstOrDefault(t => t != null && t.Id == box.PickedId) : null;
+        HintTarget(transition?.TargetStateId);
     }
 
     void OnRowPicked(StringName boxName, string kind, string id) => Pick(boxName, kind, id);
@@ -320,6 +339,7 @@ public partial class FsmGraphEdit : MissGraphEdit {
         foreach (var other in Boxes()) other.Selected = ReferenceEquals(other, box);
         foreach (var reroute in RerouteBoxes()) reroute.Selected = false;
         box.ShowPicked(kind, id);
+        UpdateHint();
         EmitSignal(SignalName.SelectionMoved);
     }
 
@@ -354,6 +374,7 @@ public partial class FsmGraphEdit : MissGraphEdit {
         _menu.Clear();
         _menu.AddItem("Add state", MenuAddState);
         _menu.AddItem(_menuWireFrom != null ? "Add reroute to this wire" : "Add reroute", MenuAddReroute);
+        _menu.AddItem(_menuWireFrom != null ? "Add port to this wire" : "Add port", MenuAddPort);
         PopupAt(_menu, GetScreenPosition() + atPosition);
     }
 
@@ -364,6 +385,8 @@ public partial class FsmGraphEdit : MissGraphEdit {
         _menuRow = null;
         _menuPosition = screenPosition;
         _menu.Clear();
+        _menu.AddItem(RerouteBoxFor(boxName).IsPort ? "Show its wire (make it a reroute)" : "Hide its wire (make it a port)", MenuTogglePort);
+        _menu.AddSeparator();
         _menu.AddItem("Delete", MenuDeleteReroute);
         PopupAt(_menu, screenPosition);
     }
@@ -422,6 +445,8 @@ public partial class FsmGraphEdit : MissGraphEdit {
             case MenuSetInitial: SetInitial(_menuState); break;
             case MenuDeleteState: DeleteStates([_menuState]); break;
             case MenuAddReroute: AddReroute(_menuPosition, _menuWireFrom, _menuWirePort); break;
+            case MenuAddPort: AddReroute(_menuPosition, _menuWireFrom, _menuWirePort, port: true); break;
+            case MenuTogglePort: SetPort(_menuState, RerouteBoxFor(_menuState)?.IsPort != true); break;
             case MenuDeleteReroute: DeleteBoxes([_menuState]); break;
             case MenuRowUp: MoveRow(_menuState, _menuKind, _menuRow, -1); break;
             case MenuRowDown: MoveRow(_menuState, _menuKind, _menuRow, 1); break;
@@ -607,22 +632,31 @@ public partial class FsmGraphEdit : MissGraphEdit {
     /// Adds a reroute, centred on <paramref name="position"/>. Given the box and port a wire leaves,
     /// the reroute is put into that wire: the wire now ends at it, and it leads on to where the wire went.
     /// </summary>
-    public MissReroute AddReroute(Vector2 position, StringName wireFrom = null, int wirePort = 0) {
+    /// <param name="port">Makes it a port: its outgoing wire is not drawn, it names its target instead.</param>
+    public MissReroute AddReroute(Vector2 position, StringName wireFrom = null, int wirePort = 0, bool port = false) {
         if (Machine == null) return null;
 
         var transition = BoxFor(wireFrom)?.State is { } state ? TransitionAt(state, wirePort) : null;
         var before = RerouteBoxFor(wireFrom)?.Reroute;
 
         var reroute = new MissReroute {
+            Wireless = port,
             GraphPosition = position - (RerouteBox.BodySize / 2),
             TargetId = transition?.TargetStateId ?? before?.TargetId ?? "",
         };
-        Commit("Misstate: add reroute", () => {
+        Commit(port ? "Misstate: add port" : "Misstate: add reroute", () => {
             Machine.Reroutes.Add(reroute);
             if (transition != null) transition.TargetStateId = reroute.Id;
             else if (before != null) before.TargetId = reroute.Id;
         });
         return reroute;
+    }
+
+    /// <summary>Turns a reroute into a port — its wire hidden, its target named — or back.</summary>
+    public void SetPort(StringName boxName, bool port) {
+        var reroute = RerouteBoxFor(boxName)?.Reroute;
+        if (reroute == null || reroute.Wireless == port) return;
+        Commit(port ? "Misstate: hide a reroute's wire" : "Misstate: show a reroute's wire", () => reroute.Wireless = port);
     }
 
     /// <summary>A double-click on a wire puts a reroute into it.</summary>
@@ -785,6 +819,7 @@ public partial class FsmGraphEdit : MissGraphEdit {
                 { "reroute", reroute },
                 { "pos", reroute.GraphPosition },
                 { "target", reroute.TargetId },
+                { "wireless", reroute.Wireless },
             });
         }
 
@@ -850,6 +885,7 @@ public partial class FsmGraphEdit : MissGraphEdit {
 
             reroute.GraphPosition = data["pos"].AsVector2();
             reroute.TargetId = data["target"].AsString();
+            if (data.TryGetValue("wireless", out var wireless)) reroute.Wireless = wireless.AsBool();
             reroutes.Add(reroute);
         }
         Machine.Reroutes = reroutes;

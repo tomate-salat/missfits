@@ -99,6 +99,7 @@ Entscheidungen aus dem ersten Ausprobieren im Editor:
 Offen:
 
 - **Panel doppelt:** `DialogueEditorPanel` ist bis auf die Typen `FsmEditorPanel` (Toolbar, Speichern, Zurücksetzen, ungespeicherte Änderungen, Abgleich mit dem Inspector, Instanz-Auswahl). Graph und Debug-Kanal sind geteilt, das Panel noch nicht.
+- **Entwirren:** Umgesetzt sind Ports (Reroute ohne ausgehenden Draht, im Core, also auch in `misstate`) und Optionen, die ausdrücklich zurückführen (`DialogueOption.Back`). Weitere Ideen, noch nicht gebaut: nur die Drähte der ausgewählten Box hervorheben; automatisch anordnen. Verworfen: ein zweites "sonst"-Ziel an der Option.
 - **Text nur im Inspector:** Sprecher und Text einer Zeile lassen sich im Graph nicht direkt tippen.
 
 Der Core bekommt kein `plugin.cfg`. Als reine Bibliothek muss ihn niemand aktivieren; Editor-Widgets dürfen darin liegen, registriert werden sie vom jeweiligen Addon-Plugin.

@@ -128,6 +128,13 @@ enough.
   dragging that wire elsewhere takes every transition through it along. Drag a reroute by its
   middle. Deleting one leaves the wires whole. A reroute does nothing at runtime: a transition
   through it goes straight to the state at the end.
+- **Ports** are reroutes without the wire that leaves them, drawn as an arrow running into a bar;
+  the transition's row still says where it leads. Right-click a wire and choose *Add port to this
+  wire*, or right-click a reroute to hide its wire. Double-click a port to go to where it leads;
+  drag from its right end to lead it elsewhere. While a game runs, the hidden wire is drawn where
+  the machine took it or may take it.
+- **Where it leads.** Picking a transition — or selecting a port or reroute — puts a thin outline
+  around the state it leads to.
 - **Selecting** a state or a row shows exactly that in the Inspector: a state's name, mode and
   parallel switch, an action's parameters, a transition's trigger and mode, a condition's
   parameters. Nothing has to be unfolded there to get at it.

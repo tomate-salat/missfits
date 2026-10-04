@@ -57,6 +57,10 @@ What happens in a section:
    first option without text whose conditions hold.
 4. An option that leads nowhere — or no option at all — ends the dialogue.
 
+An option can also **lead back** (`Back`): to the section in which the player last made a choice,
+which starts over. Sections passed through without a choice are skipped on the way back. With no
+choice made yet, there is nowhere to go back to and the dialogue ends.
+
 A section in which nothing is said moves on by itself. That makes it a branch (the first option
 whose conditions hold is taken) or simply a place to run actions.
 
@@ -76,8 +80,24 @@ Texts may name blackboard entries in braces: `You have {gold} coins.`
   lead it somewhere else. Dropping a wire on empty canvas makes a new section there.
 - **Reroutes** lead a wire around the boxes: double-click a wire, or right-click it. They work as
   in Misstate, turning round when they lead back to the left.
+- **Ports** are reroutes without the wire that leaves them, drawn as an arrow running into a bar.
+  Right-click a wire and choose *Add port to this wire*, or right-click a reroute to hide its
+  wire. Put one next to the option, and a long wire across the graph becomes a short one; the
+  option's row still says where it leads. Double-click a port to go there; drag from its right end
+  to lead it elsewhere.
+- **Where it leads.** Picking an option — or selecting a port or reroute — puts a thin outline
+  around the section it leads to.
+- **Leading back.** Right-click an option and tick *Lead back*: instead of following a wire it
+  returns to the section in which the player last made a choice — the menu this branch was picked
+  from — which then starts over. Its row reads *↩ back* and has no wire. This is what keeps a hub
+  with many branches from growing a wire back for each. It is never assumed: an option without a
+  target that does not lead back ends the dialogue.
 - **Selecting** a section or a row shows exactly that in the Inspector, which is where texts,
   speakers and parameters are edited.
+- **Speakers.** Click the empty canvas to get the dialogue itself into the Inspector, and list who
+  speaks under *Speakers*. From then on a line's speaker is a dropdown of those instead of a text
+  field, and a line spoken by anyone else is flagged. Renaming a speaker there renames it in every
+  line. With no speakers listed, a line's speaker is free text.
 - **Blackboard.** The dialogue's entries sit beside the graph; parameters of actions and
   conditions link to them in the Inspector, and texts name them in `{braces}`.
 - **⚠** names what is wrong: an option that leads to a section that is gone, a line that says and
@@ -90,8 +110,12 @@ while it has unsaved edits, and *Revert* goes back to the file.
 
 Open a dialogue, run the game, and the graph shows where the dialogue is: the section it is in gets
 an amber outline, the others fade, and the line it is at — on show, or still running its actions —
-is tinted. The option the dialogue came in by is green; the options out of the current section are
-amber with dots travelling along them. Between talks the graph looks as it does while editing.
+is tinted. The way the dialogue came is green, from where the player last did something: through
+any sections it passed by itself, so a choice that went through a branch is drawn all the way. The
+options out of the current section are amber with dots travelling along them. While a game runs,
+what the graph otherwise hides is drawn too: the wire behind a port, and an option that leads
+back — amber to the section it would return to, green once it was taken. Between talks the graph
+looks as it does while editing.
 
 Only the dialogue open in the dock sends anything, and only when something changed. With nothing
 open, the dock opens the dialogue the game is playing. When several runners play the same dialogue,

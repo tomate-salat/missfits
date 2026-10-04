@@ -19,12 +19,19 @@ public partial class MissReroute : MissResource {
     [Export]
     public string TargetId { get; set; } = "";
 
+    /// <summary>
+    /// On, the reroute is a port: the wire that leaves it is not drawn, and its box names where it
+    /// leads instead. For targets far away, or with many wires going to them.
+    /// </summary>
+    [Export]
+    public bool Wireless { get; set; }
+
     /// <summary>Authored position in a graph editor.</summary>
     [Export]
     public Vector2 GraphPosition { get; set; }
 
     public override void _ValidateProperty(Godot.Collections.Dictionary property) {
-        if (property["name"].AsString() is nameof(Id) or nameof(TargetId) or nameof(GraphPosition)) {
+        if (property["name"].AsString() is nameof(Id) or nameof(TargetId) or nameof(GraphPosition) or nameof(Wireless)) {
             property["usage"] = (int) PropertyUsageFlags.Storage;
         }
     }

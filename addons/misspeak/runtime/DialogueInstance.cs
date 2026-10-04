@@ -84,6 +84,18 @@ public sealed partial class DialogueInstance {
     /// </summary>
     public DialogueOption EnteredBy { get; private set; }
 
+    /// <summary>
+    /// The options taken since the player last did something — carried on, or picked a choice — in
+    /// order: the one that act took, then those the dialogue took by itself through sections in
+    /// which nothing waits for the player. The last is <see cref="EnteredBy"/>. For live debugging.
+    /// </summary>
+    public IReadOnlyList<DialogueOption> Trail => _trail;
+
+    readonly List<DialogueOption> _trail = [];
+
+    /// <summary>The section an option that leads back would go to right now, or null when there is none.</summary>
+    public DialogueSection BackTarget => _choiceMadeIn.Count > 0 ? _choiceMadeIn[^1].Definition : null;
+
     public DialogueWait Waiting { get; private set; }
 
     /// <summary>Speaker of the line being shown, or empty.</summary>
@@ -332,17 +344,41 @@ public sealed partial class DialogueInstance {
     public bool Choose(int index, MissContext ctx) {
         if (!Active || Waiting != DialogueWait.Choice || index < 0 || index >= _offered.Count) return false;
 
-        Follow(_offered[index], ctx, atOnce: true);
+        // The section a choice was made in is where an option that leads back returns to.
+        var picked = _offered[index];
+        if (!picked.Definition.Back) _choiceMadeIn.Add(_current);
+        Follow(picked, ctx, atOnce: true);
         return true;
     }
 
+    /// <summary>
+    /// The sections the player made a choice in on the way here, the latest last. An option that
+    /// leads <see cref="DialogueOption.Back"/> takes the latest one off and goes there.
+    /// </summary>
+    readonly List<RuntimeSection> _choiceMadeIn = [];
+
     void Follow(RuntimeOption option, MissContext ctx, bool atOnce) {
-        // Through any reroutes, which are only there for the graph.
-        var targetId = Definition.Destination(option?.Definition.TargetSectionId)?.Id;
-        if (string.IsNullOrEmpty(targetId) || !_sections.TryGetValue(targetId, out var target)) {
+        RuntimeSection target = null;
+        if (option?.Definition.Back == true) {
+            if (_choiceMadeIn.Count > 0) {
+                target = _choiceMadeIn[^1];
+                _choiceMadeIn.RemoveAt(_choiceMadeIn.Count - 1);
+            }
+        }
+        else {
+            // Through any reroutes, which are only there for the graph.
+            var targetId = Definition.Destination(option?.Definition.TargetSectionId)?.Id;
+            if (!string.IsNullOrEmpty(targetId)) _sections.TryGetValue(targetId, out target);
+        }
+
+        if (target == null) {
             End();
             return;
         }
+
+        // What the player set off starts a new trail; what follows by itself adds to it.
+        if (atOnce) _trail.Clear();
+        _trail.Add(option.Definition);
 
         Enter(target);
         EnteredBy = option.Definition;
@@ -351,6 +387,8 @@ public sealed partial class DialogueInstance {
 
     void End() {
         _current = null;
+        _choiceMadeIn.Clear();
+        _trail.Clear();
         EnteredBy = null;
         _actionRunning = false;
         Waiting = DialogueWait.Nothing;

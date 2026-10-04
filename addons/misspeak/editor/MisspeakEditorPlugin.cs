@@ -33,6 +33,9 @@ public partial class MisspeakEditorPlugin : EditorPlugin {
     /// <summary>The open dialogue's blackboard, which node parameters in the Inspector link against.</summary>
     internal BlackboardPanel Blackboard => Panel?.Blackboard;
 
+    /// <summary>The open dialogue, if that line is one of its lines; else null.</summary>
+    internal Dialogue OpenDialogueOf(GodotObject line) => line is DialogueLine && Panel?.Owns(line) == true ? Panel.Dialogue : null;
+
     public override void _EnterTree() {
         var parser = new DialogueTranslationParser();
         _parser = parser;

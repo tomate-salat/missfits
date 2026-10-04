@@ -479,6 +479,16 @@ public partial class FsmEditorSelfTest : Node {
         await Settle();
         Check("a wire dropped on the canvas gives it a new state to lead to", _machine.FindState(loose.TargetId) != null && _machine.States.Count == 3);
 
+        // A port: a reroute that names its target instead of drawing the wire to it.
+        var port = _graph.AddReroute(new Vector2(220, 60), _idle.Id, 0, port: true);
+        await Settle();
+        Check("a port ends a wire without one leaving it", port.Wireless && Wires().Contains($"{_idle.Id}:0>{port.Id}") && !Wires().Any(w => w.StartsWith($"{port.Id}:")));
+        Check("and names the state it leads to", _graph.RerouteBoxFor(port.Id).TargetText == $"→ {_machine.Destination(port.Id)?.Name}"
+                                                 && _machine.Destination(port.Id) != null);
+        _graph.SetPort(port.Id, false);
+        await Settle();
+        Check("turned into a reroute, it shows its wire", Wires().Any(w => w.StartsWith($"{port.Id}:")));
+
         _graph.EditRejected -= rejected.Add;
         _graph.RestoreSnapshot(before);
         await Settle();

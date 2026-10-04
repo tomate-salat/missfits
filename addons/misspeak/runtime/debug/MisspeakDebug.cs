@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Text;
 using Godot;
 using Misscore;
@@ -28,7 +29,8 @@ public static class MisspeakDebug {
 
     /// <summary>
     /// The section the dialogue is in — empty while none is running — the line it is at, what it is
-    /// waiting for, the tick, and the option that led into the section.
+    /// waiting for, the tick, and the option that led into the section — then every option taken
+    /// since the player last did something, and the section an option that leads back would go to.
     /// </summary>
     static RunnerDebugState? StateOf(MissRunner runner, int tick) {
         if (runner is not DialogueRunner { Instance: { } instance }) return null;
@@ -38,7 +40,10 @@ public static class MisspeakDebug {
         var waiting = (int) instance.Waiting;
         var enteredBy = instance.EnteredBy?.Id ?? "";
 
-        var frame = Encoding.UTF8.GetBytes($"{sectionId}|{lineId}|{waiting}|{enteredBy}");
-        return new RunnerDebugState(frame, [sectionId, lineId, waiting, tick, enteredBy]);
+        string[] trail = [.. instance.Trail.Select(option => option.Id)];
+        var backTo = instance.BackTarget?.Id ?? "";
+
+        var frame = Encoding.UTF8.GetBytes($"{sectionId}|{lineId}|{waiting}|{string.Join(",", trail)}|{backTo}");
+        return new RunnerDebugState(frame, [sectionId, lineId, waiting, tick, enteredBy, trail, backTo]);
     }
 }

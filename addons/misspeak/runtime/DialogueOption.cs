@@ -26,6 +26,15 @@ public partial class DialogueOption : MissResource {
     public string TargetSectionId { get; set; } = "";
 
     /// <summary>
+    /// On, the option leads back instead of to <see cref="TargetSectionId"/>: to the section in
+    /// which the player last made a choice — the menu this branch of the talk was picked from. That
+    /// section starts over, so its lines are spoken again. With no choice made on the way, there is
+    /// nowhere to go back to and the dialogue ends.
+    /// </summary>
+    [Export]
+    public bool Back { get; set; }
+
+    /// <summary>
     /// Whether all of the <see cref="Conditions"/> have to hold (<see cref="ListMode.Sequence"/>) or
     /// one is enough (<see cref="ListMode.Selector"/>).
     /// </summary>

@@ -9,6 +9,10 @@ namespace Misscore.Editor;
 /// </summary>
 [Tool]
 public partial class RerouteBox : MissGraphBox {
+    /// <summary>The box was double-clicked — on a port, to go and see where it leads.</summary>
+    [Signal]
+    public delegate void ActivatedEventHandler(StringName boxName);
+
     /// <summary>The reroute was right-clicked; the position is in screen coordinates.</summary>
     [Signal]
     public delegate void MenuRequestedEventHandler(StringName boxName, Vector2 screenPosition);
@@ -42,9 +46,45 @@ public partial class RerouteBox : MissGraphBox {
         }
     }
 
-    /// <summary>A small chevron saying which way the wires run through.</summary>
+    /// <summary>
+    /// Whether this is a port: a reroute whose outgoing wire is not drawn, and which names where it
+    /// leads instead.
+    /// </summary>
+    public bool IsPort => Reroute?.Wireless == true;
+
+    string _targetName = "";
+
+    /// <summary>Where a port leads, as its tooltip says it; empty for a plain reroute.</summary>
+    public string TargetText => !IsPort ? "" : _targetName == "" ? "→ ?" : $"→ {_targetName}";
+
+    /// <summary>
+    /// Tells a port the name of what it leads to; nothing to a plain reroute. The name is not drawn —
+    /// the row whose wire ends here says it already — but kept for the tooltip.
+    /// </summary>
+    public void ShowTarget(string name) {
+        if (!IsPort) return;
+        _targetName = name ?? "";
+        TooltipText = _targetName == ""
+            ? "Port — leads nowhere yet. Drag from its right end onto a box."
+            : $"Port to {_targetName} — wires that end here go on there. Double-click to go there.";
+    }
+
+    /// <summary>
+    /// A plain reroute shows a small chevron saying which way the wires run through; a port an
+    /// arrow running into a bar — this is where the wire stops.
+    /// </summary>
     public override void _Draw() {
+        base._Draw();
+
         var centre = Size / 2;
+        var ink = new Color(PortColor, 0.75f);
+        if (IsPort) {
+            DrawLine(centre + new Vector2(-9, 0), centre + new Vector2(4, 0), ink, 1.5f, antialiased: true);
+            DrawPolyline([centre + new Vector2(0, -4), centre + new Vector2(4, 0), centre + new Vector2(0, 4)], ink, 1.5f, antialiased: true);
+            DrawLine(centre + new Vector2(8, -5), centre + new Vector2(8, 5), ink, 2f, antialiased: true);
+            return;
+        }
+
         var way = Flipped ? -1 : 1;
         DrawPolyline([centre + new Vector2(-3 * way, -4), centre + new Vector2(3 * way, 0), centre + new Vector2(-3 * way, 4)],
             new Color(PortColor, 0.6f), 1.5f, antialiased: true);
@@ -59,8 +99,10 @@ public partial class RerouteBox : MissGraphBox {
         AddThemeStyleboxOverride("panel_selected", Pill(selected: true));
 
         AddChild(new Control { Name = "Body", CustomMinimumSize = BodySize, MouseFilter = MouseFilterEnum.Ignore });
-        SetSlot(0, true, 0, PortColor, true, 0, PortColor);
+        // A port's right end only serves to drag a new target from: no wire stays there.
+        SetSlot(0, true, 0, PortColor, true, 0, reroute.Wireless ? new Color(PortColor, 0.35f) : PortColor);
         HideTitlebar();
+        ShowTarget("");
     }
 
     static StyleBoxFlat Pill(bool selected) {
@@ -72,12 +114,17 @@ public partial class RerouteBox : MissGraphBox {
         style.SetCornerRadiusAll(9);
         return style;
     }
-
     public override void _GuiInput(InputEvent @event) {
-        if (@event is not InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Right } click) return;
+        if (@event is not InputEventMouseButton { Pressed: true } click) return;
 
-        EmitSignal(SignalName.MenuRequested, Name, GetScreenPosition() + click.Position);
-        AcceptEvent();
+        if (click.ButtonIndex == MouseButton.Right) {
+            EmitSignal(SignalName.MenuRequested, Name, GetScreenPosition() + click.Position);
+            AcceptEvent();
+        }
+        else if (click.ButtonIndex == MouseButton.Left && click.DoubleClick) {
+            EmitSignal(SignalName.Activated, Name);
+            AcceptEvent();
+        }
     }
 }
 #endif

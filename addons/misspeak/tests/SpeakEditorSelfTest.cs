@@ -59,7 +59,9 @@ public partial class SpeakEditorSelfTest : Node {
         await UndoRestoresTheStructure();
         await DeletingASectionLeavesItsOptionsFlagged();
         await ReroutesLeadWiresAround();
+        await PortsAndLeadingBackNeedNoWire();
         await NodesLinkToTheBlackboardBesideTheGraph();
+        await SpeakersArePickedFromTheDialoguesList();
         await SavingAndRevertingFollowTheFile();
         await TheGraphShowsWhereARunningDialogueIs();
 
@@ -366,6 +368,82 @@ public partial class SpeakEditorSelfTest : Node {
         Check("undo puts it all back", _buy.TargetSectionId == _sword.Id && Wires().SequenceEqual([$"{_ask.Id}:0>{_sword.Id}", $"{_sword.Id}:0>{_ask.Id}"]));
     }
 
+    async System.Threading.Tasks.Task PortsAndLeadingBackNeedNoWire() {
+        var before = _graph.TakeSnapshot();
+        var home = _sword.Options[0];
+
+        // A port in the wire from Sword back to Ask.
+        var port = _graph.AddReroute(new Vector2(700, 60), _sword.Id, 0, port: true);
+        await Settle();
+        var box = _graph.RerouteBoxFor(port.Id);
+        Check("a port put into a wire is where that wire now ends", port.Wireless && home.TargetSectionId == port.Id && Wires().Contains($"{_sword.Id}:0>{port.Id}"));
+        Check("but no wire leaves it", !Wires().Any(w => w.StartsWith($"{port.Id}:")));
+        Check("it knows where it leads, for its tooltip — the option's row is what names it", box.IsPort && box.TargetText == "→ Ask" && box.TooltipText.Contains("Ask")
+                                                                                              && box.GetChildren().OfType<Label>().Count() == 0);
+
+        _graph.Pick(_sword.Id, SpeakRow.Option, home.Id);
+        Check("picking an option quietly marks the section it leads to, through the port",
+            _graph.BoxFor(_ask.Id).Hinted && !_graph.BoxFor(_sword.Id).Hinted);
+        _graph.Pick(_sword.Id);
+        Check("and picking something else takes the mark away", !_graph.BoxFor(_ask.Id).Hinted);
+        foreach (var other in _graph.GetChildren().OfType<GraphNode>()) other.Selected = ReferenceEquals(other, box);
+        _graph.EmitSignal(GraphEdit.SignalName.NodeSelected, box);
+        Check("selecting the port marks its target as well", _graph.BoxFor(_ask.Id).Hinted);
+        box.Selected = false;
+        _graph.EmitSignal(GraphEdit.SignalName.NodeDeselected, box);
+        Check("the option's row names the section too, and the dialogue still goes there",
+            RowText(_sword, SpeakRow.Option, 0) == "→ Ask" && _dialogue.Destination(home.TargetSectionId) == _ask && _dialogue.Validate().Length == 0);
+
+        _ask.Name = "Question";
+        _panel.OnInspectorEdited();
+        await Settle();
+        Check("a renamed target shows on the port", _graph.RerouteBoxFor(port.Id).TargetText == "→ Question");
+        _ask.Name = "Ask";
+        _panel.OnInspectorEdited();
+
+        _graph.ScrollOffset = new Vector2(5000, 5000);
+        _graph.JumpFrom(port.Id);
+        var askBox = _graph.BoxFor(_ask.Id);
+        var centre = (_graph.ScrollOffset + _graph.Size / 2) / _graph.Zoom;
+        Check("a double-click on a port goes to where it leads", centre.DistanceTo(askBox.PositionOffset + askBox.Size / 2) < 2f);
+
+        _graph.EmitSignal(GraphEdit.SignalName.ConnectionRequest, port.Id, 0, _sword.Id, 0);
+        await Settle();
+        Check("dragging from a port leads it elsewhere, still without a wire",
+            port.TargetId == _sword.Id && _graph.RerouteBoxFor(port.Id).TargetText == "→ Sword" && !Wires().Any(w => w.StartsWith($"{port.Id}:")));
+
+        _graph.SetPort(port.Id, false);
+        await Settle();
+        Check("a port can be turned into a reroute, which shows its wire", !port.Wireless && Wires().Contains($"{port.Id}:0>{_sword.Id}") && !_graph.RerouteBoxFor(port.Id).IsPort);
+        _graph.SetPort(port.Id, true);
+        await Settle();
+        Check("and back", port.Wireless && !Wires().Any(w => w.StartsWith($"{port.Id}:")));
+
+        // Leading back needs no target at all.
+        _graph.DeleteBoxes([port.Id]);
+        await Settle();
+        _graph.SetBack(_sword.Id, home.Id, true);
+        await Settle();
+        Check("an option that leads back says so and has no wire", home.Back && RowText(_sword, SpeakRow.Option, 0) == "↩ back"
+                                                                 && Rows(_sword, SpeakRow.Option)[0].Warning == "" && !Wires().Any(w => w.StartsWith($"{_sword.Id}:")));
+        Check("it keeps its port, for a wire to be dragged from", _graph.BoxFor(_sword.Id).GetOutputPortCount() == 2);
+
+        _graph.BoxFor(_sword.Id).EmitSignal(SectionBox.SignalName.RowMenuRequested, _sword.Id, SpeakRow.Option, home.Id, Vector2.Zero);
+        var menu = _graph.GetChildren(true).OfType<PopupMenu>().First();
+        var item = Enumerable.Range(0, menu.ItemCount).First(i => menu.GetItemText(i) == "Lead back");
+        Check("its menu shows that it leads back", menu.IsItemChecked(item));
+        menu.Hide();
+
+        _graph.EmitSignal(GraphEdit.SignalName.ConnectionRequest, _sword.Id, 0, _ask.Id, 0);
+        await Settle();
+        Check("a wire dragged from it says where to instead", !home.Back && home.TargetSectionId == _ask.Id && Wires().Contains($"{_sword.Id}:0>{_ask.Id}"));
+
+        _graph.SetBack(_sword.Id, home.Id, true);
+        _graph.RestoreSnapshot(before);
+        await Settle();
+        Check("undo puts the wire back", !home.Back && _dialogue.Reroutes.Count == 0 && Wires().SequenceEqual([$"{_ask.Id}:0>{_sword.Id}", $"{_sword.Id}:0>{_ask.Id}"]));
+    }
+
     // ---- blackboard --------------------------------------------------------------------------
 
     async System.Threading.Tasks.Task NodesLinkToTheBlackboardBesideTheGraph() {
@@ -386,6 +464,57 @@ public partial class SpeakEditorSelfTest : Node {
         blackboard.UnlinkParam(condition, nameof(SpeakProbeCondition.Value));
         await Settle();
         Check("and the warning goes once the link is gone", Rows(_ask, SpeakRow.OptionCondition)[0].Warning == "");
+    }
+
+    // ---- speakers ----------------------------------------------------------------------------
+
+    async System.Threading.Tasks.Task SpeakersArePickedFromTheDialoguesList() {
+        Check("with no speakers listed, any name goes", _dialogue.KnowsSpeaker("Smith") && Rows(_ask, SpeakRow.Line)[0].Warning == "");
+        Check("only a line of the open dialogue gets the dropdown, and only for its speaker",
+            DialogueInspectorPlugin.SpeakerEditorFor(_dialogue, nameof(DialogueLine.Speaker)) != null
+            && DialogueInspectorPlugin.SpeakerEditorFor(_dialogue, nameof(DialogueLine.Text)) == null
+            && DialogueInspectorPlugin.SpeakerEditorFor(null, nameof(DialogueLine.Speaker)) == null);
+
+        var you = new DialogueSpeaker { Name = "You" };
+        var guard = new DialogueSpeaker { Name = "Guard" };
+        _dialogue.Speakers.Add(you);
+        _dialogue.Speakers.Add(guard);
+        _panel.OnInspectorEdited();
+        await Settle();
+        Check("the panel owns the speakers of its dialogue", _panel.Owns(you) && !_panel.Owns(new DialogueSpeaker()));
+
+        var editor = DialogueInspectorPlugin.SpeakerEditorFor(_dialogue, nameof(DialogueLine.Speaker));
+        Check("the dropdown offers nobody, the listed speakers, then names the lines use besides",
+            editor.Entries.SequenceEqual([SpeakerEditorProperty.Nobody, "You", "Guard", "Smith" + SpeakerEditorProperty.Unlisted]));
+        editor.Free();
+        Check("a line whose speaker is not listed is flagged", Rows(_ask, SpeakRow.Line)[0].Warning.Contains("not among the dialogue's speakers")
+                                                               && _dialogue.Validate().Any(p => p.Contains("not among the dialogue's speakers")));
+
+        guard.Name = "Smith";
+        _panel.OnInspectorEdited();
+        await Settle();
+        Check("which goes once the speaker is listed", Rows(_ask, SpeakRow.Line)[0].Warning == "" && _dialogue.Validate().Length == 0);
+
+        // Renamed letter by letter, as typing in the Inspector does — through a name another speaker has.
+        foreach (var name in new[] { "Y", "Yo", "You", "Your", "Your smith" }) {
+            guard.Name = name;
+            _panel.OnInspectorEdited();
+        }
+        await Settle();
+        Check("renaming a speaker renames it in the lines that meant it", _ask.Lines.All(l => l.Speaker == "Your smith") && _sword.Lines[0].Speaker == "Your smith");
+        Check("and shows on their rows", RowText(_ask, SpeakRow.Line, 1) == "Your smith: What do you need?");
+
+        var mine = new DialogueLine { Speaker = "You", Text = "Hello." };
+        _ask.Lines.Add(mine);
+        guard.Name = "Smith";
+        _panel.OnInspectorEdited();
+        await Settle();
+        Check("passing through another speaker's name left that speaker's lines alone", mine.Speaker == "You" && _question.Speaker == "Smith");
+
+        _ask.Lines.Remove(mine);
+        _dialogue.Speakers.Clear();
+        _panel.OnInspectorEdited();
+        await Settle();
     }
 
     // ---- saving ------------------------------------------------------------------------------
@@ -450,6 +579,37 @@ public partial class SpeakEditorSelfTest : Node {
         _graph.AddSection(new Vector2(40, 500), "Later");
         await Settle();
         Check("an edit that rebuilds the graph keeps the live picture", _graph.BoxFor(sword.Id).IsCurrent && overlay.Wires.Count == 2);
+
+        // What is hidden while editing is drawn while a game runs: the wire a port hides, the way
+        // an option leads back, and the whole way from where the player last did something.
+        var before = _graph.TakeSnapshot();
+        var branch = _graph.AddSection(new Vector2(300, 400), "Branch");
+        branch.Lines.Clear();
+        await Settle();
+        _graph.LeadTo(ask, 0, branch);
+        _graph.LeadTo(branch, 0, sword);
+        await Settle();
+        var port = _graph.AddReroute(new Vector2(400, 300), branch.Id, 0, port: true);
+        _graph.SetBack(sword.Id, sword.Options[0].Id, true);
+        await Settle();
+        router.Handle("misspeak:state", [42L, sword.Id, sword.Lines[0].Id, (int) DialogueWait.Advance, 5, branch.Options[0].Id,
+            new[] { ask.Options[0].Id, branch.Options[0].Id }, ask.Id], _panel);
+        Check("the way taken is drawn from the player's last act, through a section passed by itself and through a port",
+            overlay.Wires.Where(w => w.Taken).SequenceEqual([
+                new LiveWire(ask.Id, 0, branch.Id, true),
+                new LiveWire(branch.Id, 0, port.Id, true),
+                new LiveWire(port.Id, 0, sword.Id, true),
+            ]));
+        Check("an option that leads back is drawn to where it would go", overlay.Wires.Where(w => !w.Taken).SequenceEqual([new LiveWire(sword.Id, 0, ask.Id, false)]));
+
+        router.Handle("misspeak:state", [42L, ask.Id, ask.Lines[0].Id, (int) DialogueWait.Advance, 6, sword.Options[0].Id, new[] { sword.Options[0].Id }, ""], _panel);
+        Check("and once taken, as the way the dialogue came back by", overlay.Wires.Where(w => w.Taken).SequenceEqual([new LiveWire(sword.Id, 0, ask.Id, true)]));
+
+        _graph.RestoreSnapshot(before);
+        await Settle();
+        ask = _dialogue.FindSectionByName("Ask");
+        sword = _dialogue.FindSectionByName("Sword");
+        router.Handle("misspeak:state", [42L, sword.Id, sword.Lines[0].Id, (int) DialogueWait.Advance, 7, ask.Options[0].Id], _panel);
 
         router.Handle("misspeak:state", [42L, "", "", (int) DialogueWait.Nothing, 3, ""], _panel);
         Check("between talks nothing stands out and nothing fades",

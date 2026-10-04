@@ -72,6 +72,7 @@ public abstract partial class MissGraphEdit : GraphEdit {
         AddChild(box);
         box.Bind(reroute);
         box.Connect(RerouteBox.SignalName.MenuRequested, new Callable(this, MethodName.OnRerouteMenuRequested));
+        box.Connect(RerouteBox.SignalName.Activated, new Callable(this, MethodName.JumpFrom));
         TrackMoves(box);
         box.PositionOffset = reroute.GraphPosition;
         return box;
@@ -81,10 +82,37 @@ public abstract partial class MissGraphEdit : GraphEdit {
     protected void TrackMoves(GraphElement box)
         => box.Connect(GraphElement.SignalName.PositionOffsetChanged, new Callable(this, MethodName.OnBoxMoved));
 
+    /// <summary>
+    /// Whether the wire that leaves a reroute is to be drawn: not for a port, which names its target
+    /// instead. A subclass asks before it connects a reroute to what it leads to.
+    /// </summary>
+    protected static bool IsWired(MissReroute reroute) => reroute != null && !reroute.Wireless;
+
+    /// <summary>Scrolls to where a port leads, so that its target sits in the middle of the view.</summary>
+    public void JumpFrom(StringName boxName) {
+        if (RerouteBoxFor(boxName) is not { IsPort: true } port) return;
+
+        var target = GetChildren().OfType<GraphNode>().FirstOrDefault(box => box.Name == port.Reroute.TargetId);
+        if (target != null) ScrollOffset = (target.PositionOffset + target.Size / 2) * Zoom - Size / 2;
+    }
+
     void OnRerouteMenuRequested(StringName boxName, Vector2 screenPosition) => RerouteMenuRequested(boxName, screenPosition);
 
     /// <summary>A reroute was right-clicked; the position is in screen coordinates.</summary>
     protected virtual void RerouteMenuRequested(StringName boxName, Vector2 screenPosition) { }
+
+    // ---- where the selection leads -----------------------------------------------------------
+
+    /// <summary>
+    /// Marks the box a target stands for — through any reroutes and ports — as where the selection
+    /// leads, and no other. With a selected reroute or port and no id given, it is that one's target.
+    /// </summary>
+    protected void HintTarget(string targetId) {
+        if (string.IsNullOrEmpty(targetId)) targetId = RerouteBoxes().FirstOrDefault(box => box.Selected)?.Reroute?.TargetId;
+
+        for (var hops = RerouteBoxes().Count(); hops >= 0 && RerouteBoxFor(targetId)?.Reroute is { } reroute; hops--) targetId = reroute.TargetId;
+        foreach (var box in GetChildren().OfType<MissGraphBox>()) box.Hinted = !string.IsNullOrEmpty(targetId) && box is not RerouteBox && box.Name == targetId;
+    }
 
     // ---- wires under the mouse ---------------------------------------------------------------
 
@@ -133,8 +161,9 @@ public abstract partial class MissGraphEdit : GraphEdit {
     }
 
     bool LeadsLeft(RerouteBox box) {
+        // A port has no wire to keep from crossing.
         var targetId = box.Reroute?.TargetId;
-        if (string.IsNullOrEmpty(targetId)) return false;
+        if (string.IsNullOrEmpty(targetId) || box.IsPort) return false;
 
         if (RerouteBoxFor(targetId) is { } next) return next.PositionOffset.X < box.PositionOffset.X;
         var target = RowBoxes().FirstOrDefault(candidate => candidate.Name == targetId);
@@ -262,6 +291,8 @@ public abstract partial class MissGraphEdit : GraphEdit {
     protected void FollowWire(List<LiveWire> wires, string from, int port, string targetId, bool taken) {
         for (var hops = RerouteBoxes().Count(); hops >= 0 && HasBox(targetId); hops--) {
             wires.Add(new LiveWire(from, port, targetId, taken));
+            // Through ports as well: while a game runs, the wire a port hides is drawn after all, so
+            // that the way the game takes can be followed.
             if (RerouteBoxFor(targetId)?.Reroute is not { } reroute) return;
             (from, port, targetId) = (reroute.Id, 0, reroute.TargetId);
         }

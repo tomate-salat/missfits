@@ -27,6 +27,13 @@ public partial class Dialogue : MissResource, IBlackboardSource {
     public string Description { get; set; } = "";
 
     /// <summary>
+    /// Who speaks in this dialogue. The editor offers these for every line, and flags a line whose
+    /// speaker is not among them. Left empty, any name goes.
+    /// </summary>
+    [Export]
+    public Godot.Collections.Array<DialogueSpeaker> Speakers { get; set; } = [];
+
+    /// <summary>
     /// On, a line is translated with its speaker as the translation context, so the same words can
     /// be translated differently for different characters. Needs translations that carry contexts,
     /// i.e. gettext (<c>.po</c>) — a CSV translation has none, and would find nothing. Off by default.
@@ -66,6 +73,25 @@ public partial class Dialogue : MissResource, IBlackboardSource {
         }
         return null;
     }
+
+    /// <summary>
+    /// The names a line's speaker can be picked from: the listed speakers first, then whatever
+    /// other names the lines already use.
+    /// </summary>
+    public List<string> SpeakerNames() {
+        var names = new List<string>();
+        void Add(string name) {
+            if (!string.IsNullOrEmpty(name) && !names.Contains(name)) names.Add(name);
+        }
+
+        foreach (var speaker in Speakers) Add(speaker?.Name);
+        foreach (var line in Sections.Where(s => s != null).SelectMany(s => s.Lines)) Add(line?.Speaker);
+        return names;
+    }
+
+    /// <summary>Whether a line may be spoken by that name: it is listed, or nobody is listed at all, or it is nobody.</summary>
+    public bool KnowsSpeaker(string name)
+        => string.IsNullOrEmpty(name) || !Speakers.Any(s => s != null && s.Name != "") || Speakers.Any(s => s != null && s.Name == name);
 
     public override void _ValidateProperty(Godot.Collections.Dictionary property) {
         if (property["name"].AsString() is nameof(Blackboard) or nameof(StartSectionId) or nameof(Reroutes)) {
@@ -128,7 +154,7 @@ public partial class Dialogue : MissResource, IBlackboardSource {
             for (var i = 0; i < section.Options.Count; i++) {
                 var option = section.Options[i];
                 if (option == null) problems.Add($"{name}: option #{i + 1} is empty.");
-                else if (!string.IsNullOrEmpty(option.TargetSectionId) && Destination(option.TargetSectionId) == null) {
+                else if (!option.Back && !string.IsNullOrEmpty(option.TargetSectionId) && Destination(option.TargetSectionId) == null) {
                     problems.Add($"{name}: option #{i + 1} leads nowhere — to a section that no longer exists, or a reroute that ends nowhere.");
                 }
             }
@@ -137,6 +163,9 @@ public partial class Dialogue : MissResource, IBlackboardSource {
                 if (line == null) problems.Add($"{name}: line #{i + 1} is empty.");
                 else if (string.IsNullOrEmpty(line.Text) && !line.Actions.Any(a => a != null)) {
                     problems.Add($"{name}: line #{i + 1} says nothing and does nothing.");
+                }
+                else if (!KnowsSpeaker(line.Speaker)) {
+                    problems.Add($"{name}: line #{i + 1} is spoken by {line.Speaker}, who is not among the dialogue's speakers.");
                 }
             }
             if (!section.Lines.Any(l => l != null) && !section.Options.Any(o => o != null)) {
@@ -175,6 +204,9 @@ public partial class Dialogue : MissResource, IBlackboardSource {
     /// </summary>
     public IEnumerable<(string Text, string Context)> TranslatableTexts() {
         var seen = new HashSet<(string, string)>();
+        foreach (var speaker in Speakers) {
+            if (!string.IsNullOrEmpty(speaker?.Name) && seen.Add((speaker.Name, ""))) yield return (speaker.Name, "");
+        }
         foreach (var section in Sections) {
             if (section == null) continue;
             foreach (var line in section.Lines) {
