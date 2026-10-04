@@ -2,6 +2,7 @@
 using System.Linq;
 using Godot;
 using Misscore.Editor;
+using Misscore;
 
 namespace Missbehave.Editor;
 
@@ -37,7 +38,7 @@ public partial class BehaviorTreeGraphNode : GraphNode {
     GodotObject _node;
 
     /// <summary>Stored untyped so an assembly reload can restore it — see <see cref="ReloadSafe"/>.</summary>
-    public ABehaviorNode Node => ReloadSafe.Get<ABehaviorNode>(ref _node);
+    public MissNode Node => ReloadSafe.Get<MissNode>(ref _node);
     public bool IsRoot { get; private set; }
 
     public const string RootName = "__root__";
@@ -56,7 +57,7 @@ public partial class BehaviorTreeGraphNode : GraphNode {
 
     /// <summary>True while a running game streams statuses for this graph.</summary>
     bool _live;
-    BehaviorStatus? _status;
+    MissStatus? _status;
 
     /// <summary>Live status per entry id of a list, for the entries that were ticked.</summary>
     Godot.Collections.Dictionary<string, int> _entryStatuses = new();
@@ -93,7 +94,7 @@ public partial class BehaviorTreeGraphNode : GraphNode {
     /// <summary>Where the bottom port sits, relative to the box and unscaled.</summary>
     public Vector2 OutputAnchor => new(Size.X / 2f, Size.Y);
 
-    public void Bind(ABehaviorNode node, bool isRoot) {
+    public void Bind(MissNode node, bool isRoot) {
         _node = node;
         IsRoot = isRoot;
         Name = isRoot ? RootName : node.Id;
@@ -181,7 +182,7 @@ public partial class BehaviorTreeGraphNode : GraphNode {
     /// <param name="treeWarnings">Problems only the tree can see, such as a link to a removed blackboard entry.</param>
     /// <param name="entryWarnings">For a list, the tree's problems with one of its entries.</param>
     public void Refresh(int siblingOrder = 0, int siblingCount = 1, string[] treeWarnings = null,
-        System.Func<ABehaviorNode, string[]> entryWarnings = null) {
+        System.Func<MissNode, string[]> entryWarnings = null) {
         if (IsRoot) {
             Title = "Root";
             _name.Text = Title;
@@ -226,7 +227,7 @@ public partial class BehaviorTreeGraphNode : GraphNode {
     const string ModeIconSelector = "res://addons/missbehave/icons/selector.svg";
 
     /// <summary>Rows are recreated on every refresh: a list rarely holds more than a handful.</summary>
-    void RefreshEntries(System.Func<ABehaviorNode, string[]> entryWarnings) {
+    void RefreshEntries(System.Func<MissNode, string[]> entryWarnings) {
         var list = List;
         _modeIcon.Visible = list != null;
         _entries.Visible = list != null;
@@ -257,7 +258,7 @@ public partial class BehaviorTreeGraphNode : GraphNode {
         StyleEntries();
     }
 
-    Control EntryRow(ABehaviorNode entry, string[] treeWarnings) {
+    Control EntryRow(MissNode entry, string[] treeWarnings) {
         var row = new PanelContainer { Name = entry.Id, MouseFilter = MouseFilterEnum.Ignore };
         string[] warnings = [.. entry.GetConfigurationWarnings(), .. treeWarnings];
         var summary = entry.GetSummary();
@@ -295,13 +296,13 @@ public partial class BehaviorTreeGraphNode : GraphNode {
     public string[] EntryRowIds => [.. _entries.GetChildren().Select(row => row.Name.ToString())];
 
     /// <summary>Live status of one entry row, or null when it was not reached; for the test.</summary>
-    public BehaviorStatus? EntryStatus(string entryId)
-        => _entryStatuses.TryGetValue(entryId, out var status) ? (BehaviorStatus) status : null;
+    public MissStatus? EntryStatus(string entryId)
+        => _entryStatuses.TryGetValue(entryId, out var status) ? (MissStatus) status : null;
 
     void StyleEntries() {
         foreach (var row in _entries.GetChildren().OfType<PanelContainer>()) {
             var id = row.Name.ToString();
-            BehaviorStatus? status = _entryStatuses.TryGetValue(id, out var raw) ? (BehaviorStatus) raw : null;
+            MissStatus? status = _entryStatuses.TryGetValue(id, out var raw) ? (MissStatus) raw : null;
             var picked = Selected && id == SelectedEntry;
             row.AddThemeStyleboxOverride("panel", GraphNodeStyles.EntryRow(status, picked));
             // Like a box, an entry the tick never reached fades — but only while something is streaming.
@@ -384,7 +385,7 @@ public partial class BehaviorTreeGraphNode : GraphNode {
     /// Live tick status from a running game. Null means this node was not reached this tick, and it
     /// fades so that the path the tree actually took stands out.
     /// </summary>
-    public void ShowLiveStatus(BehaviorStatus? status) {
+    public void ShowLiveStatus(MissStatus? status) {
         if (_live && _status == status) return;
         _live = true;
         _status = status;
@@ -395,7 +396,7 @@ public partial class BehaviorTreeGraphNode : GraphNode {
     /// Live status of a list's entries, which the running tree ticks and reports like any other node.
     /// </summary>
     /// <param name="ticked">Status per node id, for the nodes that were ticked.</param>
-    public void ShowLiveEntryStatuses(System.Collections.Generic.IReadOnlyDictionary<string, BehaviorStatus> ticked) {
+    public void ShowLiveEntryStatuses(System.Collections.Generic.IReadOnlyDictionary<string, MissStatus> ticked) {
         _entryStatuses.Clear();
         foreach (var entry in List?.Children ?? []) {
             if (entry != null && ticked.TryGetValue(entry.Id, out var status)) _entryStatuses[entry.Id] = (int) status;

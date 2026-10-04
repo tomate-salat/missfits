@@ -1,4 +1,5 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave;
 
@@ -16,21 +17,21 @@ public partial class TimeLimiterNode : ADecoratorNode {
 
     public override string GetSummary() => $"within {WaitTime:0.##}s";
 
-    public override void BeforeRun(BtContext ctx) => _elapsed = 0;
+    public override void BeforeRun(MissContext ctx) => _elapsed = 0;
 
-    protected override BehaviorStatus Tick(BtContext ctx) {
+    protected override MissStatus Tick(MissContext ctx) {
         if (_elapsed >= WaitTime) {
             Interrupt(ctx);
-            return BehaviorStatus.Failure;
+            return MissStatus.Failure;
         }
 
         _elapsed += ctx.Delta;
         var status = TickChild(ctx);
-        if (status != BehaviorStatus.Running) _elapsed = 0;
+        if (status != MissStatus.Running) _elapsed = 0;
         return status;
     }
 
-    public override void Interrupt(BtContext ctx) {
+    public override void Interrupt(MissContext ctx) {
         _elapsed = 0;
         base.Interrupt(ctx);
     }

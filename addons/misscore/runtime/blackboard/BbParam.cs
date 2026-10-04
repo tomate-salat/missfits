@@ -32,7 +32,7 @@ public interface IBbParam {
 /// BbParam&lt;float&gt; Speed { get; set; } = 4f;
 /// BbParam&lt;Node3D&gt; Target { get; set; }
 ///
-/// protected override BehaviorStatus Run(BtContext ctx) {
+/// protected override MissStatus Run(MissContext ctx) {
 ///     Target.Value.GlobalPosition += Vector3.Forward * Speed.Value * (float) ctx.Delta;
 /// </code>
 /// <see cref="Value"/> is whatever the host last read through <see cref="IBbParam.Refresh"/> — a
@@ -88,6 +88,10 @@ public sealed class BbParam<[MustBeVariant] T> : IBbParam {
     public string EntryName { get; set; } = "";
     public bool IsLinked => !string.IsNullOrEmpty(EntryId);
 
+    /// <inheritdoc cref="Get(Blackboard)"/>
+    public T Get(MissContext ctx) => Get(ctx.Blackboard);
+
+    /// <summary>The linked entry's value right now, or the fixed value when unlinked or the entry holds nothing.</summary>
     public T Get(Blackboard blackboard) {
         if (IsLinked && blackboard != null && blackboard.TryGetById(EntryId, out var value)
             && BbTypes.TryConvert<T>(value, out var typed)) {
@@ -100,6 +104,9 @@ public sealed class BbParam<[MustBeVariant] T> : IBbParam {
     /// Writes to the linked entry. An unlinked parameter keeps the value itself instead, which is
     /// private to the instance — every instance runs its own copy of the host.
     /// </summary>
+    public void Set(MissContext ctx, T value) => Set(ctx.Blackboard, value);
+
+    /// <inheritdoc cref="Set(MissContext, T)"/>
     public void Set(Blackboard blackboard, T value) {
         if (IsLinked && blackboard != null) blackboard.SetById(EntryId, Variant.From(value));
         else _literal = value;

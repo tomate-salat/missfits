@@ -11,7 +11,8 @@ live while the game runs, so you build a tree and press F5 without switching vie
 ## Enabling it
 
 Missbehave needs the `addons/misscore` folder next to it — the shared base of the Missfits addons,
-which holds the blackboard. It is a plain library: nothing to enable, it only has to be there.
+which holds the blackboard and the node classes your own actions and conditions derive from. It is
+a plain library: nothing to enable, it only has to be there.
 
 The addon compiles into the project's own assembly, so **build before enabling**:
 
@@ -65,19 +66,23 @@ carried into every runtime instance for free.
 
 ```csharp
 using Godot;
-using Missbehave;
+using Misscore;
 
 [GlobalClass]
 public partial class FollowTarget : ActionNode {
     [Export] public float Speed { get; set; } = 4f;
 
-    protected override BehaviorStatus Run(BtContext ctx) {
-        if (ctx.Actor is not Node3D actor) return BehaviorStatus.Failure;
+    protected override MissStatus Run(MissContext ctx) {
+        if (ctx.Actor is not Node3D actor) return MissStatus.Failure;
         // ctx.Delta, ctx.Actor and the node's blackboard parameters are all you need.
-        return BehaviorStatus.Running;
+        return MissStatus.Running;
     }
 }
 ```
+
+`ActionNode`, `ConditionNode`, `MissStatus` and `MissContext` live in the `Misscore` namespace, not
+in `Missbehave`: an action or condition is not tied to behavior trees, and the other Missfits addons
+run the very same classes.
 
 `[GlobalClass]` is required — without it Godot cannot write the node into a tree resource, and the
 node picker flags the class in yellow. Rebuild and the picker lists it; no restart needed.
@@ -99,19 +104,18 @@ The picker's filter matches the shown name, the class name and the group names. 
 A tree declares the values it works with on its **blackboard**, shown beside the graph (toggle it
 from the toolbar). Each entry has a name, a type and a default, all editable right there.
 
-Nodes use entries through `BbParam<T>`, which lives in the `Misscore` namespace:
+Nodes use entries through `BbParam<T>`:
 
 ```csharp
-using Missbehave;
 using Misscore;
 
 public partial class FollowTarget : ActionNode {
     BbParam<float> Speed { get; set; } = 4f;
     BbParam<Node3D> Target { get; set; }
 
-    protected override BehaviorStatus Run(BtContext ctx) {
+    protected override MissStatus Run(MissContext ctx) {
         Target.Value.GlobalPosition += Vector3.Forward * Speed.Value * (float) ctx.Delta;
-        return BehaviorStatus.Running;
+        return MissStatus.Running;
     }
 }
 ```
@@ -150,7 +154,8 @@ A name the tree does not declare is kept as an ad-hoc value, which nodes can sti
 
 ## Controlling the runner
 
-`ctx.Runner` is the `BehaviorTreeRunner` driving the tick. `ctx.Runner?.Stop()` switches the tree
+`ctx.Runner` is whatever drives the tick, as an `IMissRunner` — here the `BehaviorTreeRunner`; use
+`ctx.GetRunner<BehaviorTreeRunner>()` for what only that class offers. `ctx.Runner?.Stop()` switches the tree
 off from inside a leaf: the current tick still finishes, then whatever is running is interrupted.
 `Enabled = true` resumes it.
 

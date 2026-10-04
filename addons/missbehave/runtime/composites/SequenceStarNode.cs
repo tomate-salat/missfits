@@ -1,4 +1,5 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave;
 
@@ -11,30 +12,30 @@ namespace Missbehave;
 public partial class SequenceStarNode : ACompositeNode {
     int _resumeIndex;
 
-    protected override BehaviorStatus Tick(BtContext ctx) {
+    protected override MissStatus Tick(MissContext ctx) {
         for (var i = _resumeIndex; i < Children.Count; i++) {
             var status = TickChild(i, ctx);
 
-            if (status == BehaviorStatus.Running) {
+            if (status == MissStatus.Running) {
                 RunningChild = i;
                 _resumeIndex = i;
-                return BehaviorStatus.Running;
+                return MissStatus.Running;
             }
 
             RunningChild = -1;
-            if (status == BehaviorStatus.Failure) {
+            if (status == MissStatus.Failure) {
                 _resumeIndex = i;
-                return BehaviorStatus.Failure;
+                return MissStatus.Failure;
             }
 
             _resumeIndex = i + 1;
         }
 
         _resumeIndex = 0;
-        return BehaviorStatus.Success;
+        return MissStatus.Success;
     }
 
-    public override void Interrupt(BtContext ctx) {
+    public override void Interrupt(MissContext ctx) {
         _resumeIndex = 0;
         base.Interrupt(ctx);
     }

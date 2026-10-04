@@ -1,7 +1,6 @@
 using Godot;
-using Misscore;
 
-namespace Missbehave;
+namespace Misscore;
 
 /// <summary>
 /// Removes a blackboard entry's value, so that <see cref="BlackboardHasNode"/> fails and parameters
@@ -14,9 +13,9 @@ public partial class BlackboardEraseNode : ActionNode {
 
     public override string GetSummary() => Entry.IsLinked ? $"erase {Entry}" : "";
 
-    protected override BehaviorStatus Run(BtContext ctx) {
-        if (!Entry.IsLinked || ctx.Blackboard == null) return BehaviorStatus.Failure;
+    protected override MissStatus Run(MissContext ctx) {
+        if (!Entry.IsLinked || ctx.Blackboard == null) return MissStatus.Failure;
         ctx.Blackboard.EraseById(Entry.EntryId);
-        return BehaviorStatus.Success;
+        return MissStatus.Success;
     }
 }

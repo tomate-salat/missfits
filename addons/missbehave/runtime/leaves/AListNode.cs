@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Godot;
+using Misscore;
 
 namespace Missbehave;
 
@@ -26,19 +27,19 @@ public abstract partial class AListNode : ACompositeNode {
     /// <summary>The kind of leaf this list holds.</summary>
     public abstract Type EntryType { get; }
 
-    public bool Accepts(ABehaviorNode node) => node != null && EntryType.IsInstanceOfType(node);
+    public bool Accepts(MissNode node) => node != null && EntryType.IsInstanceOfType(node);
 
-    protected override BehaviorStatus Tick(BtContext ctx) {
+    protected override MissStatus Tick(MissContext ctx) {
         // The entry that ends the run: a failure for a sequence, a success for a selector.
-        var decisive = Mode == ListMode.Sequence ? BehaviorStatus.Failure : BehaviorStatus.Success;
+        var decisive = Mode == ListMode.Sequence ? MissStatus.Failure : MissStatus.Success;
         var start = RunningChild < 0 ? 0 : RunningChild;
 
         for (var i = start; i < Children.Count; i++) {
             var status = TickChild(i, ctx);
 
-            if (status == BehaviorStatus.Running) {
+            if (status == MissStatus.Running) {
                 RunningChild = i;
-                return BehaviorStatus.Running;
+                return MissStatus.Running;
             }
             if (status == decisive) {
                 RunningChild = -1;
@@ -47,7 +48,7 @@ public abstract partial class AListNode : ACompositeNode {
         }
 
         RunningChild = -1;
-        return Mode == ListMode.Sequence ? BehaviorStatus.Success : BehaviorStatus.Failure;
+        return Mode == ListMode.Sequence ? MissStatus.Success : MissStatus.Failure;
     }
 
     public override string[] GetConfigurationWarnings() {

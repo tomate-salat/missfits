@@ -1,4 +1,5 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave;
 
@@ -16,18 +17,18 @@ public partial class CooldownNode : ADecoratorNode {
 
     public override string GetSummary() => $"every {WaitTime:0.##}s";
 
-    protected override BehaviorStatus Tick(BtContext ctx) {
+    protected override MissStatus Tick(MissContext ctx) {
         if (_remaining > 0) {
             _remaining -= ctx.Delta;
-            return BehaviorStatus.Failure;
+            return MissStatus.Failure;
         }
 
         var status = TickChild(ctx);
-        if (status != BehaviorStatus.Running) _remaining = WaitTime;
+        if (status != MissStatus.Running) _remaining = WaitTime;
         return status;
     }
 
-    public override void Interrupt(BtContext ctx) {
+    public override void Interrupt(MissContext ctx) {
         _remaining = 0;
         base.Interrupt(ctx);
     }

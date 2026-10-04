@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bxtvd0m2vipok"
-path="res://.godot/imported/condition.svg-e44ef5e90c73cef4f6b770d40d223989.ctex"
+uid="uid://bl3c7rtohwa5v"
+path="res://.godot/imported/action.svg-22daf60290414d526589ad84c4d9ab65.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://addons/missbehave/icons/condition.svg"
-dest_files=["res://.godot/imported/condition.svg-e44ef5e90c73cef4f6b770d40d223989.ctex"]
+source_file="res://addons/misscore/icons/action.svg"
+dest_files=["res://.godot/imported/action.svg-22daf60290414d526589ad84c4d9ab65.ctex"]
 
 [params]
 

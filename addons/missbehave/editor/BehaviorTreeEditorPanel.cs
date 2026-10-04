@@ -3,6 +3,7 @@ using System;
 using System.Linq;
 using Godot;
 using Misscore.Editor;
+using Misscore;
 
 namespace Missbehave.Editor;
 
@@ -115,7 +116,7 @@ public partial class BehaviorTreeEditorPanel : VBoxContainer {
 
         if (Engine.IsEditorHint()) {
             var edited = EditorInterface.Singleton.GetInspector()?.GetEditedObject();
-            if (edited is not ABehaviorNode && edited is not BehaviorTree) return;
+            if (edited is not MissNode && edited is not BehaviorTree) return;
         }
 
         Graph.RefreshBoxes();
@@ -224,17 +225,17 @@ public partial class BehaviorTreeEditorPanel : VBoxContainer {
         _lastFrame = statuses;
 
         var seen = new System.Collections.Generic.HashSet<string>();
-        var ticked = new System.Collections.Generic.Dictionary<string, BehaviorStatus>();
+        var ticked = new System.Collections.Generic.Dictionary<string, MissStatus>();
 
         for (var i = 0; i < statuses.Length && i < idTable.Length; i++) {
-            if (statuses[i] != BehaviorStatusExtensions.NotTicked) ticked[idTable[i]] = (BehaviorStatus) statuses[i];
+            if (statuses[i] != MissStatusExtensions.NotTicked) ticked[idTable[i]] = (MissStatus) statuses[i];
 
             var box = Graph.BoxFor(idTable[i]);
             if (box == null) continue;
 
             seen.Add(idTable[i]);
-            if (statuses[i] == BehaviorStatusExtensions.NotTicked) box.ShowLiveStatus(null);
-            else box.ShowLiveStatus((BehaviorStatus) statuses[i]);
+            if (statuses[i] == MissStatusExtensions.NotTicked) box.ShowLiveStatus(null);
+            else box.ShowLiveStatus((MissStatus) statuses[i]);
         }
         Graph.ShowLiveFlows(ticked);
 
@@ -316,7 +317,7 @@ public partial class BehaviorTreeEditorPanel : VBoxContainer {
     /// that back here, and touching <c>Selected</c> again would emit another selection signal.
     /// </para>
     /// </summary>
-    public void HighlightNode(ABehaviorNode node) {
+    public void HighlightNode(MissNode node) {
         if (node == null || Tree == null || _syncingSelection) return;
 
         var box = Graph.BoxShowing(node.Id);
@@ -452,7 +453,7 @@ public partial class BehaviorTreeEditorPanel : VBoxContainer {
     public void SyncInspector() {
         if (Tree == null || _syncingSelection) return;
 
-        ABehaviorNode selected = null;
+        MissNode selected = null;
         foreach (var box in GetGraphBoxes()) {
             if (box.Selected && !box.IsRoot && box.Node != null) {
                 selected = box.List?.Children.FirstOrDefault(e => e != null && e.Id == box.SelectedEntry) ?? box.Node;

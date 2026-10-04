@@ -2,7 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Reflection;
 
-namespace Missbehave;
+namespace Misscore;
 
 /// <summary>
 /// Files a node type in a sub-group of its category in the node picker:
@@ -16,7 +16,7 @@ public sealed class NodeGroupAttribute(string path) : Attribute {
 
 /// <summary>
 /// The name a node type goes by in the node picker and on its graph box, instead of its class name:
-/// <c>[NodeName("Look at player")]</c>. A node's own <see cref="ABehaviorNode.DisplayName"/> still wins.
+/// <c>[NodeName("Look at player")]</c>. A node's own <see cref="MissNode.DisplayName"/> still wins.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class, Inherited = false)]
 public sealed class NodeNameAttribute(string name) : Attribute {

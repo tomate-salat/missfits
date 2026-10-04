@@ -1,7 +1,6 @@
 using Godot;
-using Misscore;
 
-namespace Missbehave;
+namespace Misscore;
 
 /// <summary>Succeeds while a blackboard entry holds a value, i.e. it has not been erased.</summary>
 [GlobalClass, Tool, Icon("res://addons/misscore/icons/blackboard.svg")]
@@ -11,6 +10,6 @@ public partial class BlackboardHasNode : ConditionNode {
 
     public override string GetSummary() => Entry.IsLinked ? $"has {Entry}" : "";
 
-    protected override bool Check(BtContext ctx)
+    protected override bool Check(MissContext ctx)
         => Entry.IsLinked && ctx.Blackboard != null && ctx.Blackboard.HasId(Entry.EntryId);
 }

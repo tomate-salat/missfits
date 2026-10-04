@@ -1,4 +1,5 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave;
 
@@ -15,21 +16,21 @@ public partial class LimiterNode : ADecoratorNode {
 
     public override string GetSummary() => $"max {MaxTicks} ticks";
 
-    public override void BeforeRun(BtContext ctx) => _count = 0;
+    public override void BeforeRun(MissContext ctx) => _count = 0;
 
-    protected override BehaviorStatus Tick(BtContext ctx) {
+    protected override MissStatus Tick(MissContext ctx) {
         if (_count >= MaxTicks) {
             Interrupt(ctx);
-            return BehaviorStatus.Failure;
+            return MissStatus.Failure;
         }
 
         _count++;
         var status = TickChild(ctx);
-        if (status != BehaviorStatus.Running) _count = 0;
+        if (status != MissStatus.Running) _count = 0;
         return status;
     }
 
-    public override void Interrupt(BtContext ctx) {
+    public override void Interrupt(MissContext ctx) {
         _count = 0;
         base.Interrupt(ctx);
     }

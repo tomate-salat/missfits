@@ -17,7 +17,7 @@ namespace Missbehave.Editor;
 /// </summary>
 internal static class TreeRevert {
     /// <param name="knownNode">Looks up a node the editor still remembers, e.g. one deleted since saving.</param>
-    public static Error Revert(BehaviorTree tree, Func<string, ABehaviorNode> knownNode = null) {
+    public static Error Revert(BehaviorTree tree, Func<string, MissNode> knownNode = null) {
         if (tree == null || string.IsNullOrEmpty(tree.ResourcePath)) return Error.FileNotFound;
 
         // Ignore: a fresh copy of the file, not the cached (edited) tree; scripts and other
@@ -25,7 +25,7 @@ internal static class TreeRevert {
         var saved = ResourceLoader.Load<BehaviorTree>(tree.ResourcePath, "", ResourceLoader.CacheMode.Ignore);
         if (saved == null) return Error.FileCantRead;
 
-        var nodes = new Dictionary<string, ABehaviorNode>();
+        var nodes = new Dictionary<string, MissNode>();
         foreach (var node in tree.AllNodes()) {
             if (!string.IsNullOrEmpty(node?.Id)) nodes.TryAdd(node.Id, node);
         }

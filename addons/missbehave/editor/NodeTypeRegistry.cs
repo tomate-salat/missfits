@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using Misscore;
 
 namespace Missbehave.Editor;
 
@@ -29,8 +30,8 @@ public sealed class BtNodeType {
 
     public string Description { get; init; }
 
-    public ABehaviorNode Create() {
-        var node = (ABehaviorNode) Activator.CreateInstance(Type);
+    public MissNode Create() {
+        var node = (MissNode) Activator.CreateInstance(Type);
         node.EnsureId();
         return node;
     }
@@ -41,7 +42,7 @@ public sealed class BtNodeType {
 /// <para>
 /// Discovery is plain .NET reflection: Godot compiles the whole project — addons included — into
 /// one assembly, and this plugin runs inside it, so every built-in and user-authored node type is
-/// simply a subclass in <c>typeof(ABehaviorNode).Assembly</c>. The global class list is consulted
+/// simply a subclass in <c>typeof(MissNode).Assembly</c>. The global class list is consulted
 /// only for icons and for the missing-<c>[GlobalClass]</c> warning.
 /// </para>
 /// </summary>
@@ -68,7 +69,7 @@ public static class NodeTypeRegistry {
     public static void Refresh() {
         var icons = ReadGlobalClassIcons(out var globalClassNames);
 
-        _types = [.. typeof(ABehaviorNode).Assembly
+        _types = [.. typeof(MissNode).Assembly
             .GetTypes()
             .Where(IsCreatable)
             .Select(type => new BtNodeType {
@@ -95,7 +96,7 @@ public static class NodeTypeRegistry {
     public static BtNodeType FindByName(string fullName)
         => string.IsNullOrEmpty(fullName) ? null : Types.FirstOrDefault(t => t.Type.FullName == fullName);
 
-    public static string IconFor(ABehaviorNode node)
+    public static string IconFor(MissNode node)
         => node == null ? "" : Find(node.GetType())?.IconPath ?? "";
     /// <summary>
     /// Walks up the inheritance chain for an icon, so a user's <c>FollowTarget : ActionNode</c>
@@ -126,8 +127,8 @@ public static class NodeTypeRegistry {
     static bool IsCreatable(Type type)
         => (IncludeTestTypes || type.Namespace != TestNamespace)
            && !type.IsAbstract
-           && typeof(ABehaviorNode).IsAssignableFrom(type)
-           && type != typeof(ABehaviorNode)
+           && typeof(MissNode).IsAssignableFrom(type)
+           && type != typeof(MissNode)
            && type.GetConstructor(Type.EmptyTypes) != null;
 
     /// <summary>Composite, Decorator, Action, Condition or Other.</summary>

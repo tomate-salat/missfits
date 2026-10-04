@@ -1,7 +1,6 @@
 using Godot;
-using Misscore;
 
-namespace Missbehave;
+namespace Misscore;
 
 /// <summary>Writes a value — fixed, or read from another entry — into a blackboard entry and succeeds.</summary>
 [GlobalClass, Tool, Icon("res://addons/misscore/icons/blackboard.svg")]
@@ -13,9 +12,9 @@ public partial class BlackboardSetNode : ActionNode {
 
     public override string GetSummary() => Target.IsLinked ? $"{Target} = {Value}" : "";
 
-    protected override BehaviorStatus Run(BtContext ctx) {
-        if (!Target.IsLinked || ctx.Blackboard == null) return BehaviorStatus.Failure;
+    protected override MissStatus Run(MissContext ctx) {
+        if (!Target.IsLinked || ctx.Blackboard == null) return MissStatus.Failure;
         Target.Set(ctx, Value.Get(ctx));
-        return BehaviorStatus.Success;
+        return MissStatus.Success;
     }
 }

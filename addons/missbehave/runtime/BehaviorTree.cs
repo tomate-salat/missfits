@@ -12,14 +12,14 @@ namespace Missbehave;
 [GlobalClass, Tool, Icon("res://addons/missbehave/icons/tree.svg")]
 public partial class BehaviorTree : Resource, IBlackboardSource {
     [Export]
-    public ABehaviorNode Root { get; set; }
+    public MissNode Root { get; set; }
 
     /// <summary>
     /// Nodes that are authored but currently detached from the root. Without this they would be
     /// unreferenced and silently dropped on save, losing work every time a branch is unplugged.
     /// </summary>
     [Export]
-    public Godot.Collections.Array<ABehaviorNode> Orphans { get; set; } = [];
+    public Godot.Collections.Array<MissNode> Orphans { get; set; } = [];
 
     /// <summary>Position of the synthetic root entry in the graph editor.</summary>
     [Export]
@@ -54,14 +54,14 @@ public partial class BehaviorTree : Resource, IBlackboardSource {
         if (property["name"].AsString() == nameof(Blackboard)) property["usage"] = (int) PropertyUsageFlags.Storage;
     }
 
-    /// <summary>Pre-order walk of the connected tree, assigning <see cref="ABehaviorNode.RuntimeIndex"/>.</summary>
-    public ABehaviorNode[] Flatten() {
-        var flat = new List<ABehaviorNode>();
+    /// <summary>Pre-order walk of the connected tree, assigning <see cref="MissNode.RuntimeIndex"/>.</summary>
+    public MissNode[] Flatten() {
+        var flat = new List<MissNode>();
         Flatten(Root, flat);
         return [.. flat];
     }
 
-    internal static void Flatten(ABehaviorNode node, List<ABehaviorNode> into) {
+    internal static void Flatten(MissNode node, List<MissNode> into) {
         if (node == null) return;
         node.RuntimeIndex = into.Count;
         into.Add(node);
@@ -71,14 +71,14 @@ public partial class BehaviorTree : Resource, IBlackboardSource {
     IEnumerable<IBbParamHost> IBlackboardSource.ParamHosts() => AllNodes();
 
     /// <summary>Every node reachable from the root plus every orphan, for editor-side iteration.</summary>
-    public IEnumerable<ABehaviorNode> AllNodes() {
+    public IEnumerable<MissNode> AllNodes() {
         foreach (var node in Walk(Root)) yield return node;
         foreach (var orphan in Orphans) {
             foreach (var node in Walk(orphan)) yield return node;
         }
     }
 
-    static IEnumerable<ABehaviorNode> Walk(ABehaviorNode node) {
+    static IEnumerable<MissNode> Walk(MissNode node) {
         if (node == null) yield break;
         yield return node;
         foreach (var child in node.Children) {
@@ -107,7 +107,7 @@ public partial class BehaviorTree : Resource, IBlackboardSource {
     }
 
     /// <summary>Parameters of <paramref name="node"/> linked to entries that are gone or of the wrong type.</summary>
-    public IEnumerable<string> LinkProblems(ABehaviorNode node) {
+    public IEnumerable<string> LinkProblems(MissNode node) {
         if (node == null) yield break;
         foreach (var (member, param) in node.BlackboardParams()) {
             if (!param.IsLinked) continue;

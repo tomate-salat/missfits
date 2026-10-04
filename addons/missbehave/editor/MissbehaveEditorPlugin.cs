@@ -1,6 +1,7 @@
 #if TOOLS
 using Godot;
 using Misscore.Editor;
+using Misscore;
 
 namespace Missbehave.Editor;
 
@@ -122,14 +123,14 @@ public partial class MissbehaveEditorPlugin : EditorPlugin {
     /// Also handles individual nodes: selecting one in the graph hands it to the inspector, and if
     /// this returned false for it the editor would immediately hide our dock again.
     /// </summary>
-    public override bool _Handles(GodotObject @object) => @object is BehaviorTree or ABehaviorNode;
+    public override bool _Handles(GodotObject @object) => @object is BehaviorTree or MissNode;
 
     public override void _Edit(GodotObject @object) {
         switch (@object) {
             case BehaviorTree tree:
                 OpenTree(tree);
                 break;
-            case ABehaviorNode node:
+            case MissNode node:
                 Panel?.HighlightNode(node);
                 break;
         }

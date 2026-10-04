@@ -1,6 +1,7 @@
 #if TOOLS
 using System.Collections.Generic;
 using Godot;
+using Misscore;
 
 namespace Missbehave.Editor;
 
@@ -65,15 +66,15 @@ public static class GraphNodeStyles {
         return material;
     }
 
-    public static Color ColorFor(BehaviorStatus status) => status switch {
-        BehaviorStatus.Success => Success,
-        BehaviorStatus.Failure => Failure,
+    public static Color ColorFor(MissStatus status) => status switch {
+        MissStatus.Success => Success,
+        MissStatus.Failure => Failure,
         _ => Running,
     };
 
     /// <param name="group">The node's category, or null for the tree's root entry.</param>
     /// <param name="status">Live status to tint the box with, or null when there is none.</param>
-    public static void Apply(GraphNode box, string group, BehaviorStatus? status) {
+    public static void Apply(GraphNode box, string group, MissStatus? status) {
         var (radius, detail) = ShapeOf(group);
 
         box.AddThemeStyleboxOverride("panel", Body(box, "panel", radius, detail, status, selected: false));
@@ -88,7 +89,7 @@ public static class GraphNodeStyles {
     /// One entry inside a list box: a faint strip normally, tinted with its live status like a box,
     /// outlined while it is the entry being inspected.
     /// </summary>
-    public static StyleBoxFlat EntryRow(BehaviorStatus? status, bool picked) {
+    public static StyleBoxFlat EntryRow(MissStatus? status, bool picked) {
         var style = new StyleBoxFlat {
             BgColor = new Color(1, 1, 1, 0.04f),
             ContentMarginLeft = 6,
@@ -118,7 +119,7 @@ public static class GraphNodeStyles {
         _ => (5, 4),
     };
 
-    static StyleBoxFlat Body(GraphNode box, string name, int radius, int detail, BehaviorStatus? status, bool selected) {
+    static StyleBoxFlat Body(GraphNode box, string name, int radius, int detail, MissStatus? status, bool selected) {
         box.RemoveThemeStyleboxOverride(name);
         var style = box.GetThemeStylebox(name) is StyleBoxFlat flat
             ? (StyleBoxFlat) flat.Duplicate()

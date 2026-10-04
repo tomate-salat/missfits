@@ -1,4 +1,5 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave;
 
@@ -8,8 +9,8 @@ namespace Missbehave;
 /// </summary>
 [GlobalClass, Tool, Icon("res://addons/missbehave/icons/until_fail.svg")]
 public partial class UntilFailNode : ADecoratorNode {
-    protected override BehaviorStatus Tick(BtContext ctx) => TickChild(ctx) switch {
-        BehaviorStatus.Failure => BehaviorStatus.Success,
-        _ => BehaviorStatus.Running,
+    protected override MissStatus Tick(MissContext ctx) => TickChild(ctx) switch {
+        MissStatus.Failure => MissStatus.Success,
+        _ => MissStatus.Running,
     };
 }

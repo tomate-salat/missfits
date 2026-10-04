@@ -28,15 +28,15 @@ public partial class BtProbeParamAction : ActionNode {
 
     int _ticks;
 
-    public override void BeforeRun(BtContext ctx) {
+    public override void BeforeRun(MissContext ctx) {
         SpeedAtBeforeRun = Speed.Value;
         _ticks = 0;
     }
 
-    protected override BehaviorStatus Run(BtContext ctx) {
+    protected override MissStatus Run(MissContext ctx) {
         LastSpeed = Speed.Value;
         LastTarget = Target.Value;
         Speed.Value = LastSpeed + 1;
-        return ++_ticks < RunTicks ? BehaviorStatus.Running : BehaviorStatus.Success;
+        return ++_ticks < RunTicks ? MissStatus.Running : MissStatus.Success;
     }
 }

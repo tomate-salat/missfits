@@ -72,9 +72,9 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
     /// Every node this session has seen, so undo can bring deleted ones back. Not preserved across
     /// an assembly reload, hence <see cref="EnsurePool"/>.
     /// </summary>
-    readonly Dictionary<string, ABehaviorNode> _pool = [];
+    readonly Dictionary<string, MissNode> _pool = [];
 
-    readonly List<ABehaviorNode> _clipboard = [];
+    readonly List<MissNode> _clipboard = [];
 
     bool _rebuilding;
     bool _rebuildQueued;
@@ -163,7 +163,7 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
     }
 
     /// <summary>A node this session has seen, even if it is no longer part of the tree; null if none.</summary>
-    internal ABehaviorNode KnownNode(string id) => id != null && _pool.TryGetValue(id, out var node) ? node : null;
+    internal MissNode KnownNode(string id) => id != null && _pool.TryGetValue(id, out var node) ? node : null;
 
     void ClearGraph() {
         ClearConnections();
@@ -232,7 +232,7 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
         CallDeferred(MethodName.RefreshBoxes);
     }
 
-    BehaviorTreeGraphNode NewBox(ABehaviorNode node, bool isRoot) {
+    BehaviorTreeGraphNode NewBox(MissNode node, bool isRoot) {
         var box = new BehaviorTreeGraphNode {
             // Named before entering the tree so it can never collide with a leftover sibling.
             Name = isRoot ? BehaviorTreeGraphNode.RootName : node.Id,
@@ -374,7 +374,7 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
     /// the running tree never had.
     /// </summary>
     /// <param name="ticked">Status per node id, for the nodes that were ticked.</param>
-    public void ShowLiveFlows(IReadOnlyDictionary<string, BehaviorStatus> ticked) {
+    public void ShowLiveFlows(IReadOnlyDictionary<string, MissStatus> ticked) {
         if (FlowOverlay == null) return;
         if (Tree == null) {
             FlowOverlay.ClearFlows();
@@ -443,7 +443,7 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
 
     // ---- model helpers -----------------------------------------------------------------------
 
-    ABehaviorNode Resolve(StringName name) {
+    MissNode Resolve(StringName name) {
         var key = name.ToString();
         if (key == BehaviorTreeGraphNode.RootName) return null;
 
@@ -454,12 +454,12 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
 
     bool IsRootName(StringName name) => name.ToString() == BehaviorTreeGraphNode.RootName;
 
-    ABehaviorNode ParentOf(ABehaviorNode node) {
+    MissNode ParentOf(MissNode node) {
         if (node == null || Tree == null) return null;
         return Tree.AllNodes().FirstOrDefault(candidate => candidate.Children.Contains(node));
     }
 
-    bool IsAncestorOf(ABehaviorNode maybeAncestor, ABehaviorNode node) {
+    bool IsAncestorOf(MissNode maybeAncestor, MissNode node) {
         var current = ParentOf(node);
         while (current != null) {
             if (ReferenceEquals(current, maybeAncestor)) return true;
@@ -468,13 +468,13 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
         return false;
     }
 
-    bool IsListEntry(ABehaviorNode node) => ParentOf(node) is AListNode;
+    bool IsListEntry(MissNode node) => ParentOf(node) is AListNode;
 
     /// <summary>
     /// Gives nodes leaving a list a place of their own beside it. Their stored positions date from
     /// before they joined, if they ever had one, and would pile them up somewhere unrelated.
     /// </summary>
-    void PlaceBeside(AListNode list, IReadOnlyList<ABehaviorNode> nodes) {
+    void PlaceBeside(AListNode list, IReadOnlyList<MissNode> nodes) {
         var box = BoxFor(list.Id);
         var width = box?.Size.X ?? 200f;
         for (var i = 0; i < nodes.Count; i++) {
@@ -482,20 +482,20 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
         }
     }
 
-    void Detach(ABehaviorNode node) {
+    void Detach(MissNode node) {
         if (node == null) return;
         if (ReferenceEquals(Tree.Root, node)) Tree.Root = null;
         foreach (var candidate in Tree.AllNodes().ToList()) candidate.Children.Remove(node);
         Tree.Orphans.Remove(node);
     }
 
-    void MakeOrphan(ABehaviorNode node) {
+    void MakeOrphan(MissNode node) {
         if (node == null || Tree.Orphans.Contains(node)) return;
         Tree.Orphans.Add(node);
     }
 
     /// <summary>Sorts a parent's children by their horizontal position, which is what defines order: left runs first.</summary>
-    void SortChildren(ABehaviorNode parent) {
+    void SortChildren(MissNode parent) {
         // A list's entries are ordered by their rows, not by where boxes they no longer have once stood.
         if (parent == null || parent is AListNode || parent.Children.Count < 2) return;
 
@@ -594,7 +594,7 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
         Disconnect(child);
     }
 
-    void Disconnect(ABehaviorNode child) {
+    void Disconnect(MissNode child) {
         Commit("Missbehave: disconnect", () => {
             Detach(child);
             MakeOrphan(child);
@@ -763,7 +763,7 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
     }
 
     /// <summary>Moves an entry up (-1) or down (+1) its list, which is the order the entries run in.</summary>
-    public void MoveEntry(AListNode list, ABehaviorNode entry, int direction) {
+    public void MoveEntry(AListNode list, MissNode entry, int direction) {
         var index = list.Children.IndexOf(entry);
         var target = index + direction;
         if (index < 0 || target < 0 || target >= list.Children.Count) return;
@@ -775,7 +775,7 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
     }
 
     /// <summary>Turns an entry back into a box of its own, unconnected, beside the list.</summary>
-    public void TakeOutOfList(AListNode list, ABehaviorNode entry) {
+    public void TakeOutOfList(AListNode list, MissNode entry) {
         if (!list.Children.Contains(entry)) return;
 
         Commit("Missbehave: take out of list", () => {
@@ -801,7 +801,7 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
     /// not run _Ready again, so a menu filled there would never pick up new entries, and some
     /// entries depend on the node anyway.
     /// </summary>
-    void BuildNodeMenu(ABehaviorNode node) {
+    void BuildNodeMenu(MissNode node) {
         _nodeMenu.Clear();
         _nodeMenu.AddItem("Replace with…", MenuReplace);
         _nodeMenu.AddItem("Open script", MenuOpenScript);
@@ -811,7 +811,7 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
     }
 
     /// <summary>The C# script behind a node, or null when it has no file to open.</summary>
-    internal static Script ScriptOf(ABehaviorNode node) {
+    internal static Script ScriptOf(MissNode node) {
         var script = node?.GetScript().As<Script>();
         return script != null && !string.IsNullOrEmpty(script.ResourcePath) ? script : null;
     }
@@ -820,7 +820,7 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
     /// Adds a node of the given type, optionally hanging it off <paramref name="parentName"/>.
     /// Public so the headless editor test can exercise the same path as the create dialog.
     /// </summary>
-    public ABehaviorNode CreateNode(BtNodeType type, Vector2 position, StringName parentName = null) {
+    public MissNode CreateNode(BtNodeType type, Vector2 position, StringName parentName = null) {
         if (Tree == null || type == null) return null;
 
         var node = type.Create();
@@ -866,7 +866,7 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
     /// keyed by id, and it has to be able to tell the two objects apart to bring the original back.
     /// </para>
     /// </summary>
-    public ABehaviorNode ReplaceNode(StringName name, BtNodeType type) {
+    public MissNode ReplaceNode(StringName name, BtNodeType type) {
         if (Tree == null || type == null) return null;
 
         var old = Resolve(name);
@@ -934,13 +934,13 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
     /// Copies every stored property that exists on both nodes with the same name and type —
     /// DisplayName and GraphPosition always, parameters like WaitTime when both types have one.
     /// </summary>
-    static void CopySharedProperties(ABehaviorNode from, ABehaviorNode to) {
+    static void CopySharedProperties(MissNode from, MissNode to) {
         var targets = new Dictionary<string, Godot.Collections.Dictionary>();
         foreach (var property in to.GetPropertyList()) targets.TryAdd(property["name"].AsString(), property);
 
         foreach (var property in from.GetPropertyList()) {
             var name = property["name"].AsString();
-            if (name is nameof(ABehaviorNode.Id) or nameof(ABehaviorNode.Children) or "script"
+            if (name is nameof(MissNode.Id) or nameof(MissNode.Children) or "script"
                 || name.StartsWith("resource_") || name.StartsWith("metadata/")) {
                 continue;
             }
@@ -1031,13 +1031,13 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
     }
 
     /// <summary>Clones a subtree with fresh ids, so pasted nodes are independent of the originals.</summary>
-    ABehaviorNode DeepCopy(ABehaviorNode source, Vector2 offset) {
-        var copy = (ABehaviorNode) source.Duplicate(false);
+    MissNode DeepCopy(MissNode source, Vector2 offset) {
+        var copy = (MissNode) source.Duplicate(false);
         copy.ResourcePath = "";
-        copy.Id = ABehaviorNode.NewId();
+        copy.Id = MissNode.NewId();
         copy.GraphPosition = source.GraphPosition + offset;
 
-        var children = new Godot.Collections.Array<ABehaviorNode>();
+        var children = new Godot.Collections.Array<MissNode>();
         foreach (var child in source.Children) {
             if (child != null) children.Add(DeepCopy(child, offset));
         }
@@ -1086,7 +1086,7 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
         else Apply();
     }
 
-    void BuildLayout(BtLayoutNode parent, ABehaviorNode node) {
+    void BuildLayout(BtLayoutNode parent, MissNode node) {
         var box = BoxFor(node.Id);
         if (box == null) return;
 
@@ -1188,7 +1188,7 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
         var nodes = snapshot["nodes"].AsGodotDictionary();
         foreach (var key in nodes.Keys) {
             var entry = nodes[key].AsGodotDictionary();
-            if (entry.TryGetValue("node", out var kept) && kept.AsGodotObject() is ABehaviorNode keptNode) {
+            if (entry.TryGetValue("node", out var kept) && kept.AsGodotObject() is MissNode keptNode) {
                 _pool.TryAdd(keptNode.Id, keptNode);
             }
         }
@@ -1200,7 +1200,7 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
             var entry = nodes[key].AsGodotDictionary();
             node.GraphPosition = entry["pos"].AsVector2();
 
-            var children = new Godot.Collections.Array<ABehaviorNode>();
+            var children = new Godot.Collections.Array<MissNode>();
             foreach (var childId in entry["children"].AsGodotArray<string>()) {
                 if (_pool.TryGetValue(childId, out var child)) children.Add(child);
             }

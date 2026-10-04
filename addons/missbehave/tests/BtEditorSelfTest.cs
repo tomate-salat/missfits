@@ -31,10 +31,10 @@ public partial class BtEditorSelfTest : Node {
 
     int _inspectorCalls;
     Resource _lastEdited;
-    ABehaviorNode _root;
-    ABehaviorNode _branch;
-    ABehaviorNode _sub;
-    ABehaviorNode _leaf;
+    MissNode _root;
+    MissNode _branch;
+    MissNode _sub;
+    MissNode _leaf;
 
     public override async void _Ready() {
         // The probes are hidden from the picker in the editor; the tests create them through it.
@@ -50,7 +50,7 @@ public partial class BtEditorSelfTest : Node {
         _panel.EditInInspector = resource => {
             _inspectorCalls++;
             _lastEdited = resource;
-            if (resource is ABehaviorNode node) _panel.HighlightNode(node);
+            if (resource is MissNode node) _panel.HighlightNode(node);
         };
 
         _panel.OpenTree(_tree);
@@ -199,7 +199,7 @@ public partial class BtEditorSelfTest : Node {
         panel.RevertTree();
         await Settle();
         Check("reverting keeps the tree, its nodes and entries as the same objects",
-            panel.Tree == tree && tree.Root == root && root.Children.SequenceEqual<ABehaviorNode>([kept, cooldown])
+            panel.Tree == tree && tree.Root == root && root.Children.SequenceEqual<MissNode>([kept, cooldown])
             && tree.Blackboard.SequenceEqual([entry]));
         Check("reverting restores the saved values",
             kept.DisplayName == "Kept" && cooldown.WaitTime == 2 && entry.Name == "Speed");
@@ -216,7 +216,7 @@ public partial class BtEditorSelfTest : Node {
     /// boxes or wires of their own — and the rows light up with the running tree like boxes do.
     /// </summary>
     async System.Threading.Tasks.Task AListDrawsItsEntriesInsideItsBox() {
-        static ABehaviorNode Condition(string name) {
+        static MissNode Condition(string name) {
             var condition = new BtProbeCondition { DisplayName = name };
             condition.EnsureId();
             return condition;
@@ -237,7 +237,7 @@ public partial class BtEditorSelfTest : Node {
         Resource inspected = null;
         panel.EditInInspector = resource => {
             inspected = resource;
-            if (resource is ABehaviorNode node) panel.HighlightNode(node);
+            if (resource is MissNode node) panel.HighlightNode(node);
         };
         panel.OpenTree(tree);
         await Settle();
@@ -304,11 +304,11 @@ public partial class BtEditorSelfTest : Node {
         graph.GetChildren().OfType<BehaviorTreeGraphNode>().ToList().ForEach(b => b.Selected = false);
         box.Selected = true;
         panel.ShowFrame([list.Id, aggressive.Id, damaged.Id, inRange.Id], [
-            (byte) BehaviorStatus.Success, (byte) BehaviorStatus.Failure, (byte) BehaviorStatus.Success,
-            BehaviorStatusExtensions.NotTicked,
+            (byte) MissStatus.Success, (byte) MissStatus.Failure, (byte) MissStatus.Success,
+            MissStatusExtensions.NotTicked,
         ]);
         Check("the debugger colours each entry row with its own status",
-            box.EntryStatus(aggressive.Id) == BehaviorStatus.Failure && box.EntryStatus(damaged.Id) == BehaviorStatus.Success
+            box.EntryStatus(aggressive.Id) == MissStatus.Failure && box.EntryStatus(damaged.Id) == MissStatus.Success
             && box.EntryStatus(inRange.Id) == null && !box.IsDimmed);
         Check("an entry the tick did not reach fades",
             box.FindChild("Entries", true, false)?.GetNode<Control>(inRange.Id).Modulate.A < 1f);
@@ -339,13 +339,13 @@ public partial class BtEditorSelfTest : Node {
         await Settle();
     }
 
-    static ABehaviorNode Composite<T>(string name, Vector2 position) where T : ABehaviorNode, new() {
+    static MissNode Composite<T>(string name, Vector2 position) where T : MissNode, new() {
         var node = new T { DisplayName = name, GraphPosition = position };
         node.EnsureId();
         return node;
     }
 
-    static ABehaviorNode Probe(string name, Vector2 position) {
+    static MissNode Probe(string name, Vector2 position) {
         var probe = new BtProbeAction { DisplayName = name, GraphPosition = position };
         probe.EnsureId();
         return probe;
@@ -408,9 +408,9 @@ public partial class BtEditorSelfTest : Node {
         Check("category cleanup leaves the original graph", BoxCount() == 5 && ConnectionCount() == 4);
     }
 
-    StyleBoxFlat Style(ABehaviorNode node, string name) => _graph.BoxFor(node.Id)?.GetThemeStylebox(name) as StyleBoxFlat;
+    StyleBoxFlat Style(MissNode node, string name) => _graph.BoxFor(node.Id)?.GetThemeStylebox(name) as StyleBoxFlat;
 
-    Color? IconTint(ABehaviorNode node)
+    Color? IconTint(MissNode node)
         => (_graph.BoxFor(node.Id)?.GetNodeOrNull<TextureRect>("Row/Icon")?.Material as ShaderMaterial)
             ?.GetShaderParameter("tint").AsColor();
 
@@ -647,7 +647,7 @@ public partial class BtEditorSelfTest : Node {
 
         var frame = new Godot.Collections.Array {
             42L,
-            new byte[] { (byte) BehaviorStatus.Running, (byte) BehaviorStatus.Success },
+            new byte[] { (byte) MissStatus.Running, (byte) MissStatus.Success },
             1,
         };
         // The editor reloads its assembly by itself when a newer build appears, mid-game too, and the
@@ -843,16 +843,16 @@ public partial class BtEditorSelfTest : Node {
         Check("while editing no wire is animated", overlay?.Flows.Count == 0);
 
         panel.ShowFrame([sequence.Id, done.Id, busy.Id, skipped.Id], [
-            (byte) BehaviorStatus.Running, (byte) BehaviorStatus.Success, (byte) BehaviorStatus.Running,
-            BehaviorStatusExtensions.NotTicked,
+            (byte) MissStatus.Running, (byte) MissStatus.Success, (byte) MissStatus.Running,
+            MissStatusExtensions.NotTicked,
         ]);
 
         var flows = overlay?.Flows ?? [];
         Check("every wire the tick went through is animated, from the root down",
             flows.Count == 3
-            && flows.Contains(new LiveFlow(BehaviorTreeGraphNode.RootName, sequence.Id, BehaviorStatus.Running))
-            && flows.Contains(new LiveFlow(sequence.Id, done.Id, BehaviorStatus.Success))
-            && flows.Contains(new LiveFlow(sequence.Id, busy.Id, BehaviorStatus.Running)));
+            && flows.Contains(new LiveFlow(BehaviorTreeGraphNode.RootName, sequence.Id, MissStatus.Running))
+            && flows.Contains(new LiveFlow(sequence.Id, done.Id, MissStatus.Success))
+            && flows.Contains(new LiveFlow(sequence.Id, busy.Id, MissStatus.Running)));
         Check("a wire to a node the tick did not reach stays still", flows.All(f => f.To != skipped.Id));
 
         // GraphEdit's wire layer is an ordinary first child, so anything drawn before it vanishes under
@@ -873,8 +873,8 @@ public partial class BtEditorSelfTest : Node {
 
         // Everything finished: the wires keep their colours, but nothing moves any more.
         panel.ShowFrame([sequence.Id, done.Id, busy.Id, skipped.Id], [
-            (byte) BehaviorStatus.Failure, (byte) BehaviorStatus.Success, (byte) BehaviorStatus.Failure,
-            BehaviorStatusExtensions.NotTicked,
+            (byte) MissStatus.Failure, (byte) MissStatus.Success, (byte) MissStatus.Failure,
+            MissStatusExtensions.NotTicked,
         ]);
         phase = overlay?.Phase ?? 0f;
         await Settle();
@@ -970,7 +970,7 @@ public partial class BtEditorSelfTest : Node {
         Check("the reference audit recognises reload-unsafe members",
             ReloadUnsafeMembers(typeof(ReferenceAuditProbe)).Count == 3);
 
-        var editorTypes = typeof(ABehaviorNode).Assembly.GetTypes()
+        var editorTypes = typeof(MissNode).Assembly.GetTypes()
             .Where(t => t.Namespace == "Missbehave.Editor" && typeof(GodotObject).IsAssignableFrom(t))
             .ToList();
         var offenders = editorTypes.SelectMany(ReloadUnsafeMembers).ToList();
@@ -981,10 +981,10 @@ public partial class BtEditorSelfTest : Node {
     }
 
     sealed class ReferenceAuditProbe {
-        public ABehaviorNode Field = null;
+        public MissNode Field = null;
         public BehaviorTree Property { get; set; }
-        public Godot.Collections.Array<ABehaviorNode> Serialized = [];
-        public List<ABehaviorNode> NotSerialized = [];
+        public Godot.Collections.Array<MissNode> Serialized = [];
+        public List<MissNode> NotSerialized = [];
     }
 
     static List<string> ReloadUnsafeMembers(System.Type type) {
@@ -1010,7 +1010,7 @@ public partial class BtEditorSelfTest : Node {
         if (type.IsGenericType) {
             return type.Namespace == "Godot.Collections" && type.GetGenericArguments().Any(IsOwnGodotType);
         }
-        return typeof(GodotObject).IsAssignableFrom(type) && type.Assembly == typeof(ABehaviorNode).Assembly;
+        return typeof(GodotObject).IsAssignableFrom(type) && type.Assembly == typeof(MissNode).Assembly;
     }
 
     static List<string> DelegateConnections(Node root, out int inspected) {
@@ -1213,9 +1213,9 @@ public partial class BtEditorSelfTest : Node {
 
     int RowCount() => _panel.Blackboard.FindChild("Rows", owned: false).GetChildren().OfType<BlackboardEntryRow>().Count(r => !r.IsQueuedForDeletion());
 
-    string Summary(ABehaviorNode node) => _graph.BoxFor(node.Id)?.GetNodeOrNull<Label>("Summary")?.Text;
+    string Summary(MissNode node) => _graph.BoxFor(node.Id)?.GetNodeOrNull<Label>("Summary")?.Text;
 
-    string WarningOf(ABehaviorNode node) => _graph.BoxFor(node.Id)?.GetNodeOrNull<Label>("Row/Warning")?.TooltipText ?? "?";
+    string WarningOf(MissNode node) => _graph.BoxFor(node.Id)?.GetNodeOrNull<Label>("Row/Warning")?.TooltipText ?? "?";
 
     static Button FindButton(Node root, string text)
         => SelfAndDescendants(root).OfType<Button>().FirstOrDefault(b => b.Text == text);

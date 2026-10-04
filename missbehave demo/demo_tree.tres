@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="BehaviorTree" format=3 uid="uid://codmii44vqrll"]
 
-[ext_resource type="Script" uid="uid://bltujy5uigex5" path="res://addons/missbehave/runtime/ABehaviorNode.cs" id="1_qobcg"]
+[ext_resource type="Script" uid="uid://bltujy5uigex5" path="res://addons/misscore/runtime/nodes/MissNode.cs" id="1_qobcg"]
 [ext_resource type="Script" uid="uid://coe1riq7exknh" path="res://addons/misscore/runtime/blackboard/BlackboardEntry.cs" id="1_rnnma"]
 [ext_resource type="Script" uid="uid://defsjwwnycjh1" path="res://demo/BtDemoPlayerNear.cs" id="2_rnnma"]
 [ext_resource type="Script" uid="uid://dfqp6r8c2266v" path="res://demo/BtDemoChase.cs" id="3_eu73x"]

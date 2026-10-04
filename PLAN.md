@@ -37,29 +37,37 @@ Actions und Conditions sind im Core definiert. Jedes Addon kann eigene mitliefer
 
 So lassen sich Dialoge und Quests aus Behavior Trees und Statemachines steuern, ohne dass diese Addons voneinander wissen.
 
-## Was in den Core wandert
+## Was im Core liegt
 
-Heute ist alles BT-spezifisch:
+- **Blackboard:** `Blackboard`, `BlackboardEntry`, `BbParam<T>`, `BbParams`, `BbTypes`, dazu `BbParamResource` als Basisklasse für jede Resource mit Parametern (Speichern, Inspector, Revert, Reload-Sicherung).
+- **Knoten:** `MissNode` als Basis von allem, was getickt wird, `ActionNode` und `ConditionNode` als Basis eigener Logik, `MissContext`, `MissStatus`, die vier Blackboard-Leaves sowie `[NodeName]` und `[NodeGroup]`.
+- **Editor:** `BlackboardPanel`, `BbParamEditorProperty`, `ReloadSafe`. Das Panel arbeitet auf `IBlackboardSource` und `IBbParamHost`.
 
-- `ActionNode` und `ConditionNode` sind BT-Knoten (`ALeafNode`) und liefern `BehaviorStatus`.
-- `BtContext` enthält neben `Actor`, `Blackboard` und `Delta` auch `BehaviorTreeInstance` und `BehaviorTreeRunner`.
+**Entscheidung:** Eine Action ist direkt ein Core-Knoten, es gibt keinen Wrapper und nur eine Art, Actions zu schreiben. `missbehave` enthält nur noch, was wirklich Behavior Tree ist: Composites, Decorators, Listen, Tree, Runner, Debugger und Editor. Der Preis war ein Breaking Change gegenüber missbehave 0.1.0:
 
-Für die Wiederverwendung muss getrennt werden, *was* getan wird und *wie* es eingebettet ist:
+| Vorher (`Missbehave`) | Jetzt (`Misscore`) |
+|---|---|
+| `ABehaviorNode` | `MissNode` |
+| `BehaviorStatus` | `MissStatus` |
+| `BtContext` | `MissContext` |
+| `ctx.Runner` (`BehaviorTreeRunner`) | `ctx.Runner` (`IMissRunner`: `Stop()`, `Enabled`), sonst `ctx.GetRunner<BehaviorTreeRunner>()` |
+| `ActionNode`, `ConditionNode`, `BbParam<T>` | gleiche Namen, anderer Namespace |
 
-- **Core:** Action und Condition als eigenständige Resources mit einem neutralen Kontext (`Actor`, `Blackboard`, `Delta`) und einem neutralen Ergebnis.
-- **Addon:** dünne Wrapper, die eine Core-Action einbetten – im BT als Leaf, in der FSM als State-Verhalten bzw. Transition-Bedingung.
+Gespeicherte Trees laden weiter, weil die Skripte ihre UIDs behalten haben.
 
-Offen ist, wie BT-spezifische Zugriffe (z. B. `Runner.Stop()` aus einer Action) über den neutralen Kontext erreichbar bleiben.
+Der Core kennt damit bewusst mehr als Daten: `Running`, `BeforeRun`/`AfterRun`/`Interrupt`, Kinder und eine Graph-Position gehören zum Knoten.
 
-Weitere Kandidaten aus `addons/missbehave`:
+Noch im BT-Addon, mögliche Kandidaten für später:
 
 | Heute | Anmerkung |
 |---|---|
-| `runtime/Blackboard.cs`, `runtime/blackboard/*` | Blackboard, `BbParam`, `BbTypes` |
 | `runtime/debug/DebugStream.cs`, `FrameThrottle.cs` | Debug-Transport, sofern nicht BT-spezifisch |
-| `editor/blackboard/*` | Blackboard-Panel und Parameter-Editor |
-| `editor/ReloadSafe.cs` | Reload-sichere Referenzen |
 | `editor/GraphNodeStyles.cs`, `NodeTypeRegistry.cs` | zu prüfen, wie viel davon generisch ist |
+
+Offen für Punkt 3:
+
+- `NodeTypeRegistry` bietet im BT-Picker jede `MissNode`-Subklasse an. Sobald die FSM eigene Knotentypen mitbringt, braucht der Picker eine Abgrenzung.
+- Das Inspector-Plugin von `missbehave` kümmert sich um die `BbParam` jedes `MissNode`. Ein zweites Addon mit eigenem Plugin würde demselben Parameter einen zweiten Editor geben.
 
 Der Core bekommt kein `plugin.cfg`. Als reine Bibliothek muss ihn niemand aktivieren; Editor-Widgets dürfen darin liegen, registriert werden sie vom jeweiligen Addon-Plugin.
 
@@ -86,7 +94,7 @@ Verworfen:
 ## Reihenfolge
 
 1. **Erledigt:** `misscore` anlegen und Blackboard samt Editor-Teilen aus `missbehave` dorthin verschieben. Selbsttests von `missbehave` laufen weiter.
-2. Action/Condition und Kontext im Core neutral definieren, `missbehave` auf Wrapper umstellen. Bestehende Trees und Nutzer-Actions müssen ladbar bleiben oder einen dokumentierten Migrationsweg bekommen. Dazu gehört auch die Parameter-Verdrahtung in `ABehaviorNode` (`_GetPropertyList`, `_Get`/`_Set`, Revert, Reload-Sicherung): Jeder weitere Parameter-Host braucht sie, sie liegt aber noch im BT-Knoten.
+2. **Umgesetzt, Editor-Prüfung offen:** Knoten-Basis, Actions, Conditions, Kontext und Status in den Core ziehen; `missbehave` behält nur, was Behavior Tree ist.
 3. `misstate` auf dem Core bauen. Erst hier zeigt sich, ob die Core-API wirklich neutral ist; Korrekturen am Core sind an dieser Stelle noch billig.
 4. Build-Skript für die Addon-Zips, danach erste gemeinsame Veröffentlichung von `missbehave` und `misstate`.
 5. `misspeak`, mit Actions und Conditions für BT und FSM.

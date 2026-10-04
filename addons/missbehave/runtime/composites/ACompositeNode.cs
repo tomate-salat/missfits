@@ -1,4 +1,5 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave;
 
@@ -7,17 +8,17 @@ namespace Missbehave;
 /// plain per-instance state on the runtime clone — no blackboard bookkeeping required.
 /// </summary>
 [GlobalClass, Tool]
-public abstract partial class ACompositeNode : ABehaviorNode {
+public abstract partial class ACompositeNode : MissNode {
     public override int MinChildren => 1;
     public override int MaxChildren => int.MaxValue;
-    public override string Category => BtCategory.Composite;
+    public override string Category => NodeCategory.Composite;
 
     /// <summary>Index of the child that returned Running last tick, or -1.</summary>
     protected int RunningChild { get; set; } = -1;
 
     protected override void OnCloned() => RunningChild = -1;
 
-    public override void Interrupt(BtContext ctx) {
+    public override void Interrupt(MissContext ctx) {
         ClearRunning(ctx);
     }
 
@@ -25,18 +26,18 @@ public abstract partial class ACompositeNode : ABehaviorNode {
     /// Ticks one child, calling <c>BeforeRun</c> unless it is the child we are resuming, and
     /// <c>AfterRun</c> once it finishes.
     /// </summary>
-    protected BehaviorStatus TickChild(int index, BtContext ctx) {
+    protected MissStatus TickChild(int index, MissContext ctx) {
         var child = Children[index];
-        if (child == null) return BehaviorStatus.Failure;
+        if (child == null) return MissStatus.Failure;
 
-        if (index != RunningChild) child.BeforeRunInternal(ctx);
-        var status = child.TickInternal(ctx);
-        if (status != BehaviorStatus.Running) child.AfterRun(ctx);
+        if (index != RunningChild) child.Begin(ctx);
+        var status = child.Execute(ctx);
+        if (status != MissStatus.Running) child.AfterRun(ctx);
         return status;
     }
 
     /// <summary>Abandons the child left mid-run, unless it is <paramref name="except"/>.</summary>
-    protected void ClearRunning(BtContext ctx, int except = -1) {
+    protected void ClearRunning(MissContext ctx, int except = -1) {
         if (RunningChild >= 0 && RunningChild != except && RunningChild < Children.Count) {
             Children[RunningChild]?.Interrupt(ctx);
         }
@@ -48,7 +49,7 @@ public abstract partial class ACompositeNode : ABehaviorNode {
     /// <paramref name="lastTickedIndex"/> already ran this tick and finished on its own, so only a
     /// running child beyond that point is stale and needs interrupting.
     /// </summary>
-    protected void InterruptStaleRunning(BtContext ctx, int lastTickedIndex) {
+    protected void InterruptStaleRunning(MissContext ctx, int lastTickedIndex) {
         if (RunningChild > lastTickedIndex && RunningChild < Children.Count) {
             Children[RunningChild]?.Interrupt(ctx);
         }

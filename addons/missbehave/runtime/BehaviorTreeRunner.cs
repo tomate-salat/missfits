@@ -15,7 +15,7 @@ namespace Missbehave;
 /// </para>
 /// </summary>
 [GlobalClass, Tool, Icon("res://addons/missbehave/icons/runner.svg")]
-public partial class BehaviorTreeRunner : Node, ISerializationListener {
+public partial class BehaviorTreeRunner : Node, ISerializationListener, IMissRunner {
     /// <summary>When the runner ticks its tree on its own.</summary>
     public enum ProcessThread {
         /// <summary>Once per rendered frame, in <c>_Process</c>, with a variable delta.</summary>
@@ -153,7 +153,7 @@ public partial class BehaviorTreeRunner : Node, ISerializationListener {
 
     public Blackboard Blackboard { get; private set; } = new();
     public BehaviorTreeInstance Instance { get; private set; }
-    public BehaviorStatus Status { get; private set; } = BehaviorStatus.Failure;
+    public MissStatus Status { get; private set; } = MissStatus.Failure;
 
     bool _enabled = true;
     bool _ticking;
@@ -312,8 +312,8 @@ public partial class BehaviorTreeRunner : Node, ISerializationListener {
     /// <see cref="ProcessThread.Manual"/>; tests drive it directly with an artificial delta.
     /// A stopped runner ignores the call and just reports its last status.
     /// </summary>
-    public BehaviorStatus Tick(double delta) {
-        if (Instance == null) return BehaviorStatus.Failure;
+    public MissStatus Tick(double delta) {
+        if (Instance == null) return MissStatus.Failure;
         if (!_enabled) return Status;
 
         var ctx = Context(delta);
@@ -321,9 +321,9 @@ public partial class BehaviorTreeRunner : Node, ISerializationListener {
 
         _ticking = true;
         var root = Instance.Root;
-        if (Status != BehaviorStatus.Running) root.BeforeRunInternal(ctx);
-        var status = root.TickInternal(ctx);
-        if (status != BehaviorStatus.Running) root.AfterRun(ctx);
+        if (Status != MissStatus.Running) root.Begin(ctx);
+        var status = root.Execute(ctx);
+        if (status != MissStatus.Running) root.AfterRun(ctx);
         _ticking = false;
 
         if (status != Status) {
@@ -344,14 +344,14 @@ public partial class BehaviorTreeRunner : Node, ISerializationListener {
     public void Interrupt() {
         if (Instance == null) return;
         Instance.Root.Interrupt(Context(0));
-        Status = BehaviorStatus.Failure;
+        Status = MissStatus.Failure;
     }
 
-    BtContext Context(double delta) => new() {
+    MissContext Context(double delta) => new() {
         Actor = Actor,
         Blackboard = Blackboard,
         Delta = delta,
-        Instance = Instance,
+        Observer = Instance,
         Runner = this,
     };
 

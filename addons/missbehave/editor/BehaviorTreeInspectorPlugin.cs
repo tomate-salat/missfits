@@ -21,7 +21,7 @@ public partial class BehaviorTreeInspectorPlugin : EditorInspectorPlugin {
 
     public void Attach(MissbehaveEditorPlugin plugin) => _plugin = plugin;
 
-    public override bool _CanHandle(GodotObject @object) => @object is BehaviorTree or ABehaviorNode;
+    public override bool _CanHandle(GodotObject @object) => @object is BehaviorTree or MissNode;
 
     public override void _ParseBegin(GodotObject @object) {
         _current = @object as BehaviorTree;
@@ -35,7 +35,7 @@ public partial class BehaviorTreeInspectorPlugin : EditorInspectorPlugin {
 
     public override bool _ParseProperty(GodotObject @object, Variant.Type type, string name, PropertyHint hintType,
         string hintString, PropertyUsageFlags usageFlags, bool wide) {
-        if (@object is not ABehaviorNode || hintString != BbParams.HintString) return false;
+        if (@object is not MissNode || hintString != BbParams.HintString) return false;
 
         var editor = new BbParamEditorProperty();
         editor.Attach(Plugin?.Blackboard);

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Misscore;
 
 namespace Missbehave;
 
@@ -7,14 +8,14 @@ namespace Missbehave;
 /// One runner's private copy of a <see cref="BehaviorTree"/>. Holds the cloned node graph and the
 /// per-frame status buffer the debugger streams.
 /// </summary>
-public sealed class BehaviorTreeInstance {
+public sealed class BehaviorTreeInstance : INodeObserver {
     public BehaviorTree Definition { get; }
 
     /// <summary>Root of the cloned tree. Ticking this is safe; ticking the definition is not.</summary>
-    public ABehaviorNode Root { get; }
+    public MissNode Root { get; }
 
-    /// <summary>Clones in pre-order, indexed by <see cref="ABehaviorNode.RuntimeIndex"/>.</summary>
-    public ABehaviorNode[] Flat { get; }
+    /// <summary>Clones in pre-order, indexed by <see cref="MissNode.RuntimeIndex"/>.</summary>
+    public MissNode[] Flat { get; }
 
     /// <summary>Runtime index to definition id. Sent once on register so the editor can map back.</summary>
     public string[] IdTable { get; }
@@ -26,7 +27,7 @@ public sealed class BehaviorTreeInstance {
 
     internal byte[] Frame { get; }
 
-    BehaviorTreeInstance(BehaviorTree definition, ABehaviorNode root, ABehaviorNode[] flat) {
+    BehaviorTreeInstance(BehaviorTree definition, MissNode root, MissNode[] flat) {
         Definition = definition;
         Root = root;
         Flat = flat;
@@ -52,14 +53,14 @@ public sealed class BehaviorTreeInstance {
         if (definition?.Root == null) return null;
 
         var root = definition.Root.CloneRuntime();
-        var flat = new List<ABehaviorNode>();
+        var flat = new List<MissNode>();
         BehaviorTree.Flatten(root, flat);
         return new BehaviorTreeInstance(definition, root, [.. flat]);
     }
 
-    internal void BeginFrame() => Array.Fill(Frame, BehaviorStatusExtensions.NotTicked);
+    internal void BeginFrame() => Array.Fill(Frame, MissStatusExtensions.NotTicked);
 
-    internal void Report(int index, BehaviorStatus status) {
+    public void Report(int index, MissStatus status) {
         if (index >= 0 && index < Frame.Length) Frame[index] = (byte) status;
     }
 }

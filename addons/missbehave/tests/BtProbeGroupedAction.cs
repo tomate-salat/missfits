@@ -1,4 +1,5 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave.Tests;
 
@@ -7,5 +8,5 @@ namespace Missbehave.Tests;
 [NodeGroup("Probes/Nested")]
 [NodeName("Grouped probe")]
 public partial class BtProbeGroupedAction : ActionNode {
-    protected override BehaviorStatus Run(BtContext ctx) => BehaviorStatus.Success;
+    protected override MissStatus Run(MissContext ctx) => MissStatus.Success;
 }

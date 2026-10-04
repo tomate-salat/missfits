@@ -1,4 +1,5 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave;
 
@@ -13,7 +14,7 @@ public abstract partial class ARandomizedCompositeNode : ACompositeNode {
     public int RandomSeed { get; set; }
 
     /// <summary>
-    /// Optional per-child weights, aligned with <see cref="ABehaviorNode.Children"/>. A child with
+    /// Optional per-child weights, aligned with <see cref="MissNode.Children"/>. A child with
     /// twice the weight is roughly twice as likely to come up first. Ignored unless the array has
     /// exactly one entry per child.
     /// </summary>
@@ -28,7 +29,7 @@ public abstract partial class ARandomizedCompositeNode : ACompositeNode {
 
     RandomNumberGenerator _rng;
 
-    public override void BeforeRun(BtContext ctx) {
+    public override void BeforeRun(MissContext ctx) {
         Shuffle();
         Slot = 0;
     }
@@ -40,7 +41,7 @@ public abstract partial class ARandomizedCompositeNode : ACompositeNode {
         Slot = 0;
     }
 
-    public override void Interrupt(BtContext ctx) {
+    public override void Interrupt(MissContext ctx) {
         Slot = 0;
         base.Interrupt(ctx);
     }

@@ -1,4 +1,5 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave.Demo;
 
@@ -17,15 +18,15 @@ public partial class BtDemoChase : ActionNode {
 
     public override string GetSummary() => $"{Speed:0.#} m/s, stop at {StopDistance:0.#}m";
 
-    protected override BehaviorStatus Run(BtContext ctx) {
-        if (ctx.Actor is not Node3D actor) return BehaviorStatus.Failure;
+    protected override MissStatus Run(MissContext ctx) {
+        if (ctx.Actor is not Node3D actor) return MissStatus.Failure;
         var player = BtDemoWorld.Player(actor);
-        if (player == null) return BehaviorStatus.Failure;
+        if (player == null) return MissStatus.Failure;
 
         var toPlayer = player.GlobalPosition - actor.GlobalPosition;
-        if (toPlayer.Length() <= StopDistance) return BehaviorStatus.Success;
+        if (toPlayer.Length() <= StopDistance) return MissStatus.Success;
 
         actor.GlobalPosition += toPlayer.Normalized() * Speed * (float) ctx.Delta;
-        return BehaviorStatus.Running;
+        return MissStatus.Running;
     }
 }

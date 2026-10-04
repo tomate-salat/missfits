@@ -1,4 +1,5 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave.Demo;
 
@@ -10,7 +11,7 @@ public partial class BtDemoPlayerNear : ConditionNode {
 
     public override string GetSummary() => $"player within {Range:0.#}m";
 
-    protected override bool Check(BtContext ctx) {
+    protected override bool Check(MissContext ctx) {
         if (ctx.Actor is not Node3D actor) return false;
         var player = BtDemoWorld.Player(actor);
         if (player == null) return false;

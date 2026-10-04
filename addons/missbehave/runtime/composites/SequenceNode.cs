@@ -1,4 +1,5 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave;
 
@@ -9,23 +10,23 @@ namespace Missbehave;
 /// </summary>
 [GlobalClass, Tool, Icon("res://addons/missbehave/icons/sequence.svg")]
 public partial class SequenceNode : ACompositeNode {
-    protected override BehaviorStatus Tick(BtContext ctx) {
+    protected override MissStatus Tick(MissContext ctx) {
         var start = RunningChild < 0 ? 0 : RunningChild;
 
         for (var i = start; i < Children.Count; i++) {
             var status = TickChild(i, ctx);
 
-            if (status == BehaviorStatus.Running) {
+            if (status == MissStatus.Running) {
                 RunningChild = i;
-                return BehaviorStatus.Running;
+                return MissStatus.Running;
             }
-            if (status == BehaviorStatus.Failure) {
+            if (status == MissStatus.Failure) {
                 RunningChild = -1;
-                return BehaviorStatus.Failure;
+                return MissStatus.Failure;
             }
         }
 
         RunningChild = -1;
-        return BehaviorStatus.Success;
+        return MissStatus.Success;
     }
 }

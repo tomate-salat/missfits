@@ -2,11 +2,12 @@
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using Misscore;
 
 namespace Missbehave.Editor;
 
 /// <summary>One wire the running tree went through on its last tick, from parent box to child box.</summary>
-public readonly record struct LiveFlow(string From, string To, BehaviorStatus Status);
+public readonly record struct LiveFlow(string From, string To, MissStatus Status);
 
 /// <summary>
 /// Paints the wires the running tree went through on its last tick in the colour of the box they
@@ -44,7 +45,7 @@ public partial class ConnectionFlowOverlay : Control {
     public IReadOnlyList<LiveFlow> Flows {
         get {
             var flows = new List<LiveFlow>(FlowCount);
-            for (var i = 0; i < FlowCount; i++) flows.Add(new LiveFlow(_from[i], _to[i], (BehaviorStatus) _status[i]));
+            for (var i = 0; i < FlowCount; i++) flows.Add(new LiveFlow(_from[i], _to[i], (MissStatus) _status[i]));
             return flows;
         }
     }
@@ -63,7 +64,7 @@ public partial class ConnectionFlowOverlay : Control {
     public bool Animating {
         get {
             for (var i = 0; i < FlowCount; i++) {
-                if (_status[i] == (int) BehaviorStatus.Running) return true;
+                if (_status[i] == (int) MissStatus.Running) return true;
             }
             return false;
         }
@@ -128,7 +129,7 @@ public partial class ConnectionFlowOverlay : Control {
             DrawPolyline(line, color, thickness + 1f, antialiased: true);
             // Only a running child moves; a finished one is already fully told by its colour. The dots
             // are lighter than the wire, otherwise they would vanish into it.
-            if (flow.Status == BehaviorStatus.Running) DrawDots(line, color.Lightened(0.6f), zoom, thickness);
+            if (flow.Status == MissStatus.Running) DrawDots(line, color.Lightened(0.6f), zoom, thickness);
         }
     }
 

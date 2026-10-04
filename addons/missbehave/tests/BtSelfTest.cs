@@ -54,6 +54,7 @@ public partial class BtSelfTest : Node {
 
         // runner
         ALeafCanStopItsRunner();
+        LeavesRunWithoutABehaviorTree();
 
         // live debugging
         FrameThrottleSuppressesRepeatsButNotAfterASwitch();
@@ -75,54 +76,54 @@ public partial class BtSelfTest : Node {
 
     void SequenceStopsAtFirstFailure() {
         var run = Run(Node<SequenceNode>(
-            Probe(BehaviorStatus.Success),
-            Probe(BehaviorStatus.Failure),
-            Probe(BehaviorStatus.Success)));
+            Probe(MissStatus.Success),
+            Probe(MissStatus.Failure),
+            Probe(MissStatus.Success)));
 
-        Check("sequence fails at first failure", run.Tick() == BehaviorStatus.Failure);
+        Check("sequence fails at first failure", run.Tick() == MissStatus.Failure);
         Check("sequence skips children after the failure", run.Probe(3).Ticks == 0);
     }
 
     void SelectorStopsAtFirstSuccess() {
         var run = Run(Node<SelectorNode>(
-            Probe(BehaviorStatus.Failure),
-            Probe(BehaviorStatus.Success),
-            Probe(BehaviorStatus.Success)));
+            Probe(MissStatus.Failure),
+            Probe(MissStatus.Success),
+            Probe(MissStatus.Success)));
 
-        Check("selector succeeds at first success", run.Tick() == BehaviorStatus.Success);
+        Check("selector succeeds at first success", run.Tick() == MissStatus.Success);
         Check("selector skips children after the success", run.Probe(3).Ticks == 0);
     }
 
     void RunningChildIsResumedNotRestarted() {
         var run = Run(Node<SequenceNode>(
-            Probe(BehaviorStatus.Success),
-            Probe(BehaviorStatus.Success, runningTicks: 2)));
+            Probe(MissStatus.Success),
+            Probe(MissStatus.Success, runningTicks: 2)));
 
-        Check("running child reports Running", run.Tick() == BehaviorStatus.Running);
+        Check("running child reports Running", run.Tick() == MissStatus.Running);
         run.Tick();
         Check("resuming does not re-tick earlier children", run.Probe(1).Ticks == 1);
         Check("resuming does not call BeforeRun again", run.Probe(2).BeforeRuns == 1);
-        Check("sequence completes once the child finishes", run.Tick() == BehaviorStatus.Success);
+        Check("sequence completes once the child finishes", run.Tick() == MissStatus.Success);
     }
 
     void ReactiveSelectorPreemptsLowerPriority() {
         var run = Run(Node<SelectorReactiveNode>(
-            Probe(BehaviorStatus.Failure),
-            Probe(BehaviorStatus.Success, runningTicks: 10)));
+            Probe(MissStatus.Failure),
+            Probe(MissStatus.Success, runningTicks: 10)));
 
-        Check("reactive selector falls through to the running branch", run.Tick() == BehaviorStatus.Running);
+        Check("reactive selector falls through to the running branch", run.Tick() == MissStatus.Running);
 
         // the high-priority branch becomes viable
-        run.Probe(1).Result = BehaviorStatus.Success;
+        run.Probe(1).Result = MissStatus.Success;
 
-        Check("reactive selector switches branch", run.Tick() == BehaviorStatus.Success);
+        Check("reactive selector switches branch", run.Tick() == MissStatus.Success);
         Check("reactive selector interrupts the preempted branch", run.Probe(2).Interrupts == 1);
     }
 
     void ReactiveSequenceRechecksEarlierChildren() {
         var run = Run(Node<SequenceReactiveNode>(
-            Probe(BehaviorStatus.Success),
-            Probe(BehaviorStatus.Success, runningTicks: 10)));
+            Probe(MissStatus.Success),
+            Probe(MissStatus.Success, runningTicks: 10)));
 
         run.Tick();
         Check("reactive sequence re-ticks the guard", run.Probe(1).Ticks == 1);
@@ -130,35 +131,35 @@ public partial class BtSelfTest : Node {
         Check("reactive sequence re-ticks the guard every tick", run.Probe(1).BeforeRuns == 2);
 
         // the guard stops holding
-        run.Probe(1).Result = BehaviorStatus.Failure;
+        run.Probe(1).Result = MissStatus.Failure;
 
-        Check("reactive sequence fails when the guard fails", run.Tick() == BehaviorStatus.Failure);
+        Check("reactive sequence fails when the guard fails", run.Tick() == MissStatus.Failure);
         Check("reactive sequence interrupts the running action", run.Probe(2).Interrupts == 1);
     }
 
     void SequenceStarResumesAtTheFailedChild() {
         var run = Run(Node<SequenceStarNode>(
-            Probe(BehaviorStatus.Success),
-            Probe(BehaviorStatus.Failure)));
+            Probe(MissStatus.Success),
+            Probe(MissStatus.Failure)));
 
-        Check("sequence star reports the failure", run.Tick() == BehaviorStatus.Failure);
+        Check("sequence star reports the failure", run.Tick() == MissStatus.Failure);
         run.Tick();
         Check("sequence star does not re-run completed children", run.Probe(1).Ticks == 1);
         Check("sequence star retries the failed child", run.Probe(2).Ticks == 1);
 
-        run.Probe(2).Result = BehaviorStatus.Success;
-        Check("sequence star completes once the child succeeds", run.Tick() == BehaviorStatus.Success);
+        run.Probe(2).Result = MissStatus.Success;
+        Check("sequence star completes once the child succeeds", run.Tick() == MissStatus.Success);
     }
 
     void RandomSequenceRunsEveryChildOnce() {
         var root = Node<SequenceRandomNode>(
-            Probe(BehaviorStatus.Success),
-            Probe(BehaviorStatus.Success),
-            Probe(BehaviorStatus.Success));
+            Probe(MissStatus.Success),
+            Probe(MissStatus.Success),
+            Probe(MissStatus.Success));
         ((SequenceRandomNode) root).RandomSeed = 12345;
         var run = Run(root);
 
-        Check("random sequence succeeds when all children succeed", run.Tick() == BehaviorStatus.Success);
+        Check("random sequence succeeds when all children succeed", run.Tick() == MissStatus.Success);
         var ticked = 0;
         for (var i = 1; i <= 3; i++) ticked += run.Probe(i).Ticks;
         Check("random sequence runs each child exactly once", ticked == 3);
@@ -166,12 +167,12 @@ public partial class BtSelfTest : Node {
 
     void SimpleParallelReportsPrimaryAndCutsSecondary() {
         var run = Run(Node<SimpleParallelNode>(
-            Probe(BehaviorStatus.Success, runningTicks: 1),
-            Probe(BehaviorStatus.Success, runningTicks: 10)));
+            Probe(MissStatus.Success, runningTicks: 1),
+            Probe(MissStatus.Success, runningTicks: 10)));
 
-        Check("parallel runs while the primary runs", run.Tick() == BehaviorStatus.Running);
+        Check("parallel runs while the primary runs", run.Tick() == MissStatus.Running);
         Check("parallel ticks the secondary too", run.Probe(2).Ticks == 1);
-        Check("parallel reports the primary result", run.Tick() == BehaviorStatus.Success);
+        Check("parallel reports the primary result", run.Tick() == MissStatus.Success);
         Check("parallel interrupts the secondary", run.Probe(2).Interrupts == 1);
     }
 
@@ -182,23 +183,23 @@ public partial class BtSelfTest : Node {
         anyOf.Mode = ListMode.Selector;
         var run = Run(anyOf);
         Check("a condition list in selector mode succeeds at the first condition that holds",
-            run.Tick() == BehaviorStatus.Success && ((BtProbeCondition) run.Instance.Flat[3]).Checks == 0);
+            run.Tick() == MissStatus.Success && ((BtProbeCondition) run.Instance.Flat[3]).Checks == 0);
         Check("the entries of a list report their own status to the debugger",
-            run.Instance.Frame[1] == (byte) BehaviorStatus.Failure && run.Instance.Frame[2] == (byte) BehaviorStatus.Success
-            && run.Instance.Frame[3] == BehaviorStatusExtensions.NotTicked);
+            run.Instance.Frame[1] == (byte) MissStatus.Failure && run.Instance.Frame[2] == (byte) MissStatus.Success
+            && run.Instance.Frame[3] == MissStatusExtensions.NotTicked);
         Check("the debugger maps list entries back to their definitions",
             run.Instance.IdTable[2] == anyOf.Children[1].Id && run.Instance.ParentTable[2] == 0);
 
         var allOf = Run(Node<ConditionListNode>(Holds(true), Holds(false), Holds(true)));
         Check("a condition list in sequence mode fails at the first condition that does not hold",
-            allOf.Tick() == BehaviorStatus.Failure && ((BtProbeCondition) allOf.Instance.Flat[3]).Checks == 0);
+            allOf.Tick() == MissStatus.Failure && ((BtProbeCondition) allOf.Instance.Flat[3]).Checks == 0);
 
-        var actions = Run(Node<ActionListNode>(Probe(BehaviorStatus.Success), Probe(BehaviorStatus.Success, runningTicks: 1)));
-        Check("an action list reports a running action", actions.Tick() == BehaviorStatus.Running);
+        var actions = Run(Node<ActionListNode>(Probe(MissStatus.Success), Probe(MissStatus.Success, runningTicks: 1)));
+        Check("an action list reports a running action", actions.Tick() == MissStatus.Running);
         Check("an action list resumes the running action instead of starting over",
-            actions.Tick() == BehaviorStatus.Success && actions.Probe(1).Ticks == 1 && actions.Probe(2).BeforeRuns == 1);
+            actions.Tick() == MissStatus.Success && actions.Probe(1).Ticks == 1 && actions.Probe(2).BeforeRuns == 1);
 
-        var mixed = Node<ConditionListNode>(Holds(true), Probe(BehaviorStatus.Success));
+        var mixed = Node<ConditionListNode>(Holds(true), Probe(MissStatus.Success));
         Check("a list warns about an entry of the wrong kind",
             mixed.GetConfigurationWarnings().Any(w => w.Contains("not a ConditionNode")));
     }
@@ -210,83 +211,83 @@ public partial class BtSelfTest : Node {
     }
 
     void InverterFlipsResult() {
-        var failing = Run(Node<InverterNode>(Probe(BehaviorStatus.Failure)));
-        var succeeding = Run(Node<InverterNode>(Probe(BehaviorStatus.Success)));
+        var failing = Run(Node<InverterNode>(Probe(MissStatus.Failure)));
+        var succeeding = Run(Node<InverterNode>(Probe(MissStatus.Success)));
 
-        Check("inverter turns Failure into Success", failing.Tick() == BehaviorStatus.Success);
-        Check("inverter turns Success into Failure", succeeding.Tick() == BehaviorStatus.Failure);
+        Check("inverter turns Failure into Success", failing.Tick() == MissStatus.Success);
+        Check("inverter turns Success into Failure", succeeding.Tick() == MissStatus.Failure);
     }
 
     void FailerAndSucceederOverrideResult() {
-        var failer = Run(Node<FailerNode>(Probe(BehaviorStatus.Success)));
-        var succeeder = Run(Node<SucceederNode>(Probe(BehaviorStatus.Failure)));
+        var failer = Run(Node<FailerNode>(Probe(MissStatus.Success)));
+        var succeeder = Run(Node<SucceederNode>(Probe(MissStatus.Failure)));
 
-        Check("failer reports Failure", failer.Tick() == BehaviorStatus.Failure);
-        Check("succeeder reports Success", succeeder.Tick() == BehaviorStatus.Success);
+        Check("failer reports Failure", failer.Tick() == MissStatus.Failure);
+        Check("succeeder reports Success", succeeder.Tick() == MissStatus.Success);
     }
 
     void UntilFailLoopsWhileChildSucceeds() {
-        var run = Run(Node<UntilFailNode>(Probe(BehaviorStatus.Success)));
+        var run = Run(Node<UntilFailNode>(Probe(MissStatus.Success)));
 
-        Check("until-fail keeps running on Success", run.Tick() == BehaviorStatus.Running);
-        run.Probe(1).Result = BehaviorStatus.Failure;
-        Check("until-fail succeeds on Failure", run.Tick() == BehaviorStatus.Success);
+        Check("until-fail keeps running on Success", run.Tick() == MissStatus.Running);
+        run.Probe(1).Result = MissStatus.Failure;
+        Check("until-fail succeeds on Failure", run.Tick() == MissStatus.Success);
     }
 
     void RepeaterCountsSuccesses() {
-        var root = Node<RepeaterNode>(Probe(BehaviorStatus.Success));
+        var root = Node<RepeaterNode>(Probe(MissStatus.Success));
         ((RepeaterNode) root).Repetitions = 3;
         var run = Run(root);
 
-        Check("repeater runs again after the 1st success", run.Tick() == BehaviorStatus.Running);
-        Check("repeater runs again after the 2nd success", run.Tick() == BehaviorStatus.Running);
-        Check("repeater succeeds after the last repetition", run.Tick() == BehaviorStatus.Success);
+        Check("repeater runs again after the 1st success", run.Tick() == MissStatus.Running);
+        Check("repeater runs again after the 2nd success", run.Tick() == MissStatus.Running);
+        Check("repeater succeeds after the last repetition", run.Tick() == MissStatus.Success);
         Check("repeater ran the child once per repetition", run.Probe(1).BeforeRuns == 3);
     }
 
     void LimiterCutsOffALongRunningChild() {
-        var root = Node<LimiterNode>(Probe(BehaviorStatus.Success, runningTicks: 10));
+        var root = Node<LimiterNode>(Probe(MissStatus.Success, runningTicks: 10));
         ((LimiterNode) root).MaxTicks = 2;
         var run = Run(root);
 
-        Check("limiter passes the 1st tick through", run.Tick() == BehaviorStatus.Running);
-        Check("limiter passes the 2nd tick through", run.Tick() == BehaviorStatus.Running);
-        Check("limiter fails once the budget is spent", run.Tick() == BehaviorStatus.Failure);
+        Check("limiter passes the 1st tick through", run.Tick() == MissStatus.Running);
+        Check("limiter passes the 2nd tick through", run.Tick() == MissStatus.Running);
+        Check("limiter fails once the budget is spent", run.Tick() == MissStatus.Failure);
         Check("limiter interrupts the child it cut off", run.Probe(1).Interrupts == 1);
     }
 
     void TimeLimiterCutsOffAfterWaitTime() {
-        var root = Node<TimeLimiterNode>(Probe(BehaviorStatus.Success, runningTicks: 10));
+        var root = Node<TimeLimiterNode>(Probe(MissStatus.Success, runningTicks: 10));
         ((TimeLimiterNode) root).WaitTime = Step * 2;
         var run = Run(root);
 
-        Check("time limiter allows the child within budget", run.Tick(Step) == BehaviorStatus.Running);
+        Check("time limiter allows the child within budget", run.Tick(Step) == MissStatus.Running);
         run.Tick(Step);
-        Check("time limiter fails once the time is up", run.Tick(Step) == BehaviorStatus.Failure);
+        Check("time limiter fails once the time is up", run.Tick(Step) == MissStatus.Failure);
         Check("time limiter interrupts the child it cut off", run.Probe(1).Interrupts == 1);
     }
 
     void DelayerHoldsTheChildBack() {
-        var root = Node<DelayerNode>(Probe(BehaviorStatus.Success));
+        var root = Node<DelayerNode>(Probe(MissStatus.Success));
         ((DelayerNode) root).WaitTime = Step * 2;
         var run = Run(root);
 
-        Check("delayer runs while waiting", run.Tick(Step) == BehaviorStatus.Running);
+        Check("delayer runs while waiting", run.Tick(Step) == MissStatus.Running);
         run.Tick(Step);
         Check("delayer did not touch the child yet", run.Probe(1).Ticks == 0);
-        Check("delayer releases the child after the wait", run.Tick(Step) == BehaviorStatus.Success);
+        Check("delayer releases the child after the wait", run.Tick(Step) == MissStatus.Success);
         Check("delayer ran the child once", run.Probe(1).Ticks == 1);
     }
 
     void CooldownBlocksAfterTheChildFinished() {
-        var root = Node<CooldownNode>(Probe(BehaviorStatus.Success));
+        var root = Node<CooldownNode>(Probe(MissStatus.Success));
         ((CooldownNode) root).WaitTime = Step * 2;
         var run = Run(root);
 
-        Check("cooldown lets the first run through", run.Tick(Step) == BehaviorStatus.Success);
-        Check("cooldown blocks right after", run.Tick(Step) == BehaviorStatus.Failure);
-        Check("cooldown still blocks", run.Tick(Step) == BehaviorStatus.Failure);
-        Check("cooldown reopens after the wait", run.Tick(Step) == BehaviorStatus.Success);
+        Check("cooldown lets the first run through", run.Tick(Step) == MissStatus.Success);
+        Check("cooldown blocks right after", run.Tick(Step) == MissStatus.Failure);
+        Check("cooldown still blocks", run.Tick(Step) == MissStatus.Failure);
+        Check("cooldown reopens after the wait", run.Tick(Step) == MissStatus.Success);
     }
 
     // ---- blackboard --------------------------------------------------------------------------
@@ -310,7 +311,7 @@ public partial class BtSelfTest : Node {
         tree.Blackboard.Add(ammo);
         var run = new TreeRun(tree);
 
-        Check("blackboard leaves chain to Success", run.Tick() == BehaviorStatus.Success);
+        Check("blackboard leaves chain to Success", run.Tick() == MissStatus.Success);
         Check("the written value is readable by the entry's name", run.Board.Get<int>("ammo") == 3);
         Check("summaries name the linked entry", set.GetSummary() == "ammo = 3" && compare.GetSummary() == "ammo >= 3.0");
 
@@ -455,7 +456,7 @@ public partial class BtSelfTest : Node {
         Check("parameters are restored after a reload", probe.Speed.Literal == 6f && probe.Speed.EntryId == "abc");
 
         // A runner in an open scene reloads too; its tree travels untyped and is picked up on first use.
-        var tree = Tree(Node<SequenceNode>(Probe(BehaviorStatus.Success)));
+        var tree = Tree(Node<SequenceNode>(Probe(MissStatus.Success)));
         var runner = new BehaviorTreeRunner { Tree = tree };
         runner.OnBeforeSerialize();
         // The generated save reads the Tree property first, then the fields. Reading it must not pull
@@ -574,6 +575,25 @@ public partial class BtSelfTest : Node {
     // ---- runner ------------------------------------------------------------------------------
 
     /// <summary>
+    /// Actions and conditions belong to the core: anything that hands them a context can run them —
+    /// a state machine as much as a tree. No tree, no instance and no runner here.
+    /// </summary>
+    void LeavesRunWithoutABehaviorTree() {
+        var ctx = new MissContext { Blackboard = new Blackboard(), Delta = Step };
+
+        var action = (BtProbeAction) Probe(MissStatus.Success, runningTicks: 1).CloneRuntime();
+        action.Begin(ctx);
+        Check("an action runs with nothing but a context",
+            action.Execute(ctx) == MissStatus.Running && action.Execute(ctx) == MissStatus.Success);
+        action.AfterRun(ctx);
+        Check("with the same hooks a tree calls", action.BeforeRuns == 1 && action.AfterRuns == 1);
+
+        var condition = (BtProbeCondition) new BtProbeCondition().CloneRuntime();
+        condition.Begin(ctx);
+        Check("a condition is checked the same way", condition.Execute(ctx) != MissStatus.Running);
+        Check("without a runner, a node asking for one gets null", ctx.GetRunner<BehaviorTreeRunner>() == null);
+    }
+    /// <summary>
     /// A leaf stopping the tree from inside its own tick: the tick has to finish normally — the
     /// sibling after it still runs — and only then is the tree interrupted and switched off.
     /// </summary>
@@ -581,7 +601,7 @@ public partial class BtSelfTest : Node {
         var stopper = new BtProbeStopAction();
         stopper.EnsureId();
         var runner = new BehaviorTreeRunner {
-            Tree = Tree(Node<SequenceNode>(stopper, Probe(BehaviorStatus.Success, runningTicks: 10))),
+            Tree = Tree(Node<SequenceNode>(stopper, Probe(MissStatus.Success, runningTicks: 10))),
             Thread = BehaviorTreeRunner.ProcessThread.Manual,
         };
         AddChild(runner);
@@ -593,7 +613,7 @@ public partial class BtSelfTest : Node {
         Check("a leaf sees its runner through the context", ReferenceEquals(stopClone.SeenRunner, runner));
         Check("stopping from a leaf disables the runner", !runner.Enabled);
         // The probe zeroes Ticks when interrupted, so BeforeRuns is what proves it was reached.
-        Check("the stopping tick still runs to its end", running.BeforeRuns == 1 && status == BehaviorStatus.Failure);
+        Check("the stopping tick still runs to its end", running.BeforeRuns == 1 && status == MissStatus.Failure);
         Check("the running branch is interrupted after the tick", running.Interrupts == 1);
 
         runner.Tick(Step);
@@ -640,7 +660,7 @@ public partial class BtSelfTest : Node {
         ulong now = 1000;
         var stream = new DebugStream((message, data) => sent.Add((message, data)), () => now);
 
-        var tree = Tree(Node<SequenceNode>(Probe(BehaviorStatus.Success, runningTicks: 100)));
+        var tree = Tree(Node<SequenceNode>(Probe(MissStatus.Success, runningTicks: 100)));
         tree.ResourcePath = "res://missbehave_debug_stream_probe.tres";
         var first = new BehaviorTreeRunner { Tree = tree, Thread = BehaviorTreeRunner.ProcessThread.Manual };
         var second = new BehaviorTreeRunner { Tree = tree, Thread = BehaviorTreeRunner.ProcessThread.Manual };
@@ -708,7 +728,7 @@ public partial class BtSelfTest : Node {
     // ---- instance isolation ------------------------------------------------------------------
 
     void DefinitionIsNeverMutatedByTicking() {
-        var leaf = Probe(BehaviorStatus.Success);
+        var leaf = Probe(MissStatus.Success);
         var root = Node<SequenceNode>(leaf);
         var run = Run(root);
         run.Tick();
@@ -721,8 +741,8 @@ public partial class BtSelfTest : Node {
 
     void TwoInstancesOfOneDefinitionAreIndependent() {
         var definition = Tree(Node<SequenceNode>(
-            Probe(BehaviorStatus.Success, runningTicks: 3),
-            Probe(BehaviorStatus.Success)));
+            Probe(MissStatus.Success, runningTicks: 3),
+            Probe(MissStatus.Success)));
 
         var left = new TreeRun(definition);
         var right = new TreeRun(definition);
@@ -749,7 +769,7 @@ public partial class BtSelfTest : Node {
     }
 
     void ResourceRoundTripKeepsStructure() {
-        var leaf = Probe(BehaviorStatus.Failure);
+        var leaf = Probe(MissStatus.Failure);
         leaf.GraphPosition = new Vector2(120, 40);
         var root = Node<SelectorNode>(leaf);
         root.GraphPosition = new Vector2(60, -40);
@@ -772,7 +792,7 @@ public partial class BtSelfTest : Node {
         Check("graph positions survive", reloaded.Root.GraphPosition == root.GraphPosition
                                          && reloaded.Root.Children[0].GraphPosition == leaf.GraphPosition);
         Check("exported leaf parameters survive",
-            reloaded.Root.Children[0] is BtProbeAction probe && probe.Result == BehaviorStatus.Failure);
+            reloaded.Root.Children[0] is BtProbeAction probe && probe.Result == MissStatus.Failure);
     }
 
     /// <summary>
@@ -818,43 +838,43 @@ public partial class BtSelfTest : Node {
         public readonly BehaviorTreeInstance Instance;
         public readonly Blackboard Board = new();
 
-        BehaviorStatus _status = BehaviorStatus.Failure;
+        MissStatus _status = MissStatus.Failure;
 
         public TreeRun(BehaviorTree tree) {
             Instance = BehaviorTreeInstance.Create(tree);
             Board.Declare(tree?.Blackboard);
         }
 
-        public BehaviorStatus Tick(double delta = Step) {
+        public MissStatus Tick(double delta = Step) {
             Instance.BeginFrame();
-            var ctx = new BtContext { Blackboard = Board, Delta = delta, Instance = Instance };
+            var ctx = new MissContext { Blackboard = Board, Delta = delta, Observer = Instance };
 
             var root = Instance.Root;
-            if (_status != BehaviorStatus.Running) root.BeforeRunInternal(ctx);
-            _status = root.TickInternal(ctx);
-            if (_status != BehaviorStatus.Running) root.AfterRun(ctx);
+            if (_status != MissStatus.Running) root.Begin(ctx);
+            _status = root.Execute(ctx);
+            if (_status != MissStatus.Running) root.AfterRun(ctx);
             return _status;
         }
 
         public BtProbeAction Probe(int runtimeIndex) => (BtProbeAction) Instance.Flat[runtimeIndex];
     }
 
-    static TreeRun Run(ABehaviorNode root) => new(Tree(root));
+    static TreeRun Run(MissNode root) => new(Tree(root));
 
-    static BtProbeAction Probe(BehaviorStatus result, int runningTicks = 0) {
+    static BtProbeAction Probe(MissStatus result, int runningTicks = 0) {
         var probe = new BtProbeAction { Result = result, RunningTicks = runningTicks };
         probe.EnsureId();
         return probe;
     }
 
-    static T Node<T>(params ABehaviorNode[] children) where T : ABehaviorNode, new() {
+    static T Node<T>(params MissNode[] children) where T : MissNode, new() {
         var node = new T();
         node.EnsureId();
         foreach (var child in children) node.Children.Add(child);
         return node;
     }
 
-    static BehaviorTree Tree(ABehaviorNode root) => new() { Root = root };
+    static BehaviorTree Tree(MissNode root) => new() { Root = root };
 
     static string ReadText(string path) {
         using var file = FileAccess.Open(path, FileAccess.ModeFlags.Read);

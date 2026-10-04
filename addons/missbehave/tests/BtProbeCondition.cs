@@ -1,4 +1,5 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave.Tests;
 
@@ -10,7 +11,7 @@ public partial class BtProbeCondition : ConditionNode {
 
     public int Checks;
 
-    protected override bool Check(BtContext ctx) {
+    protected override bool Check(MissContext ctx) {
         Checks++;
         return Holds;
     }

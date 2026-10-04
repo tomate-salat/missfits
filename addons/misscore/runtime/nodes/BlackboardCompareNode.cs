@@ -1,7 +1,6 @@
 using Godot;
-using Misscore;
 
-namespace Missbehave;
+namespace Misscore;
 
 /// <summary>Compares two values, each either fixed or read from a blackboard entry.</summary>
 [GlobalClass, Tool, Icon("res://addons/misscore/icons/blackboard.svg")]
@@ -24,7 +23,7 @@ public partial class BlackboardCompareNode : ConditionNode {
 
     public override string GetSummary() => $"{Left} {Symbol()} {Right}";
 
-    protected override bool Check(BtContext ctx) {
+    protected override bool Check(MissContext ctx) {
         // An erased entry compares as nothing at all rather than as its fallback value.
         if (Left.IsLinked && ctx.Blackboard?.HasId(Left.EntryId) != true) return false;
         if (Right.IsLinked && ctx.Blackboard?.HasId(Right.EntryId) != true) return false;

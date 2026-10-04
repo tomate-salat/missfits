@@ -1,4 +1,5 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave.Tests;
 
@@ -7,9 +8,9 @@ namespace Missbehave.Tests;
 public partial class BtProbeStopAction : ActionNode {
     public BehaviorTreeRunner SeenRunner { get; private set; }
 
-    protected override BehaviorStatus Run(BtContext ctx) {
-        SeenRunner = ctx.Runner;
+    protected override MissStatus Run(MissContext ctx) {
+        SeenRunner = ctx.GetRunner<BehaviorTreeRunner>();
         ctx.Runner?.Stop();
-        return BehaviorStatus.Success;
+        return MissStatus.Success;
     }
 }

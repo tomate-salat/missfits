@@ -1,4 +1,5 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave.Tests;
 
@@ -8,5 +9,5 @@ public partial class BtProbeAssetUser : ActionNode {
     [Export]
     public BtProbeAsset Asset { get; set; }
 
-    protected override BehaviorStatus Run(BtContext ctx) => BehaviorStatus.Success;
+    protected override MissStatus Run(MissContext ctx) => MissStatus.Success;
 }

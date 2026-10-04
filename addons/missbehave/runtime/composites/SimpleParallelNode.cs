@@ -1,4 +1,5 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave;
 
@@ -25,30 +26,30 @@ public partial class SimpleParallelNode : ACompositeNode {
 
     bool _primaryRunning;
     bool _primaryFinished;
-    BehaviorStatus _primaryResult = BehaviorStatus.Success;
+    MissStatus _primaryResult = MissStatus.Success;
     bool _secondaryRunning;
     int _secondaryRepeatsLeft;
 
     public override string GetSummary() => DelayMode ? "parallel (delayed)" : "parallel";
 
-    public override void BeforeRun(BtContext ctx) {
+    public override void BeforeRun(MissContext ctx) {
         _secondaryRepeatsLeft = SecondaryRepeatCount;
         Reset();
     }
 
-    public override void AfterRun(BtContext ctx) => Reset();
+    public override void AfterRun(MissContext ctx) => Reset();
 
-    protected override BehaviorStatus Tick(BtContext ctx) {
-        if (Children.Count < 2 || Children[0] == null || Children[1] == null) return BehaviorStatus.Failure;
+    protected override MissStatus Tick(MissContext ctx) {
+        if (Children.Count < 2 || Children[0] == null || Children[1] == null) return MissStatus.Failure;
 
         var primary = Children[0];
         var secondary = Children[1];
 
         if (!_primaryFinished) {
-            if (!_primaryRunning) primary.BeforeRunInternal(ctx);
-            var status = primary.TickInternal(ctx);
+            if (!_primaryRunning) primary.Begin(ctx);
+            var status = primary.Execute(ctx);
 
-            if (status == BehaviorStatus.Running) {
+            if (status == MissStatus.Running) {
                 _primaryRunning = true;
             }
             else {
@@ -66,10 +67,10 @@ public partial class SimpleParallelNode : ACompositeNode {
         }
 
         if (SecondaryRepeatCount == 0 || _secondaryRepeatsLeft > 0) {
-            if (!_secondaryRunning) secondary.BeforeRunInternal(ctx);
-            var status = secondary.TickInternal(ctx);
+            if (!_secondaryRunning) secondary.Begin(ctx);
+            var status = secondary.Execute(ctx);
 
-            if (status == BehaviorStatus.Running) {
+            if (status == MissStatus.Running) {
                 _secondaryRunning = true;
             }
             else {
@@ -85,10 +86,10 @@ public partial class SimpleParallelNode : ACompositeNode {
             }
         }
 
-        return BehaviorStatus.Running;
+        return MissStatus.Running;
     }
 
-    public override void Interrupt(BtContext ctx) {
+    public override void Interrupt(MissContext ctx) {
         if (_primaryRunning) Children[0]?.Interrupt(ctx);
         if (_secondaryRunning) Children[1]?.Interrupt(ctx);
         Reset();

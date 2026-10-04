@@ -2,6 +2,7 @@
 using System;
 using System.Linq;
 using Godot;
+using Misscore;
 
 namespace Missbehave.Editor;
 
@@ -65,7 +66,7 @@ public partial class CreateNodeDialog : ConfirmationDialog {
         Present(graphPosition);
     }
 
-    public void OpenForReplace(ABehaviorNode node) {
+    public void OpenForReplace(MissNode node) {
         NodeTypeRegistry.Refresh();
         Title = $"Replace {node.GetLabel()} with";
         OkButtonText = "Replace";
@@ -96,7 +97,7 @@ public partial class CreateNodeDialog : ConfirmationDialog {
         var groups = NodeTypeRegistry.Groups.OrderBy(g => g == _preferredGroup ? 0 : 1);
         // Looked up in our own assembly: Type.GetType would search the default load context, which
         // the editor's reloadable assembly is not part of.
-        var required = string.IsNullOrEmpty(_requiredName) ? null : typeof(ABehaviorNode).Assembly.GetType(_requiredName);
+        var required = string.IsNullOrEmpty(_requiredName) ? null : typeof(MissNode).Assembly.GetType(_requiredName);
 
         foreach (var group in groups) {
             var types = NodeTypeRegistry.InGroup(group)

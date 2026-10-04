@@ -1,4 +1,5 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave.Demo;
 
@@ -10,10 +11,10 @@ public partial class BtDemoIdle : ActionNode {
 
     public override string GetSummary() => "idle, never finishes";
 
-    protected override BehaviorStatus Run(BtContext ctx) {
+    protected override MissStatus Run(MissContext ctx) {
         if (ctx.Actor is Node3D actor) {
             actor.RotateY(Mathf.DegToRad(SpinSpeed) * (float) ctx.Delta);
         }
-        return BehaviorStatus.Running;
+        return MissStatus.Running;
     }
 }

@@ -1,4 +1,5 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave;
 
@@ -15,21 +16,21 @@ public partial class RepeaterNode : ADecoratorNode {
 
     public override string GetSummary() => $"x{Repetitions}";
 
-    public override void BeforeRun(BtContext ctx) => _count = 0;
+    public override void BeforeRun(MissContext ctx) => _count = 0;
 
-    protected override BehaviorStatus Tick(BtContext ctx) {
-        if (_count >= Repetitions) return BehaviorStatus.Success;
+    protected override MissStatus Tick(MissContext ctx) {
+        if (_count >= Repetitions) return MissStatus.Success;
 
         var status = TickChild(ctx);
-        if (status == BehaviorStatus.Running) return BehaviorStatus.Running;
+        if (status == MissStatus.Running) return MissStatus.Running;
 
         _count++;
-        if (status == BehaviorStatus.Failure) return BehaviorStatus.Failure;
+        if (status == MissStatus.Failure) return MissStatus.Failure;
 
-        return _count >= Repetitions ? BehaviorStatus.Success : BehaviorStatus.Running;
+        return _count >= Repetitions ? MissStatus.Success : MissStatus.Running;
     }
 
-    public override void Interrupt(BtContext ctx) {
+    public override void Interrupt(MissContext ctx) {
         _count = 0;
         base.Interrupt(ctx);
     }

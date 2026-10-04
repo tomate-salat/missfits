@@ -1,4 +1,5 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave.Tests;
 
@@ -7,7 +8,7 @@ namespace Missbehave.Tests;
 public partial class BtProbeAction : ActionNode {
     /// <summary>Status returned once <see cref="RunningTicks"/> ticks have gone by.</summary>
     [Export]
-    public BehaviorStatus Result { get; set; } = BehaviorStatus.Success;
+    public MissStatus Result { get; set; } = MissStatus.Success;
 
     /// <summary>Number of leading ticks that return Running.</summary>
     [Export]
@@ -18,19 +19,19 @@ public partial class BtProbeAction : ActionNode {
     public int AfterRuns;
     public int Interrupts;
 
-    protected override BehaviorStatus Run(BtContext ctx) {
+    protected override MissStatus Run(MissContext ctx) {
         Ticks++;
-        return Ticks <= RunningTicks ? BehaviorStatus.Running : Result;
+        return Ticks <= RunningTicks ? MissStatus.Running : Result;
     }
 
-    public override void BeforeRun(BtContext ctx) {
+    public override void BeforeRun(MissContext ctx) {
         BeforeRuns++;
         Ticks = 0;
     }
 
-    public override void AfterRun(BtContext ctx) => AfterRuns++;
+    public override void AfterRun(MissContext ctx) => AfterRuns++;
 
-    public override void Interrupt(BtContext ctx) {
+    public override void Interrupt(MissContext ctx) {
         Interrupts++;
         Ticks = 0;
     }
