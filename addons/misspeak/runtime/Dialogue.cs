@@ -15,6 +15,10 @@ public partial class Dialogue : MissResource, IBlackboardSource {
     [Export]
     public Godot.Collections.Array<DialogueSection> Sections { get; set; } = [];
 
+    /// <summary>Waypoints for the wires of a graph editor. See <see cref="Destination"/>.</summary>
+    [Export]
+    public Godot.Collections.Array<MissReroute> Reroutes { get; set; } = [];
+
     /// <summary>The section a dialogue starts with. Left empty, it is the first one.</summary>
     [Export]
     public string StartSectionId { get; set; } = "";
@@ -47,6 +51,15 @@ public partial class Dialogue : MissResource, IBlackboardSource {
         return null;
     }
 
+    public MissReroute FindReroute(string id) => MissReroute.Find(Reroutes, id);
+
+    /// <summary>
+    /// The section an option's target stands for: the section of that id, or the one at the end of
+    /// the reroutes that start there. Null when the id names nothing, or the reroutes end nowhere
+    /// or run in a circle.
+    /// </summary>
+    public DialogueSection Destination(string targetId) => FindSection(MissReroute.Resolve(Reroutes, targetId));
+
     public DialogueSection FindSectionByName(string name) {
         foreach (var section in Sections) {
             if (section != null && section.Name == name) return section;
@@ -55,7 +68,7 @@ public partial class Dialogue : MissResource, IBlackboardSource {
     }
 
     public override void _ValidateProperty(Godot.Collections.Dictionary property) {
-        if (property["name"].AsString() is nameof(Blackboard) or nameof(StartSectionId)) {
+        if (property["name"].AsString() is nameof(Blackboard) or nameof(StartSectionId) or nameof(Reroutes)) {
             property["usage"] = (int) PropertyUsageFlags.Storage;
         }
     }
@@ -115,8 +128,8 @@ public partial class Dialogue : MissResource, IBlackboardSource {
             for (var i = 0; i < section.Options.Count; i++) {
                 var option = section.Options[i];
                 if (option == null) problems.Add($"{name}: option #{i + 1} is empty.");
-                else if (!string.IsNullOrEmpty(option.TargetSectionId) && FindSection(option.TargetSectionId) == null) {
-                    problems.Add($"{name}: option #{i + 1} leads to a section that no longer exists.");
+                else if (!string.IsNullOrEmpty(option.TargetSectionId) && Destination(option.TargetSectionId) == null) {
+                    problems.Add($"{name}: option #{i + 1} leads nowhere — to a section that no longer exists, or a reroute that ends nowhere.");
                 }
             }
             for (var i = 0; i < section.Lines.Count; i++) {

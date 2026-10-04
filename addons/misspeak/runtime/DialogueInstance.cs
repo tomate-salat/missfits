@@ -323,7 +323,8 @@ public sealed partial class DialogueInstance {
     }
 
     void Follow(RuntimeOption option, MissContext ctx, bool atOnce) {
-        var targetId = option?.Definition.TargetSectionId;
+        // Through any reroutes, which are only there for the graph.
+        var targetId = Definition.Destination(option?.Definition.TargetSectionId)?.Id;
         if (string.IsNullOrEmpty(targetId) || !_sections.TryGetValue(targetId, out var target)) {
             End();
             return;

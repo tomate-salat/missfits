@@ -5,15 +5,27 @@ same actions and conditions the other [Missfits](https://github.com/tomate-salat
 run, so a behavior tree or a state machine can start a dialogue, and a dialogue can do anything an
 action can do.
 
-> **State of things:** the runtime, translation support and an example dialogue box are here; the
-> graph editor is not yet. Until it is, a dialogue is built in the Inspector or in code.
+> **State of things:** runtime, graph editor, translation support and an example dialogue box are
+> here. What the editor does not do yet is show a running dialogue live.
 
 Needs `addons/misscore`. Does not need, and does not know, any other Missfits addon.
 
 ## Enabling it
 
-Enable **Misspeak** under *Project → Project Settings → Plugins*. The runtime works without that;
-the plugin is what lets Godot's translation template read dialogues.
+Enable **Misspeak** under *Project → Project Settings → Plugins*. That adds the *Misspeak* dock
+with the graph editor and lets Godot's translation template read dialogues. The runtime works
+without it.
+
+## Quick start
+
+1. In the FileSystem dock, *New Resource… → Dialogue*, and double-click it: it opens in the
+   *Misspeak* dock.
+2. *Add section*. It comes with one empty line: click the line and write its speaker and text in
+   the Inspector. *+ line* adds the next one.
+3. Drag from the port beside *new option* onto another section — or onto empty canvas, which makes
+   one. Click the new row and give it a text to turn it into a choice for the player.
+4. Add a `DialogueRunner` to your scene, assign the dialogue, tick *Autostart*, and instance
+   `addons/misspeak/ui/dialogue_box.tscn` next to it.
 
 ## How a dialogue works
 
@@ -49,6 +61,30 @@ A section in which nothing is said moves on by itself. That makes it a branch (t
 whose conditions hold is taken) or simply a place to run actions.
 
 Texts may name blackboard entries in braces: `You have {gold} coins.`
+
+## The editor
+
+- **Sections** are boxes. The one marked ▶ is where the dialogue starts; right-click a section to
+  start there instead, to add a line or an option, or to delete it.
+- **Lines** are the upper rows, as *Speaker: text*. Right-click one to move it, delete it, or add
+  an **action** or a **condition** — which opens the node picker shared with the other Missfits
+  editors. They show below their line, set in: *if …* for conditions, *▸ …* for actions.
+- **Options** are the lower rows, each with a port on the right and a wire to where it leads:
+  *“text” → Section* for a choice, *→ Section* for the way on by itself, *→ end* for one that ends
+  the dialogue. Right-click one to move it, delete it, or add a condition.
+- **Wires.** Drag from the last, faint port to add an option; drag from an option's own port to
+  lead it somewhere else. Dropping a wire on empty canvas makes a new section there.
+- **Reroutes** lead a wire around the boxes: double-click a wire, or right-click it. They work as
+  in Misstate, turning round when they lead back to the left.
+- **Selecting** a section or a row shows exactly that in the Inspector, which is where texts,
+  speakers and parameters are edited.
+- **Blackboard.** The dialogue's entries sit beside the graph; parameters of actions and
+  conditions link to them in the Inspector, and texts name them in `{braces}`.
+- **⚠** names what is wrong: an option that leads to a section that is gone, a line that says and
+  does nothing, a link to an entry that no longer exists.
+
+Every edit in the graph is one undo step. *Save* writes the dialogue; the dock title carries a `*`
+while it has unsaved edits, and *Revert* goes back to the file.
 
 ## Translation
 
@@ -147,9 +183,10 @@ runner.Start(dialogue);
 ## Tests
 
 The tests are not part of the release zip; they come with the
-[repository](https://github.com/tomate-salat/missfits). The suite runs headless and exits 0 when
+[repository](https://github.com/tomate-salat/missfits). Both suites run headless and exit 0 when
 everything passes.
 
 ```bash
 godot --headless --path . res://addons/misspeak/tests/self_test.tscn
+godot --headless --path . res://addons/misspeak/tests/editor_self_test.tscn
 ```

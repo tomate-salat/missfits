@@ -98,7 +98,8 @@ Entscheidungen aus dem ersten Ausprobieren im Editor:
 
 Offen:
 
-- **Graph-Editor:** fehlt noch. Er baut auf dem gemeinsamen Graph-Teil im Core auf (siehe "Was im Core liegt").
+- **Live-Ansicht:** Der Graph-Editor zeigt noch nicht, wo ein laufender Dialog steht. Das wäre der dritte Debug-Kanal und damit der Anlass, den gemeinsamen Teil der Kanäle in den Core zu ziehen.
+- **Panel dreifach:** `DialogueEditorPanel` ist bis auf die Typen `FsmEditorPanel` (Toolbar, Speichern, Zurücksetzen, ungespeicherte Änderungen, Abgleich mit dem Inspector). Der Graph ist geteilt, das Panel noch nicht.
 - **Reroutes:** `Dialogue` hat noch keine; die Datenklasse `MissReroute` und ihre Box liegen dafür inzwischen im Core.
 
 Der Core bekommt kein `plugin.cfg`. Als reine Bibliothek muss ihn niemand aktivieren; Editor-Widgets dürfen darin liegen, registriert werden sie vom jeweiligen Addon-Plugin.
@@ -132,5 +133,5 @@ Verworfen:
 4. **Umgesetzt:** Graph-Editor für `misstate`. Ein Editor-Teil kam dafür in den Core: die Abgrenzung der Blackboard-Panels.
 5. **Umgesetzt:** Live-Ansicht für `misstate`: aktueller State und Status seiner Actions im Graph, während das Spiel läuft.
 6. **Skript umgesetzt, Veröffentlichung offen:** Build-Skript für die Addon-Zips, danach erste gemeinsame Veröffentlichung von `missbehave` und `misstate`.
-7. **Runtime, i18n und Beispiel-UI umgesetzt, Graph-Editor offen:** `misspeak`, mit Actions und Conditions für BT und FSM.
+7. **Umgesetzt bis auf die Live-Ansicht:** `misspeak`, mit Actions und Conditions für BT und FSM.
 8. `mission`.
