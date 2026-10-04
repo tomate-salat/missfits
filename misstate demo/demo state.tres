@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://coe1riq7exknh" path="res://addons/misscore/runtime/blackboard/BlackboardEntry.cs" id="1_1kn7y"]
 [ext_resource type="Script" uid="uid://dqi44n42kbdsa" path="res://addons/misstate/runtime/FsmState.cs" id="2_hp4so"]
-[ext_resource type="Script" uid="uid://bgsv7yrjdj5r" path="res://addons/misstate/runtime/FsmReroute.cs" id="2_poi4j"]
+[ext_resource type="Script" uid="uid://bgsv7yrjdj5r" path="res://addons/misscore/runtime/graph/MissReroute.cs" id="2_poi4j"]
 [ext_resource type="Script" uid="uid://bltujy5uigex5" path="res://addons/misscore/runtime/nodes/MissNode.cs" id="3_c588d"]
 [ext_resource type="Script" uid="uid://b45c6miy28l77" path="res://addons/misstate/runtime/FsmTransition.cs" id="4_0i54f"]
 [ext_resource type="Script" uid="uid://bq85i2duuc8x8" path="res://misstate demo/StateLogAction.cs" id="4_omkeb"]

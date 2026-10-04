@@ -9,6 +9,7 @@
 [ext_resource type="Script" uid="uid://c0p32e5me6qen" path="res://addons/misscore/runtime/nodes/BlackboardCompareNode.cs" id="6_tgpvt"]
 [ext_resource type="Script" uid="uid://d0hffyssdtpdf" path="res://addons/misscore/runtime/nodes/BlackboardSetNode.cs" id="7_mjlkt"]
 [ext_resource type="Script" uid="uid://pkmh1k44qovb" path="res://addons/misspeak/runtime/Dialogue.cs" id="8_3anbh"]
+[ext_resource type="Script" uid="uid://ceckr452ax0og" path="res://addons/misspeak/runtime/DialogueSpeaker.cs" id="9_nkyny"]
 
 [sub_resource type="Resource" id="Resource_aygu5"]
 script = ExtResource("1_e3hlc")
@@ -24,11 +25,26 @@ Name = "has_sword"
 VariantType = 1
 Default = false
 
+[sub_resource type="Resource" id="Resource_nkyny"]
+script = ExtResource("2_nkyny")
+Id = "b46f001eb383468189e4b8b4aa7f4baf"
+TargetId = "be40a534803148229dfef0484d01ca7d"
+Wireless = true
+GraphPosition = Vector2(980, 120)
+
 [sub_resource type="Resource" id="Resource_ymv4k"]
 script = ExtResource("2_nkyny")
-Id = "f9da04cc8e274bf09c9662dce1970675"
-TargetId = "f2b6cc6a479f4a61aa38884a40452d7d"
-GraphPosition = Vector2(880, -40)
+Id = "bd4f348da38b4971a81ae5f910b02dbe"
+TargetId = "be40a534803148229dfef0484d01ca7d"
+Wireless = true
+GraphPosition = Vector2(1000, 360)
+
+[sub_resource type="Resource" id="Resource_odud1"]
+script = ExtResource("2_nkyny")
+Id = "5abe6c74168d4d419e6e4906b01e6d59"
+TargetId = "58dbd844123a4acf87c01102ec61abc3"
+Wireless = true
+GraphPosition = Vector2(1000, 700)
 
 [sub_resource type="Resource" id="Resource_ou5yn"]
 script = ExtResource("3_nkyny")
@@ -47,7 +63,7 @@ Id = "4963620915cc4bdf9f9dafb181ec2ac6"
 Name = "Greeting"
 Lines = Array[ExtResource("3_nkyny")]([SubResource("Resource_ou5yn")])
 Options = Array[ExtResource("5_odud1")]([SubResource("Resource_nr20p")])
-GraphPosition = Vector2(-60, -20)
+GraphPosition = Vector2(-380, -20)
 
 [sub_resource type="Resource" id="Resource_vynea"]
 script = ExtResource("3_nkyny")
@@ -98,7 +114,7 @@ Id = "f2b6cc6a479f4a61aa38884a40452d7d"
 Name = "Hub"
 Lines = Array[ExtResource("3_nkyny")]([SubResource("Resource_vynea")])
 Options = Array[ExtResource("5_odud1")]([SubResource("Resource_1sse5"), SubResource("Resource_che21"), SubResource("Resource_pmg3k"), SubResource("Resource_ti26o")])
-GraphPosition = Vector2(360, 140)
+GraphPosition = Vector2(20, 120)
 
 [sub_resource type="Resource" id="Resource_xyhj1"]
 script = ExtResource("6_tgpvt")
@@ -122,14 +138,14 @@ Conditions = Array[ExtResource("4_ymv4k")]([SubResource("Resource_xyhj1")])
 [sub_resource type="Resource" id="Resource_3ko8f"]
 script = ExtResource("5_odud1")
 Id = "c7e3fab95071415191efd6c4d17dfdf5"
-TargetSectionId = "be40a534803148229dfef0484d01ca7d"
+TargetSectionId = "b46f001eb383468189e4b8b4aa7f4baf"
 
 [sub_resource type="Resource" id="Resource_iij43"]
 script = ExtResource("2_j7bj8")
 Id = "deaeb8f27b6f486d8b1d227e21a9c1c0"
 Name = "Buy sword"
 Options = Array[ExtResource("5_odud1")]([SubResource("Resource_7yaij"), SubResource("Resource_3ko8f")])
-GraphPosition = Vector2(840, 20)
+GraphPosition = Vector2(580, -40)
 
 [sub_resource type="Resource" id="Resource_vxqpm"]
 script = ExtResource("7_mjlkt")
@@ -169,7 +185,8 @@ Text = "Here you go. A fine blade."
 [sub_resource type="Resource" id="Resource_hole3"]
 script = ExtResource("5_odud1")
 Id = "2c6a4f2a2a574ae99e8e822752b68946"
-TargetSectionId = "f9da04cc8e274bf09c9662dce1970675"
+TargetSectionId = "f2b6cc6a479f4a61aa38884a40452d7d"
+Back = true
 
 [sub_resource type="Resource" id="Resource_jdkgx"]
 script = ExtResource("2_j7bj8")
@@ -177,7 +194,7 @@ Id = "ea9ccf71b8dd4841a88d69ffc70db43d"
 Name = "Sword sold"
 Lines = Array[ExtResource("3_nkyny")]([SubResource("Resource_u4irt"), SubResource("Resource_1mauu")])
 Options = Array[ExtResource("5_odud1")]([SubResource("Resource_hole3")])
-GraphPosition = Vector2(760, -320)
+GraphPosition = Vector2(1280, -60)
 
 [sub_resource type="Resource" id="Resource_o38ro"]
 script = ExtResource("6_tgpvt")
@@ -201,14 +218,14 @@ Conditions = Array[ExtResource("4_ymv4k")]([SubResource("Resource_o38ro")])
 [sub_resource type="Resource" id="Resource_b63di"]
 script = ExtResource("5_odud1")
 Id = "75cd2df8465c4c2fab5eabf3d1d81efd"
-TargetSectionId = "be40a534803148229dfef0484d01ca7d"
+TargetSectionId = "bd4f348da38b4971a81ae5f910b02dbe"
 
 [sub_resource type="Resource" id="Resource_4c0yx"]
 script = ExtResource("2_j7bj8")
 Id = "89653a4407554f57bb69b106aa14852f"
 Name = "Buy shield"
 Options = Array[ExtResource("5_odud1")]([SubResource("Resource_uo8bb"), SubResource("Resource_b63di")])
-GraphPosition = Vector2(820, 240)
+GraphPosition = Vector2(580, 240)
 
 [sub_resource type="Resource" id="Resource_iqv2w"]
 script = ExtResource("3_nkyny")
@@ -220,6 +237,7 @@ Text = "A sturdy shield. Take care of it."
 script = ExtResource("5_odud1")
 Id = "0b60e2e9e284433fbcb1a3d17b7c2bc2"
 TargetSectionId = "f2b6cc6a479f4a61aa38884a40452d7d"
+Back = true
 
 [sub_resource type="Resource" id="Resource_xl3yc"]
 script = ExtResource("2_j7bj8")
@@ -227,7 +245,7 @@ Id = "63221e3d6daf4a4d813661f4576451de"
 Name = "Shield sold"
 Lines = Array[ExtResource("3_nkyny")]([SubResource("Resource_iqv2w")])
 Options = Array[ExtResource("5_odud1")]([SubResource("Resource_8bwtx")])
-GraphPosition = Vector2(1760, 300)
+GraphPosition = Vector2(1280, 220)
 
 [sub_resource type="Resource" id="Resource_ifya0"]
 script = ExtResource("3_nkyny")
@@ -239,6 +257,7 @@ Text = "You cannot afford that."
 script = ExtResource("5_odud1")
 Id = "eed2729e2a8a4efb83d8ed999d01e6a8"
 TargetSectionId = "f2b6cc6a479f4a61aa38884a40452d7d"
+Back = true
 
 [sub_resource type="Resource" id="Resource_twq4g"]
 script = ExtResource("2_j7bj8")
@@ -246,7 +265,7 @@ Id = "be40a534803148229dfef0484d01ca7d"
 Name = "Too poor"
 Lines = Array[ExtResource("3_nkyny")]([SubResource("Resource_ifya0")])
 Options = Array[ExtResource("5_odud1")]([SubResource("Resource_b046d")])
-GraphPosition = Vector2(1340, 400)
+GraphPosition = Vector2(1280, 420)
 
 [sub_resource type="Resource" id="Resource_r7y50"]
 script = ExtResource("3_nkyny")
@@ -269,15 +288,23 @@ Text = "Impressive."
 [sub_resource type="Resource" id="Resource_bwusc"]
 script = ExtResource("5_odud1")
 Id = "dd52e0cc879b4352b48f86e926eae2bb"
+Text = "Back"
 TargetSectionId = "f2b6cc6a479f4a61aa38884a40452d7d"
+Back = true
+
+[sub_resource type="Resource" id="Resource_tgpvt"]
+script = ExtResource("5_odud1")
+Id = "89a9584f4a4f4c10a4d6270ed8c01ead"
+Text = "Bye"
+TargetSectionId = "5abe6c74168d4d419e6e4906b01e6d59"
 
 [sub_resource type="Resource" id="Resource_q1jcx"]
 script = ExtResource("2_j7bj8")
 Id = "1c2e4bd82d504a7b9656f0c81dfc6d0f"
 Name = "Lore"
 Lines = Array[ExtResource("3_nkyny")]([SubResource("Resource_r7y50"), SubResource("Resource_7o7aw"), SubResource("Resource_o43x8")])
-Options = Array[ExtResource("5_odud1")]([SubResource("Resource_bwusc")])
-GraphPosition = Vector2(880, 500)
+Options = Array[ExtResource("5_odud1")]([SubResource("Resource_bwusc"), SubResource("Resource_tgpvt")])
+GraphPosition = Vector2(580, 480)
 
 [sub_resource type="Resource" id="Resource_xyrhi"]
 script = ExtResource("3_nkyny")
@@ -309,11 +336,22 @@ script = ExtResource("2_j7bj8")
 Id = "58dbd844123a4acf87c01102ec61abc3"
 Name = "Goodbye"
 Lines = Array[ExtResource("3_nkyny")]([SubResource("Resource_xyrhi"), SubResource("Resource_pbtc0")])
-GraphPosition = Vector2(840, 780)
+GraphPosition = Vector2(580, 780)
+
+[sub_resource type="Resource" id="Resource_je4eb"]
+script = ExtResource("9_nkyny")
+Name = "Smith"
+metadata/_custom_type_script = "uid://ceckr452ax0og"
+
+[sub_resource type="Resource" id="Resource_7c3gt"]
+script = ExtResource("9_nkyny")
+Name = "You"
+metadata/_custom_type_script = "uid://ceckr452ax0og"
 
 [resource]
 script = ExtResource("8_3anbh")
 Sections = Array[ExtResource("2_j7bj8")]([SubResource("Resource_78d7r"), SubResource("Resource_57vy7"), SubResource("Resource_iij43"), SubResource("Resource_jdkgx"), SubResource("Resource_4c0yx"), SubResource("Resource_xl3yc"), SubResource("Resource_twq4g"), SubResource("Resource_q1jcx"), SubResource("Resource_apqe8")])
-Reroutes = Array[ExtResource("2_nkyny")]([SubResource("Resource_ymv4k")])
+Reroutes = Array[ExtResource("2_nkyny")]([SubResource("Resource_nkyny"), SubResource("Resource_ymv4k"), SubResource("Resource_odud1")])
 Description = "Demo: a talk with a smith. Buying the sword changes what is on offer afterwards. The shield is out of reach with 10 coins — give the runner more gold in the Inspector to afford it."
+Speakers = Array[ExtResource("9_nkyny")]([SubResource("Resource_je4eb"), SubResource("Resource_7c3gt")])
 Blackboard = Array[ExtResource("1_e3hlc")]([SubResource("Resource_aygu5"), SubResource("Resource_8c4iu")])

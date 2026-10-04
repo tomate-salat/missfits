@@ -1,10 +1,9 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://baefh3qc3e6y2"]
 
-[ext_resource type="Script" path="res://misspeak demo/SpeakDemo.cs" id="1_ynvrv"]
-[ext_resource type="Script" path="res://addons/misspeak/runtime/DialogueRunner.cs" id="2_5mnlc"]
-[ext_resource type="Resource" path="res://misspeak demo/demo_dialogue.tres" id="3_3r7dx"]
+[ext_resource type="Script" uid="uid://it0a2fltni0x" path="res://misspeak demo/SpeakDemo.cs" id="1_ynvrv"]
+[ext_resource type="Script" uid="uid://cobv10ymmxfyu" path="res://addons/misspeak/runtime/DialogueRunner.cs" id="2_5mnlc"]
+[ext_resource type="Resource" uid="uid://dyqqksgwsviwk" path="res://misspeak demo/demo_dialogue.tres" id="3_3r7dx"]
 [ext_resource type="PackedScene" path="res://addons/misspeak/ui/dialogue_box.tscn" id="4_dwt2h"]
-[ext_resource type="Script" path="res://addons/misspeak/ui/DialogueBox.cs" id="5_fvpah"]
 
 [node name="MisspeakDemo" type="Node" unique_id=718229598 node_paths=PackedStringArray("Runner", "Hint")]
 script = ExtResource("1_ynvrv")
@@ -39,12 +38,4 @@ script = ExtResource("2_5mnlc")
 Dialogue = ExtResource("3_3r7dx")
 Autostart = true
 
-[node name="DialogueBox" type="Control" parent="." unique_id=505306624 instance=ExtResource("4_dwt2h")]
-layout_mode = 3
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-script = ExtResource("5_fvpah")
+[node name="DialogueBox" parent="." unique_id=505306624 instance=ExtResource("4_dwt2h")]
