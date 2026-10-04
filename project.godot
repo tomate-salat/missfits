@@ -10,7 +10,7 @@ config_version=5
 
 [application]
 
-config/name="Missbehave"
+config/name="Missfits"
 config/features=PackedStringArray("4.7", "C#", "Forward Plus")
 
 [display]
@@ -20,7 +20,7 @@ window/stretch/aspect="expand"
 
 [dotnet]
 
-project/assembly_name="Missbehave"
+project/assembly_name="Missfits"
 
 [editor_plugins]
 

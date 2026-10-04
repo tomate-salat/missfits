@@ -1,6 +1,6 @@
 ﻿Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2012
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Missbehave", "Missbehave.csproj", "{E371F9A4-DF12-4D4C-A47A-B3DD18EF4CA0}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Missfits", "Missfits.csproj", "{E371F9A4-DF12-4D4C-A47A-B3DD18EF4CA0}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
