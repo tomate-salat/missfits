@@ -115,8 +115,12 @@ public static class NodeTypeRegistry {
         return "";
     }
 
-    /// <summary>Namespace of the probe nodes the self tests build trees from.</summary>
-    const string TestNamespace = "Missbehave.Tests";
+    /// <summary>
+    /// Whether a type is one of the probe nodes the Missfits self tests build with — this addon's or
+    /// another's, since actions and conditions are shared.
+    /// </summary>
+    static bool IsTestType(Type type)
+        => type.Namespace is { } ns && ns.StartsWith("Miss") && ns.EndsWith(".Tests");
 
     /// <summary>
     /// Whether the probe nodes of the self tests are offered. Off in the editor, where they would only
@@ -125,7 +129,7 @@ public static class NodeTypeRegistry {
     public static bool IncludeTestTypes { get; set; }
 
     static bool IsCreatable(Type type)
-        => (IncludeTestTypes || type.Namespace != TestNamespace)
+        => (IncludeTestTypes || !IsTestType(type))
            && !type.IsAbstract
            && typeof(MissNode).IsAssignableFrom(type)
            && type != typeof(MissNode)

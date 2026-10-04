@@ -25,6 +25,8 @@ addon ships with it.
   or `Check(MissContext)`. Written once, run by every Missfits addon.
 - `MissContext` — the actor, the blackboard, the delta and, if there is one, the runner.
 - `IMissRunner` — what every runner offers a node: `Stop()` and `Enabled`.
+- `MissRunner` — base class of the runner nodes: actor, tick thread and rate, stopping, and a
+  blackboard the Inspector fills from the source's entries.
 - `MissStatus` — `Success`, `Failure` or `Running`.
 - `BlackboardSetNode`, `BlackboardEraseNode`, `BlackboardHasNode`, `BlackboardCompareNode` — ready-made
   leaves working on the blackboard.

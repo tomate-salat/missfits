@@ -8,7 +8,7 @@ Missfits ist eine Sammlung eigenständiger Godot-Addons (C#). Jedes Addon funkti
 |---|---|---|---|
 | Core | `addons/misscore` | geteilte Basis, reine Bibliothek | – |
 | Behavior Tree | `addons/missbehave` | existiert | misbehave |
-| Statemachine | `addons/misstate` | geplant | misstate / State |
+| Statemachine | `addons/misstate` | Runtime existiert, Editor fehlt | misstate / State |
 | Dialog | `addons/misspeak` | geplant | misspeak |
 | Quests | `addons/mission` | geplant | miss-ion |
 
@@ -40,6 +40,7 @@ So lassen sich Dialoge und Quests aus Behavior Trees und Statemachines steuern, 
 ## Was im Core liegt
 
 - **Blackboard:** `Blackboard`, `BlackboardEntry`, `BbParam<T>`, `BbParams`, `BbTypes`, dazu `BbParamResource` als Basisklasse für jede Resource mit Parametern (Speichern, Inspector, Revert, Reload-Sicherung).
+- **Runner:** `MissRunner` als Basis der Runner-Nodes (Actor, Tick-Thread und -Rate, Stoppen, Blackboard-Overrides im Inspector) und `IMissRunner` als das, was ein Knoten vom Runner sieht.
 - **Knoten:** `MissNode` als Basis von allem, was getickt wird, `ActionNode` und `ConditionNode` als Basis eigener Logik, `MissContext`, `MissStatus`, die vier Blackboard-Leaves sowie `[NodeName]` und `[NodeGroup]`.
 - **Editor:** `BlackboardPanel`, `BbParamEditorProperty`, `ReloadSafe`. Das Panel arbeitet auf `IBlackboardSource` und `IBbParamHost`.
 
@@ -64,10 +65,16 @@ Noch im BT-Addon, mögliche Kandidaten für später:
 | `runtime/debug/DebugStream.cs`, `FrameThrottle.cs` | Debug-Transport, sofern nicht BT-spezifisch |
 | `editor/GraphNodeStyles.cs`, `NodeTypeRegistry.cs` | zu prüfen, wie viel davon generisch ist |
 
-Offen für Punkt 3:
+## Was misstate zeigt
 
-- `NodeTypeRegistry` bietet im BT-Picker jede `MissNode`-Subklasse an. Sobald die FSM eigene Knotentypen mitbringt, braucht der Picker eine Abgrenzung.
-- Das Inspector-Plugin von `missbehave` kümmert sich um die `BbParam` jedes `MissNode`. Ein zweites Addon mit eigenem Plugin würde demselben Parameter einen zweiten Editor geben.
+- Ein State hält genau einen `MissNode` und führt ihn aus wie ein Tree seine Wurzel; Transitions prüfen `MissNode`s als Bedingung. Die FSM bringt keine eigenen Knotentypen mit, Actions und Conditions sind dieselben Klassen wie im BT.
+- Mit installiertem `missbehave` kann ein State einen ganzen Teilbaum ausführen, ohne dass `misstate` davon weiß.
+- Der Core musste dafür nur an einer Stelle wachsen: Der BT-Runner wurde in `MissRunner` (Core) und `BehaviorTreeRunner` geteilt, `FsmRunner` nutzt dieselbe Basis.
+
+Offen für den FSM-Editor:
+
+- Das Inspector-Plugin von `missbehave` kümmert sich um die `BbParam` jedes `MissNode`. Ohne `missbehave` hat ein Knoten in einer FSM heute keinen Parameter-Editor; mit einem zweiten Plugin in `misstate` bekäme derselbe Parameter zwei. Das Plugin gehört vermutlich in den Core oder braucht eine Abgrenzung.
+- Für den Graph-Editor werden voraussichtlich weitere Editor-Teile aus `missbehave` in den Core wandern (Graph-Grundgerüst, Node-Picker, Debugger-Kanal).
 
 Der Core bekommt kein `plugin.cfg`. Als reine Bibliothek muss ihn niemand aktivieren; Editor-Widgets dürfen darin liegen, registriert werden sie vom jeweiligen Addon-Plugin.
 
@@ -95,7 +102,8 @@ Verworfen:
 
 1. **Erledigt:** `misscore` anlegen und Blackboard samt Editor-Teilen aus `missbehave` dorthin verschieben. Selbsttests von `missbehave` laufen weiter.
 2. **Umgesetzt, Editor-Prüfung offen:** Knoten-Basis, Actions, Conditions, Kontext und Status in den Core ziehen; `missbehave` behält nur, was Behavior Tree ist.
-3. `misstate` auf dem Core bauen. Erst hier zeigt sich, ob die Core-API wirklich neutral ist; Korrekturen am Core sind an dieser Stelle noch billig.
-4. Build-Skript für die Addon-Zips, danach erste gemeinsame Veröffentlichung von `missbehave` und `misstate`.
-5. `misspeak`, mit Actions und Conditions für BT und FSM.
-6. `mission`.
+3. **Runtime umgesetzt:** `misstate` auf dem Core bauen: `Fsm`, `FsmState`, `FsmTransition`, `FsmRunner` mit Selbsttests.
+4. Graph-Editor für `misstate`, mit den dafür nötigen Editor-Teilen im Core.
+5. Build-Skript für die Addon-Zips, danach erste gemeinsame Veröffentlichung von `missbehave` und `misstate`.
+6. `misspeak`, mit Actions und Conditions für BT und FSM.
+7. `mission`.

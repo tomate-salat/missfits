@@ -459,11 +459,11 @@ public partial class BtSelfTest : Node {
         var tree = Tree(Node<SequenceNode>(Probe(MissStatus.Success)));
         var runner = new BehaviorTreeRunner { Tree = tree };
         runner.OnBeforeSerialize();
-        // The generated save reads the Tree property first, then the fields. Reading it must not pull
-        // the tree back in: on restore, Tree is assigned before the stash returns, and a saved tree
-        // then looks like a change and connects the tree's "changed" signal a second time.
+        // The generated save reads the Tree property and casts it back on restore, which can throw
+        // while the tree has no script yet. So the property reads as empty for the reload, and the
+        // tree travels in an untyped field instead.
         Check("the reload saves no typed tree through the property", runner.Get("Tree").VariantType == Variant.Type.Nil);
-        Check("a runner hands its tree over untyped for a reload", runner.Get("_tree").VariantType == Variant.Type.Nil);
+        Check("a runner hands its tree over untyped for a reload", ReferenceEquals(runner.Get("_source").AsGodotObject(), tree));
         runner.OnAfterDeserialize();
         Check("a runner finds its tree again after a reload", ReferenceEquals(runner.Tree, tree));
         runner.Free();
