@@ -253,7 +253,9 @@ edits of the open tree and goes back to its file.
 
 ## Tests
 
-Both suites run headless and exit 0 when everything passes.
+The tests are not part of the release zip; they come with the
+[repository](https://github.com/tomate-salat/missfits). Both suites run headless and exit 0 when
+everything passes.
 
 ```bash
 godot --headless --path . res://addons/missbehave/tests/self_test.tscn

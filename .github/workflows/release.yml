@@ -1,0 +1,54 @@
+name: Addon zips
+
+# Every push to master builds the zips and compiles each one on its own, which is the check that
+# no addon needs a sibling addon. A tag like v0.2.0 also publishes them as a GitHub release.
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  zips:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build and compile the zips
+        shell: pwsh
+        run: ./tools/build-zips.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: addon-zips
+          path: dist/*.zip
+          if-no-files-found: error
+
+      # The tag has to say what the plugin.cfg files say, or the release would be mislabelled.
+      - name: Check the tag against the addon version
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          version="${VERSION#v}"
+          for zip in dist/*.zip; do
+            case "$zip" in
+              *-"$version".zip) ;;
+              *) echo "::error::$zip does not carry version $version - set it with tools/build-zips.ps1 -Version $version and tag that commit."; exit 1 ;;
+            esac
+          done
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" dist/*.zip --title "Missfits ${TAG#v}" --generate-notes

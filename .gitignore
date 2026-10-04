@@ -2,3 +2,6 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# Release zips, built by tools/build-zips.ps1
+/dist/

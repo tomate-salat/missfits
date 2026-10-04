@@ -210,7 +210,9 @@ An action of a state can be any node, so with Missbehave in the project it can b
 
 ## Tests
 
-Both suites run headless and exit 0 when everything passes.
+The tests are not part of the release zip; they come with the
+[repository](https://github.com/tomate-salat/missfits). Both suites run headless and exit 0 when
+everything passes.
 
 ```bash
 godot --headless --path . res://addons/misstate/tests/self_test.tscn

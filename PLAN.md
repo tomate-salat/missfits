@@ -100,7 +100,8 @@ Godot löst keine Abhängigkeiten zwischen Assets auf. Deshalb:
 - **Core mitliefern:** Jedes Addon-Zip enthält `addons/misscore/` plus das eigene Addon. Ein zweites Addon überschreibt den Core mit derselben Version.
 - **Lockstep-Versionierung:** Alle Addons werden mit derselben Versionsnummer veröffentlicht. Nutzer aktualisieren immer alle installierten Missfits-Addons zusammen.
 - **Core-API nur additiv ändern:** Entfernen erst nach einer Version mit `[Obsolete]`. Ein veralteter Core zeigt sich sonst als Build-Fehler, nicht als Warnung.
-- **Zips automatisch bauen:** Ein Skript bzw. CI erzeugt pro Addon ein Zip aus dem Monorepo.
+- **Zips automatisch bauen:** `tools/build-zips.ps1` erzeugt pro Addon ein Zip in `dist/` (Addon plus Core, entpackt direkt nach `addons/`). Das Skript verlangt eine gemeinsame Versionsnummer in allen `plugin.cfg` (`-Version 0.2.0` setzt sie) und kompiliert jedes Zip in einem leeren Projekt, als Editor- und als Export-Build. Damit fällt auf, wenn ein Addon ein Geschwister-Addon braucht oder Runtime-Code Editor-Code benutzt. Die `tests/`-Ordner bleiben draußen (`-IncludeTests` nimmt sie mit).
+- **GitHub Actions:** `.github/workflows/release.yml` lässt das Skript bei jedem Push auf master laufen. Ein Tag wie `v0.2.0` veröffentlicht die Zips zusätzlich als GitHub-Release; der Tag muss zur Version in den `plugin.cfg` passen.
 
 Offen: Wie die Zips in den Store kommen (direkter Upload oder ein generiertes Distributions-Repo je Addon), hängt von den aktuellen Einreichungsregeln ab und ist noch nicht geprüft.
 
@@ -116,6 +117,6 @@ Verworfen:
 3. **Runtime umgesetzt:** `misstate` auf dem Core bauen: `Fsm`, `FsmState`, `FsmTransition`, `FsmRunner` mit Selbsttests.
 4. **Umgesetzt:** Graph-Editor für `misstate`. Ein Editor-Teil kam dafür in den Core: die Abgrenzung der Blackboard-Panels.
 5. **Umgesetzt:** Live-Ansicht für `misstate`: aktueller State und Status seiner Actions im Graph, während das Spiel läuft.
-6. Build-Skript für die Addon-Zips, danach erste gemeinsame Veröffentlichung von `missbehave` und `misstate`.
+6. **Skript umgesetzt, Veröffentlichung offen:** Build-Skript für die Addon-Zips, danach erste gemeinsame Veröffentlichung von `missbehave` und `misstate`.
 7. `misspeak`, mit Actions und Conditions für BT und FSM.
 8. `mission`.
