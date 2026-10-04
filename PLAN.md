@@ -43,6 +43,7 @@ So lassen sich Dialoge und Quests aus Behavior Trees und Statemachines steuern, 
 - **Runner:** `MissRunner` als Basis der Runner-Nodes (Actor, Tick-Thread und -Rate, Stoppen, Blackboard-Overrides im Inspector) und `IMissRunner` als das, was ein Knoten vom Runner sieht.
 - **Knoten:** `MissNode` als Basis von allem, was getickt wird, `ActionNode` und `ConditionNode` als Basis eigener Logik, `MissContext`, `MissStatus`, die vier Blackboard-Leaves sowie `[NodeName]` und `[NodeGroup]`.
 - **Editor:** `BlackboardPanel`, `BbParamEditorProperty`, `ReloadSafe`. Das Panel arbeitet auf `IBlackboardSource` und `IBbParamHost`.
+- **Graph (links nach rechts):** `MissReroute` als Datenklasse, dazu im Editor `MissGraphEdit` (eckige Drähte in Spuren, Reroutes samt Umdrehen, Greifbereiche der Ports, Doppelklick auf einen Draht, Live-Drähte), `RerouteBox`, `MissGraphBox` (Box ohne Titelleiste), `GraphRow` (Zeile mit Warnung, Auswahl und Live-Status) und `LiveWireOverlay`. `misstate` baut darauf auf; der Dialog-Editor von `misspeak` wird es auch. Der BT-Graph von `missbehave` läuft von oben nach unten und nutzt das nicht.
 
 **Entscheidung:** Eine Action ist direkt ein Core-Knoten, es gibt keinen Wrapper und nur eine Art, Actions zu schreiben. `missbehave` enthält nur noch, was wirklich Behavior Tree ist: Composites, Decorators, Listen, Tree, Runner, Debugger und Editor. Der Preis war ein Breaking Change gegenüber missbehave 0.1.0:
 
@@ -97,8 +98,8 @@ Entscheidungen aus dem ersten Ausprobieren im Editor:
 
 Offen:
 
-- **Graph-Editor:** Das Modell ist dem von `misstate` so ähnlich (Box mit Zeilen, Ports pro Option, Reroutes), dass sich vor dem Bau lohnt zu prüfen, was vom FSM-Graph in den Core gehört.
-- **Reroutes:** `FsmReroute` liegt in `misstate`; `misspeak` hat noch keine.
+- **Graph-Editor:** fehlt noch. Er baut auf dem gemeinsamen Graph-Teil im Core auf (siehe "Was im Core liegt").
+- **Reroutes:** `Dialogue` hat noch keine; die Datenklasse `MissReroute` und ihre Box liegen dafür inzwischen im Core.
 
 Der Core bekommt kein `plugin.cfg`. Als reine Bibliothek muss ihn niemand aktivieren; Editor-Widgets dürfen darin liegen, registriert werden sie vom jeweiligen Addon-Plugin.
 

@@ -16,7 +16,7 @@ public partial class Fsm : MissResource, IBlackboardSource {
 
     /// <summary>Waypoints for the wires of a graph editor. See <see cref="Destination"/>.</summary>
     [Export]
-    public Godot.Collections.Array<FsmReroute> Reroutes { get; set; } = [];
+    public Godot.Collections.Array<MissReroute> Reroutes { get; set; } = [];
 
     /// <summary>The state a runner starts in. Left empty, it is the first state.</summary>
     [Export]
@@ -42,27 +42,14 @@ public partial class Fsm : MissResource, IBlackboardSource {
         return null;
     }
 
-    public FsmReroute FindReroute(string id) {
-        if (string.IsNullOrEmpty(id)) return null;
-        foreach (var reroute in Reroutes) {
-            if (reroute?.Id == id) return reroute;
-        }
-        return null;
-    }
+    public MissReroute FindReroute(string id) => MissReroute.Find(Reroutes, id);
 
     /// <summary>
     /// The state a transition's target stands for: the state of that id, or the one at the end of
     /// the reroutes that start there. Null when the id names nothing, or the reroutes end nowhere
     /// or run in a circle.
     /// </summary>
-    public FsmState Destination(string targetId) {
-        for (var hops = 0; hops <= Reroutes.Count; hops++) {
-            if (FindState(targetId) is { } state) return state;
-            if (FindReroute(targetId) is not { } reroute) return null;
-            targetId = reroute.TargetId;
-        }
-        return null;
-    }
+    public FsmState Destination(string targetId) => FindState(MissReroute.Resolve(Reroutes, targetId));
 
     public FsmState FindStateByName(string name) {
         foreach (var state in States) {

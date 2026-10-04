@@ -18,7 +18,7 @@ namespace Misstate.Editor;
 /// </para>
 /// </summary>
 [Tool]
-public partial class FsmStateBox : GraphNode {
+public partial class FsmStateBox : MissGraphBox {
     /// <summary>The box was right-clicked; the position is in screen coordinates.</summary>
     [Signal]
     public delegate void MenuRequestedEventHandler(StringName boxName, Vector2 screenPosition);
@@ -66,8 +66,6 @@ public partial class FsmStateBox : GraphNode {
         // upper edge, so the whole outline is drawn here.
         AddThemeStyleboxOverride("panel", Outline(selected: false));
         AddThemeStyleboxOverride("panel_selected", Outline(selected: true));
-        AddThemeStyleboxOverride("titlebar", new StyleBoxEmpty());
-        AddThemeStyleboxOverride("titlebar_selected", new StyleBoxEmpty());
         AddThemeConstantOverride("separation", 3);
 
         // Zooming the graph scales the box as it is; an ordinary font would be a blown-up bitmap.
@@ -129,25 +127,7 @@ public partial class FsmStateBox : GraphNode {
 
         Connect(GraphElement.SignalName.NodeDeselected, new Callable(this, MethodName.OnDeselected));
 
-        // Title stays set — it is what the editor and tooltips refer to — but is not drawn.
-        foreach (var label in GetTitlebarHBox().GetChildren(includeInternal: true).OfType<Label>()) label.Visible = false;
-        Connect(Container.SignalName.SortChildren, new Callable(this, MethodName.FlattenTitlebar));
-        FlattenTitlebar();
-    }
-
-    /// <summary>
-    /// Keeps the unused title bar at no height. GraphNode places the rows by the bar's minimum
-    /// height, which is nothing once its label is hidden — but draws the body below the bar's actual
-    /// height, and a bar never shrinks by itself. If it was ever laid out while its label still took
-    /// up room, the body would be drawn that much lower than the rows, with the header sticking out
-    /// on top.
-    /// </summary>
-    void FlattenTitlebar() {
-        var bar = GetTitlebarHBox();
-        if (bar == null || bar.Size.Y <= 0) return;
-
-        bar.Size = new Vector2(bar.Size.X, 0);
-        QueueRedraw();
+        HideTitlebar();
     }
 
     static StyleBoxFlat Outline(bool selected, bool current = false) {
@@ -200,7 +180,7 @@ public partial class FsmStateBox : GraphNode {
 
     void AddRow(string kind, string id) {
         var row = new FsmRow();
-        row.Build(kind, id);
+        row.Build(kind, id, kind == FsmRow.Condition ? FsmRow.ConditionIndent : 0);
         row.Connect(FsmRow.SignalName.Picked, new Callable(this, MethodName.OnRowPicked));
         row.Connect(FsmRow.SignalName.MenuRequested, new Callable(this, MethodName.OnRowMenu));
         AddChild(row);

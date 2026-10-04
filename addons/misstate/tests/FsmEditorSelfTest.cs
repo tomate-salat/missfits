@@ -419,7 +419,7 @@ public partial class FsmEditorSelfTest : Node {
             _machine.Reroutes.SequenceEqual([reroute]) && transition.TargetStateId == reroute.Id && Wires().Contains($"{_idle.Id}:0>{reroute.Id}"));
         Check("and leads on to where the wire went", reroute.TargetId == _work.Id && Wires().Contains($"{reroute.Id}:0>{_work.Id}"));
         Check("it has a box of its own, centred on where it was put",
-            _graph.RerouteBoxFor(reroute.Id)?.PositionOffset == new Vector2(220, 60) - FsmRerouteBox.BodySize / 2);
+            _graph.RerouteBoxFor(reroute.Id)?.PositionOffset == new Vector2(220, 60) - RerouteBox.BodySize / 2);
         Check("the transition's row still names the state at the end", RowText(_idle, FsmRow.Transition, 0) == "→ Work"
                                                                          && Rows(_idle, FsmRow.Transition)[0].Warning == "");
         Check("a reroute is narrow, yet leaves room between its ports to drag it by",

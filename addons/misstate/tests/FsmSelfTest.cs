@@ -614,8 +614,8 @@ public partial class FsmSelfTest : Node {
         var a = State("A");
         var b = State("B");
         var machine = Machine(a, b);
-        var second = new FsmReroute { TargetId = b.Id };
-        var first = new FsmReroute { TargetId = second.Id };
+        var second = new MissReroute { TargetId = b.Id };
+        var first = new MissReroute { TargetId = second.Id };
         machine.Reroutes.Add(first);
         machine.Reroutes.Add(second);
         a.Transitions.Add(new FsmTransition { TargetStateId = first.Id });

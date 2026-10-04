@@ -35,7 +35,7 @@ public partial class FsmTransition : MissResource {
 
     /// <summary>
     /// The state to go to, by id — so renaming a state never breaks a transition. May name an
-    /// <see cref="FsmReroute"/> instead, which stands for the state it leads on to
+    /// <see cref="MissReroute"/> instead, which stands for the state it leads on to
     /// (<see cref="Fsm.Destination"/>).
     /// </summary>
     [Export]

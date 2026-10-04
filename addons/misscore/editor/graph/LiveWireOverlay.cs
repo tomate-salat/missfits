@@ -3,16 +3,16 @@ using System.Collections.Generic;
 using System.Linq;
 using Godot;
 
-namespace Misstate.Editor;
+namespace Misscore.Editor;
 
 /// <summary>One wire to highlight while a game runs: from an output port of one box to the input of another.</summary>
-/// <param name="Taken">True for the way the machine came into its state, false for a way out it is watching.</param>
+/// <param name="Taken">True for the way in that was taken, false for a way out that is being watched.</param>
 public readonly record struct LiveWire(string From, int Port, string To, bool Taken);
 
 /// <summary>
-/// Paints over the wires of a running machine: the transition it took into the state it is in, in
-/// the colour of success, and the transitions out of that state — the ones being checked on every
-/// tick, none of which has fired yet — in the colour of running, with dots travelling along them,
+/// Paints over the wires of whatever a running game is in — a state, a section of a dialogue: the
+/// wire it came in by, in the colour of success, and the ways out of there — being checked on
+/// every tick, none of them taken yet — in the colour of running, with dots travelling along them,
 /// as the Missbehave graph shows a wire into a running node.
 /// <para>
 /// Sits in the GraphEdit right behind its connection layer, so it is drawn over the plain wires but
@@ -23,7 +23,7 @@ public readonly record struct LiveWire(string From, int Port, string To, bool Ta
 /// </para>
 /// </summary>
 [Tool]
-public partial class FsmWireOverlay : Control {
+public partial class LiveWireOverlay : Control {
     /// <summary>Travel speed of the dots, in graph units per second.</summary>
     const float Speed = 48f;
 
@@ -101,7 +101,7 @@ public partial class FsmWireOverlay : Control {
                 to.Position + to.GetInputPortPosition(0) * zoom);
             if (line.Length < 2) continue;
 
-            var color = wire.Taken ? FsmRow.Success : FsmRow.Running;
+            var color = wire.Taken ? GraphRow.Success : GraphRow.Running;
             DrawPolyline(line, color, thickness, antialiased: true);
             if (!wire.Taken) DrawDots(line, color.Lightened(0.6f), zoom, thickness);
         }
