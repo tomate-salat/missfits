@@ -1,6 +1,7 @@
 #if TOOLS
 using System.Linq;
 using Godot;
+using Misscore.Editor;
 
 namespace Missbehave.Editor;
 

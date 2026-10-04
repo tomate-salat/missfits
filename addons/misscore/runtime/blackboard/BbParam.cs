@@ -1,7 +1,7 @@
 using System;
 using Godot;
 
-namespace Missbehave;
+namespace Misscore;
 
 /// <summary>Untyped view of a <see cref="BbParam{T}"/>, for the editor and for serialization.</summary>
 public interface IBbParam {
@@ -21,13 +21,13 @@ public interface IBbParam {
 
     bool IsLinked { get; }
 
-    /// <summary>Reads the current value and remembers the context; called by the node before it runs and ticks.</summary>
-    void Refresh(BtContext ctx);
+    /// <summary>Reads the current value and remembers the blackboard; called by the host before it runs and ticks.</summary>
+    void Refresh(Blackboard blackboard);
 }
 
 /// <summary>
-/// A node parameter that is either a fixed value or a link to an entry on the tree's blackboard —
-/// which one is chosen in the Inspector, not in code:
+/// A parameter that is either a fixed value or a link to an entry on the blackboard — which one is
+/// chosen in the Inspector, not in code. On a behavior tree node:
 /// <code>
 /// BbParam&lt;float&gt; Speed { get; set; } = 4f;
 /// BbParam&lt;Node3D&gt; Target { get; set; }
@@ -35,12 +35,13 @@ public interface IBbParam {
 /// protected override BehaviorStatus Run(BtContext ctx) {
 ///     Target.Value.GlobalPosition += Vector3.Forward * Speed.Value * (float) ctx.Delta;
 /// </code>
-/// <see cref="Value"/> is read fresh before <c>BeforeRun</c> and before every tick of the node, so
-/// it is the value as of the start of that tick. <see cref="Get"/> reads the blackboard right now —
-/// only needed when something earlier in the same tick may just have changed it.
-/// No <c>[Export]</c>: Godot cannot export a generic type, so <see cref="ABehaviorNode"/> finds these
-/// members by their type and stores them itself. Nor any <c>new()</c>: a parameter left without an
-/// initializer is created by the node's constructor, and a plain value converts into one.
+/// <see cref="Value"/> is whatever the host last read through <see cref="IBbParam.Refresh"/> — a
+/// behavior tree node does so before <c>BeforeRun</c> and before every tick, so it is the value as
+/// of the start of that tick. <see cref="Get"/> reads the blackboard right now — only needed when
+/// something earlier in the same tick may just have changed it.
+/// No <c>[Export]</c>: Godot cannot export a generic type, so the host finds these members by their
+/// type (<see cref="BbParams"/>) and stores them itself. Nor any <c>new()</c>: a parameter left
+/// without an initializer is created by the host's constructor, and a plain value converts into one.
 /// <para>
 /// A class rather than a struct on purpose: members are properties, and a struct property hands out
 /// copies — an unlinked <see cref="Set"/> would write into a copy and be lost.
@@ -52,25 +53,25 @@ public sealed class BbParam<[MustBeVariant] T> : IBbParam {
     /// <summary>What <see cref="Value"/> holds, and whether it has been read yet.</summary>
     T _value;
     bool _refreshed;
-    BtContext _ctx;
+    Blackboard _blackboard;
 
     public BbParam() { }
 
     public BbParam(T literal) => _literal = literal;
 
     /// <summary>
-    /// The value as of the start of this node's current tick. Assigning writes it through
-    /// <see cref="Set"/> right away, so the blackboard and every later reader see it too. Before the
-    /// node first runs — in the editor, say — it is the fixed value.
+    /// The value as of the host's last refresh. Assigning writes it through <see cref="Set"/> right
+    /// away, so the blackboard and every later reader see it too. Before the host first runs — in
+    /// the editor, say — it is the fixed value.
     /// </summary>
     public T Value {
         get => _refreshed ? _value : _literal;
-        set => Set(_ctx, value);
+        set => Set(_blackboard, value);
     }
 
-    void IBbParam.Refresh(BtContext ctx) {
-        _ctx = ctx;
-        _value = Get(ctx);
+    void IBbParam.Refresh(Blackboard blackboard) {
+        _blackboard = blackboard;
+        _value = Get(blackboard);
         _refreshed = true;
     }
 
@@ -87,8 +88,8 @@ public sealed class BbParam<[MustBeVariant] T> : IBbParam {
     public string EntryName { get; set; } = "";
     public bool IsLinked => !string.IsNullOrEmpty(EntryId);
 
-    public T Get(BtContext ctx) {
-        if (IsLinked && ctx.Blackboard != null && ctx.Blackboard.TryGetById(EntryId, out var value)
+    public T Get(Blackboard blackboard) {
+        if (IsLinked && blackboard != null && blackboard.TryGetById(EntryId, out var value)
             && BbTypes.TryConvert<T>(value, out var typed)) {
             return typed;
         }
@@ -97,10 +98,10 @@ public sealed class BbParam<[MustBeVariant] T> : IBbParam {
 
     /// <summary>
     /// Writes to the linked entry. An unlinked parameter keeps the value itself instead, which is
-    /// private to the runner — every runner ticks its own copy of the node.
+    /// private to the instance — every instance runs its own copy of the host.
     /// </summary>
-    public void Set(BtContext ctx, T value) {
-        if (IsLinked && ctx.Blackboard != null) ctx.Blackboard.SetById(EntryId, Variant.From(value));
+    public void Set(Blackboard blackboard, T value) {
+        if (IsLinked && blackboard != null) blackboard.SetById(EntryId, Variant.From(value));
         else _literal = value;
         if (_refreshed) _value = value;
     }

@@ -2,7 +2,7 @@
 using System.Linq;
 using Godot;
 
-namespace Missbehave.Editor;
+namespace Misscore.Editor;
 
 /// <summary>
 /// Inspector editor for a <see cref="BbParam{T}"/>: the fixed value, edited with the editor's own
@@ -29,9 +29,9 @@ public partial class BbParamEditorProperty : EditorProperty {
 
     public void Attach(BlackboardPanel blackboard) => _blackboard = blackboard;
 
-    ABehaviorNode Node => GetEditedObject() as ABehaviorNode;
+    GodotObject Host => GetEditedObject();
     string Member => GetEditedProperty();
-    BbParamMember Info => Node == null ? null : BbParams.Find(Node.GetType(), Member);
+    BbParamMember Info => Host == null ? null : BbParams.Find(Host.GetType(), Member);
 
     public override void _Ready() => EnsureUi();
 
@@ -51,7 +51,7 @@ public partial class BbParamEditorProperty : EditorProperty {
 
         _menu = new MenuButton {
             Flat = true,
-            Icon = ResourceLoader.Load<Texture2D>("res://addons/missbehave/icons/blackboard.svg"),
+            Icon = ResourceLoader.Load<Texture2D>("res://addons/misscore/icons/blackboard.svg"),
             ExpandIcon = false,
             TooltipText = "Fixed value or blackboard entry",
         };
@@ -71,17 +71,17 @@ public partial class BbParamEditorProperty : EditorProperty {
     public override void _UpdateProperty() {
         EnsureUi();
         var info = Info;
-        var param = info?.On(Node);
+        var param = info?.On(Host);
         if (param == null) return;
 
         if (param.IsLinked) {
-            var entry = Blackboard?.Tree?.FindEntry(param.EntryId);
+            var entry = Blackboard?.Source?.FindEntry(param.EntryId);
             var fits = entry != null && BbTypes.Accepts(info.ValueType, entry);
             _linked.Text = entry?.Name ?? param.EntryName;
             _linked.TooltipText = entry == null ? "This blackboard entry no longer exists."
                 : fits ? $"Blackboard entry {entry.Name} ({entry.TypeLabel})"
                 : $"{entry.Name} is {entry.TypeLabel}, which does not fit this parameter.";
-            _linked.AddThemeColorOverride("font_color", fits ? GraphNodeStyles.IconColor(NodeTypeRegistry.GroupCondition) : Warning);
+            _linked.AddThemeColorOverride("font_color", fits ? BlackboardStyles.Linked : Warning);
             ShowLiteral(false);
             return;
         }
@@ -107,7 +107,7 @@ public partial class BbParamEditorProperty : EditorProperty {
     }
 
     /// <summary>
-    /// The stock editor for <c>T</c>, pointed at the node's hidden literal property. Its changes are
+    /// The stock editor for <c>T</c>, pointed at the host's hidden literal property. Its changes are
     /// turned into a change of the whole parameter, so the Inspector records one ordinary undo step.
     /// </summary>
     EditorProperty BuildLiteralEditor() {
@@ -125,13 +125,13 @@ public partial class BbParamEditorProperty : EditorProperty {
                 .Select(n => $"{n}:{System.Convert.ToInt64(System.Enum.Parse(info.ValueType, n))}"));
         }
 
-        var property = Member + ABehaviorNode.LiteralSuffix;
-        var editor = EditorInspector.InstantiatePropertyEditor(Node, type, property, hint, hintString, (uint) usage);
+        var property = Member + BbParams.LiteralSuffix;
+        var editor = EditorInspector.InstantiatePropertyEditor(Host, type, property, hint, hintString, (uint) usage);
         if (editor == null) return null;
 
         editor.DrawLabel = false;
         editor.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        editor.SetObjectAndProperty(Node, property);
+        editor.SetObjectAndProperty(Host, property);
         editor.Connect(EditorProperty.SignalName.PropertyChanged, new Callable(this, MethodName.OnLiteralChanged));
         _row.AddChild(editor);
         _row.MoveChild(editor, 0);
@@ -140,7 +140,7 @@ public partial class BbParamEditorProperty : EditorProperty {
     }
 
     void OnLiteralChanged(StringName property, Variant value, StringName field, bool changing) {
-        var param = Info?.On(Node);
+        var param = Info?.On(Host);
         if (param == null) return;
 
         var stored = BbParams.ToStorage(param);
@@ -153,11 +153,11 @@ public partial class BbParamEditorProperty : EditorProperty {
         popup.Clear();
 
         var info = Info;
-        var param = info?.On(Node);
+        var param = info?.On(Host);
         if (param == null) return;
 
         var blackboard = Blackboard;
-        var inOpenTree = blackboard != null && blackboard.Contains(Node);
+        var inOpenSource = blackboard != null && blackboard.Contains(Host as IBbParamHost);
 
         if (!info.EntryOnly) {
             popup.AddRadioCheckItem("Fixed value", MenuFixed);
@@ -165,13 +165,13 @@ public partial class BbParamEditorProperty : EditorProperty {
         }
         popup.AddSeparator("Blackboard");
 
-        if (!inOpenTree) {
-            popup.AddItem("Open this tree in Missbehave to link entries");
+        if (!inOpenSource) {
+            popup.AddItem(blackboard?.NotOpenHint ?? "Open this in its editor to link entries");
             popup.SetItemDisabled(popup.ItemCount - 1, true);
             return;
         }
 
-        var entries = blackboard.Tree.Blackboard;
+        var entries = blackboard.Source.Blackboard;
         var matching = 0;
         for (var i = 0; i < entries.Count; i++) {
             var entry = entries[i];
@@ -191,12 +191,11 @@ public partial class BbParamEditorProperty : EditorProperty {
 
     void OnMenuIdPressed(long id) {
         var blackboard = Blackboard;
-        var node = Node;
-        if (blackboard == null || node == null) return;
+        if (blackboard == null || Host is not IBbParamHost host) return;
 
         switch (id) {
             case MenuFixed:
-                blackboard.UnlinkParam(node, Member);
+                blackboard.UnlinkParam(host, Member);
                 break;
             case MenuNewEntry:
                 _nameField.Text = blackboard.UniqueName(Member);
@@ -206,12 +205,12 @@ public partial class BbParamEditorProperty : EditorProperty {
                 break;
             default:
                 var index = (int) id - MenuFirstEntry;
-                var entries = blackboard.Tree?.Blackboard;
-                if (entries != null && index >= 0 && index < entries.Count) blackboard.LinkParam(node, Member, entries[index].Id);
+                var entries = blackboard.Source?.Blackboard;
+                if (entries != null && index >= 0 && index < entries.Count) blackboard.LinkParam(host, Member, entries[index].Id);
                 break;
         }
     }
 
-    void OnNameConfirmed() => Blackboard?.CreateEntryForParam(Node, Member, _nameField.Text);
+    void OnNameConfirmed() => Blackboard?.CreateEntryForParam(Host as IBbParamHost, Member, _nameField.Text);
 }
 #endif

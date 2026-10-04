@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Godot;
 using Missbehave.Tests;
+using Misscore;
 
 namespace Missbehave;
 
@@ -780,7 +781,7 @@ public partial class BtSelfTest : Node {
     /// enemies from sharing a running-child index.
     /// </summary>
     void SharedTreeResourceStillGivesSeparateInstances() {
-        const string path = "res://addons/missbehave/demo/demo_tree.tres";
+        const string path = "res://missbehave demo/demo_tree.tres";
         var first = ResourceLoader.Load<BehaviorTree>(path);
         var second = ResourceLoader.Load<BehaviorTree>(path);
 

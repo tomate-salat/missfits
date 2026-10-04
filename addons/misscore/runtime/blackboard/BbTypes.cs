@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Godot;
 
-namespace Missbehave;
+namespace Misscore;
 
 /// <summary>
 /// Maps C# types onto what a blackboard entry records — a <see cref="Variant.Type"/> plus, for

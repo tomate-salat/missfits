@@ -4,17 +4,17 @@ using System.Linq;
 using System.Reflection;
 using Godot;
 
-namespace Missbehave;
+namespace Misscore;
 
 /// <summary>
 /// Marks a <see cref="BbParam{T}"/> that only makes sense linked to a blackboard entry — the editor
 /// offers no fixed value for it and warns while it is unlinked. Implied for node types, since a scene
-/// node can never be stored in a tree resource.
+/// node can never be stored in a resource.
 /// </summary>
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
 public sealed class BbEntryOnlyAttribute : Attribute;
 
-/// <summary>One <see cref="BbParam{T}"/> member of a node class.</summary>
+/// <summary>One <see cref="BbParam{T}"/> member of a host class.</summary>
 public sealed class BbParamMember {
     public string Name { get; init; }
     public Type ValueType { get; init; }
@@ -24,24 +24,30 @@ public sealed class BbParamMember {
     internal Action<object, object> Setter { get; init; }
     internal Godot.Collections.Dictionary DefaultStorage { get; set; }
 
-    /// <summary>The parameter on <paramref name="node"/>, created on the spot if the member is still null.</summary>
-    public IBbParam On(ABehaviorNode node) {
-        if (Getter(node) is IBbParam param) return param;
+    /// <summary>The parameter on <paramref name="host"/>, created on the spot if the member is still null.</summary>
+    public IBbParam On(object host) {
+        if (Getter(host) is IBbParam param) return param;
         if (Setter == null) return null;
 
         param = (IBbParam) Activator.CreateInstance(typeof(BbParam<>).MakeGenericType(ValueType));
-        Setter(node, param);
+        Setter(host, param);
         return param;
     }
 }
 
 /// <summary>
-/// Finds the <see cref="BbParam{T}"/> members of node classes and converts them to and from what is
-/// stored in a tree resource: a small dictionary holding the fixed value and the entry link.
+/// Finds the <see cref="BbParam{T}"/> members of host classes and converts them to and from what is
+/// stored in a resource: a small dictionary holding the fixed value and the entry link.
 /// </summary>
 public static class BbParams {
     /// <summary>Hint string on a parameter's property, which is how the editor recognises one.</summary>
-    public const string HintString = "missbehave_param";
+    public const string HintString = "misscore_param";
+
+    /// <summary>
+    /// Suffix of a hidden property that reads and writes just a parameter's fixed value. It is not
+    /// listed or saved; the editor points a stock value editor at it.
+    /// </summary>
+    public const string LiteralSuffix = "__literal";
 
     const string KeyValue = "value";
     const string KeyEntry = "entry";
@@ -49,13 +55,13 @@ public static class BbParams {
 
     static readonly Dictionary<Type, BbParamMember[]> Members = [];
 
-    public static IReadOnlyList<BbParamMember> Of(Type nodeType) {
-        if (Members.TryGetValue(nodeType, out var cached)) return cached;
+    public static IReadOnlyList<BbParamMember> Of(Type hostType) {
+        if (Members.TryGetValue(hostType, out var cached)) return cached;
 
         var found = new List<BbParamMember>();
         // Base classes first, so inherited parameters come before the subclass's own ones.
         var chain = new List<Type>();
-        for (var type = nodeType; type != null && type != typeof(Resource); type = type.BaseType) chain.Insert(0, type);
+        for (var type = hostType; type != null && type != typeof(Resource); type = type.BaseType) chain.Insert(0, type);
 
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
         foreach (var type in chain) {
@@ -77,11 +83,19 @@ public static class BbParams {
         }
 
         var members = found.ToArray();
-        Members[nodeType] = members;
+        Members[hostType] = members;
         return members;
     }
 
-    public static BbParamMember Find(Type nodeType, string name) => Of(nodeType).FirstOrDefault(m => m.Name == name);
+    public static BbParamMember Find(Type hostType, string name) => Of(hostType).FirstOrDefault(m => m.Name == name);
+
+    /// <summary>Every <see cref="BbParam{T}"/> member of <paramref name="host"/>, with its current parameter.</summary>
+    public static IEnumerable<(BbParamMember Member, IBbParam Param)> On(object host) {
+        if (host == null) yield break;
+        foreach (var member in Of(host.GetType())) {
+            if (member.On(host) is { } param) yield return (member, param);
+        }
+    }
 
     static Type ValueTypeOf(Type type)
         => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(BbParam<>) ? type.GetGenericArguments()[0] : null;
@@ -102,7 +116,7 @@ public static class BbParams {
     }
 
     /// <summary>
-    /// Also accepts a bare value, which is what a tree saved before the member became a parameter
+    /// Also accepts a bare value, which is what a resource saved before the member became a parameter
     /// holds — a plain <c>float RequiredDistance</c> turned into <c>BbParam&lt;float&gt;</c> keeps its value.
     /// </summary>
     public static void FromStorage(IBbParam param, Variant stored) {
@@ -121,13 +135,13 @@ public static class BbParams {
         param.EntryName = "";
     }
 
-    /// <summary>What the member holds on a freshly constructed node — the revert value in the Inspector.</summary>
-    internal static Godot.Collections.Dictionary DefaultStorage(Type nodeType, BbParamMember member) {
+    /// <summary>What the member holds on a freshly constructed host — the revert value in the Inspector.</summary>
+    public static Godot.Collections.Dictionary DefaultStorage(Type hostType, BbParamMember member) {
         if (member.DefaultStorage != null) return member.DefaultStorage;
-        if (nodeType.IsAbstract || nodeType.GetConstructor(Type.EmptyTypes) == null) return null;
+        if (hostType.IsAbstract || hostType.GetConstructor(Type.EmptyTypes) == null) return null;
 
-        var pristine = (ABehaviorNode) Activator.CreateInstance(nodeType);
-        foreach (var each in Of(nodeType)) {
+        var pristine = Activator.CreateInstance(hostType);
+        foreach (var each in Of(hostType)) {
             var param = each.On(pristine);
             each.DefaultStorage = param == null ? null : ToStorage(param);
         }

@@ -10,6 +10,9 @@ live while the game runs, so you build a tree and press F5 without switching vie
 
 ## Enabling it
 
+Missbehave needs the `addons/misscore` folder next to it — the shared base of the Missfits addons,
+which holds the blackboard. It is a plain library: nothing to enable, it only has to be there.
+
 The addon compiles into the project's own assembly, so **build before enabling**:
 
 ```bash
@@ -96,9 +99,12 @@ The picker's filter matches the shown name, the class name and the group names. 
 A tree declares the values it works with on its **blackboard**, shown beside the graph (toggle it
 from the toolbar). Each entry has a name, a type and a default, all editable right there.
 
-Nodes use entries through `BbParam<T>`:
+Nodes use entries through `BbParam<T>`, which lives in the `Misscore` namespace:
 
 ```csharp
+using Missbehave;
+using Misscore;
+
 public partial class FollowTarget : ActionNode {
     BbParam<float> Speed { get; set; } = 4f;
     BbParam<Node3D> Target { get; set; }

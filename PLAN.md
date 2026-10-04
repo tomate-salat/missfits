@@ -85,8 +85,8 @@ Verworfen:
 
 ## Reihenfolge
 
-1. `misscore` anlegen und Blackboard samt Editor-Teilen aus `missbehave` dorthin verschieben. Selbsttests von `missbehave` laufen weiter.
-2. Action/Condition und Kontext im Core neutral definieren, `missbehave` auf Wrapper umstellen. Bestehende Trees und Nutzer-Actions müssen ladbar bleiben oder einen dokumentierten Migrationsweg bekommen.
+1. **Erledigt:** `misscore` anlegen und Blackboard samt Editor-Teilen aus `missbehave` dorthin verschieben. Selbsttests von `missbehave` laufen weiter.
+2. Action/Condition und Kontext im Core neutral definieren, `missbehave` auf Wrapper umstellen. Bestehende Trees und Nutzer-Actions müssen ladbar bleiben oder einen dokumentierten Migrationsweg bekommen. Dazu gehört auch die Parameter-Verdrahtung in `ABehaviorNode` (`_GetPropertyList`, `_Get`/`_Set`, Revert, Reload-Sicherung): Jeder weitere Parameter-Host braucht sie, sie liegt aber noch im BT-Knoten.
 3. `misstate` auf dem Core bauen. Erst hier zeigt sich, ob die Core-API wirklich neutral ist; Korrekturen am Core sind an dieser Stelle noch billig.
 4. Build-Skript für die Addon-Zips, danach erste gemeinsame Veröffentlichung von `missbehave` und `misstate`.
 5. `misspeak`, mit Actions und Conditions für BT und FSM.

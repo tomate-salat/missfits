@@ -1,7 +1,7 @@
 #if TOOLS
 using Godot;
 
-namespace Missbehave.Editor;
+namespace Misscore.Editor;
 
 /// <summary>
 /// How the blackboard panel looks: entries as cards with an accent in their type's colour, and the
@@ -12,6 +12,9 @@ namespace Missbehave.Editor;
 /// </summary>
 public static class BlackboardStyles {
     const string EditorIcons = "EditorIcons";
+
+    /// <summary>Colour of an entry's name where a parameter is linked to it.</summary>
+    public static readonly Color Linked = new("#b3adf0");
 
     /// <summary>Accent colour of an entry, grouped by what kind of value it holds.</summary>
     public static Color TypeColor(Variant.Type type) => type switch {

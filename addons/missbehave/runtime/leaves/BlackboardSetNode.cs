@@ -1,9 +1,10 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave;
 
 /// <summary>Writes a value — fixed, or read from another entry — into a blackboard entry and succeeds.</summary>
-[GlobalClass, Tool, Icon("res://addons/missbehave/icons/blackboard.svg")]
+[GlobalClass, Tool, Icon("res://addons/misscore/icons/blackboard.svg")]
 public partial class BlackboardSetNode : ActionNode {
     [BbEntryOnly]
     public BbParam<Variant> Target { get; set; }

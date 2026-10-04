@@ -4,34 +4,40 @@ using System.Collections.Generic;
 using System.Linq;
 using Godot;
 
-namespace Missbehave.Editor;
+namespace Misscore.Editor;
 
 /// <summary>
-/// The open tree's blackboard, beside the graph: every entry with its name, type and default value,
+/// The blackboard of the open <see cref="IBlackboardSource"/>: every entry with its name, type and default value,
 /// all editable in place. It also owns every edit that touches entries or the links to them — made
-/// from here or from a node's parameter in the Inspector — so each is one undo step.
+/// from here or from a parameter in the Inspector — so each is one undo step.
 /// <para>
-/// Undo restores a snapshot of the entries plus every node's parameters, rather than replaying the
+/// Undo restores a snapshot of the entries plus every host's parameters, rather than replaying the
 /// edit: a rename, for one, also rewrites the entry name each linked parameter carries for display.
 /// </para>
 /// </summary>
 [Tool]
 public partial class BlackboardPanel : VBoxContainer {
-    /// <summary>Entries or links changed; the tree needs saving and the graph a refresh.</summary>
+    /// <summary>Entries or links changed; the source needs saving and whatever shows it a refresh.</summary>
     [Signal]
     public delegate void BlackboardEditedEventHandler();
 
     [Signal]
     public delegate void EditRejectedEventHandler(string reason);
 
-    /// <summary>Undo or redo reached an edit of another tree, which should be opened right away.</summary>
+    /// <summary>Undo or redo reached an edit of another source, which should be opened right away.</summary>
     [Signal]
-    public delegate void TreeRequestedEventHandler(Resource tree);
+    public delegate void SourceRequestedEventHandler(Resource source);
 
     // Untyped so an assembly reload can restore it — see ReloadSafe.
-    GodotObject _tree;
+    GodotObject _source;
 
-    public BehaviorTree Tree => ReloadSafe.Get<BehaviorTree>(ref _tree);
+    public IBlackboardSource Source => ReloadSafe.Get<IBlackboardSource>(ref _source);
+
+    /// <summary>Leads every undo step's name, so the history tells which editor an edit came from.</summary>
+    public string UndoPrefix { get; set; } = "Blackboard";
+
+    /// <summary>What a parameter's menu says while its host is not part of the open source.</summary>
+    public string NotOpenHint { get; set; } = "Open this in its editor to link entries";
 
     /// <summary>Entry objects this session has seen, so undoing a removal brings back the same object.</summary>
     readonly Dictionary<string, BlackboardEntry> _pool = [];
@@ -72,7 +78,7 @@ public partial class BlackboardPanel : VBoxContainer {
         // Keeps the icon off the panel's edge; with the separation it lines up with the cards' content below.
         header.AddChild(new Control { Name = "LeadingPad", CustomMinimumSize = new Vector2(4, 0), MouseFilter = MouseFilterEnum.Ignore });
         header.AddChild(new TextureRect {
-            Texture = ResourceLoader.Load<Texture2D>("res://addons/missbehave/icons/blackboard.svg"),
+            Texture = ResourceLoader.Load<Texture2D>("res://addons/misscore/icons/blackboard.svg"),
             CustomMinimumSize = new Vector2(16, 16),
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
@@ -104,7 +110,7 @@ public partial class BlackboardPanel : VBoxContainer {
         AddChild(scroll);
 
         _empty = new Label {
-            Text = "No entries yet.\nAdd one with + above, or link a node parameter to a new entry in the Inspector.",
+            Text = "No entries yet.\nAdd one with + above, or link a parameter to a new entry in the Inspector.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             HorizontalAlignment = HorizontalAlignment.Center,
         };
@@ -147,16 +153,16 @@ public partial class BlackboardPanel : VBoxContainer {
         else menu.AddItem(label, id);
     }
 
-    public void ShowTree(BehaviorTree tree) {
-        _tree = tree;
+    public void ShowSource(IBlackboardSource source) {
+        _source = source as GodotObject;
         _pool.Clear();
         EnsurePool();
         Refresh();
     }
 
     void EnsurePool() {
-        if (Tree == null) return;
-        foreach (var entry in Tree.Blackboard) {
+        if (Source == null) return;
+        foreach (var entry in Source.Blackboard) {
             if (entry != null) _pool.TryAdd(entry.Id, entry);
         }
     }
@@ -169,7 +175,7 @@ public partial class BlackboardPanel : VBoxContainer {
         CallDeferred(MethodName.Refresh);
     }
 
-    /// <summary>Rebuilds every row from the tree.</summary>
+    /// <summary>Rebuilds every row from the source.</summary>
     public void Refresh() {
         _refreshQueued = false;
         if (_rows == null) return;
@@ -179,9 +185,9 @@ public partial class BlackboardPanel : VBoxContainer {
             child.QueueFree();
         }
 
-        _add.Disabled = Tree == null;
-        var entries = Tree?.Blackboard.Where(e => e != null).ToList() ?? [];
-        _empty.Visible = Tree != null && entries.Count == 0;
+        _add.Disabled = Source == null;
+        var entries = Source?.Blackboard.Where(e => e != null).ToList() ?? [];
+        _empty.Visible = Source != null && entries.Count == 0;
         _count.Text = entries.Count > 0 ? entries.Count.ToString() : "";
 
         foreach (var entry in entries) _rows.AddChild(BuildRow(entry));
@@ -198,7 +204,7 @@ public partial class BlackboardPanel : VBoxContainer {
     }
 
     void OnRenameRequested(string id, string name) {
-        var entry = Tree?.FindEntry(id);
+        var entry = Source?.FindEntry(id);
         if (entry != null && name.Trim() != entry.Name) RenameEntry(id, name);
     }
 
@@ -237,7 +243,7 @@ public partial class BlackboardPanel : VBoxContainer {
     // ---- edits -------------------------------------------------------------------------------
 
     public BlackboardEntry AddEntry(Variant.Type type, string className = "", string name = null) {
-        if (Tree == null) return null;
+        if (Source == null) return null;
 
         var entry = new BlackboardEntry {
             Name = UniqueName(string.IsNullOrWhiteSpace(name) ? DefaultNameFor(type, className) : name),
@@ -247,12 +253,12 @@ public partial class BlackboardPanel : VBoxContainer {
         };
         _pool[entry.Id] = entry;
 
-        Commit($"Missbehave: add blackboard entry {entry.Name}", () => Tree.Blackboard.Add(entry));
+        Commit($"{UndoPrefix}: add blackboard entry {entry.Name}", () => Source.Blackboard.Add(entry));
         return entry;
     }
 
     public bool RenameEntry(string id, string name) {
-        var entry = Tree?.FindEntry(id);
+        var entry = Source?.FindEntry(id);
         if (entry == null) return false;
 
         name = name?.Trim() ?? "";
@@ -260,7 +266,7 @@ public partial class BlackboardPanel : VBoxContainer {
 
         var problem = string.IsNullOrEmpty(name) ? "An entry needs a name."
             : name.Contains('/') ? "Entry names cannot contain '/'."
-            : Tree.FindEntryByName(name) != null ? $"There already is an entry called {name}."
+            : Source.FindEntryByName(name) != null ? $"There already is an entry called {name}."
             : null;
         if (problem != null) {
             EmitSignal(SignalName.EditRejected, problem);
@@ -268,10 +274,10 @@ public partial class BlackboardPanel : VBoxContainer {
             return false;
         }
 
-        Commit($"Missbehave: rename blackboard entry to {name}", () => {
+        Commit($"{UndoPrefix}: rename blackboard entry to {name}", () => {
             entry.Name = name;
-            foreach (var node in Tree.AllNodes()) {
-                foreach (var (_, param) in node.BlackboardParams()) {
+            foreach (var host in Source.ParamHosts()) {
+                foreach (var (_, param) in BbParams.On(host)) {
                     if (param.EntryId == id) param.EntryName = name;
                 }
             }
@@ -281,12 +287,12 @@ public partial class BlackboardPanel : VBoxContainer {
 
     /// <summary>Changes an entry's type. The default is kept when it still fits, otherwise reset.</summary>
     public void SetEntryType(string id, Variant.Type type, string className = "") {
-        var entry = Tree?.FindEntry(id);
+        var entry = Source?.FindEntry(id);
         if (entry == null) return;
         className = type == Variant.Type.Object ? className : "";
         if (entry.VariantType == type && entry.ClassName == className) return;
 
-        Commit($"Missbehave: change type of {entry.Name}", () => {
+        Commit($"{UndoPrefix}: change type of {entry.Name}", () => {
             entry.VariantType = type;
             entry.ClassName = className;
             if (type != Variant.Type.Nil && entry.Default.VariantType != type) entry.Default = BbTypes.DefaultOf(type);
@@ -294,11 +300,11 @@ public partial class BlackboardPanel : VBoxContainer {
     }
 
     public void SetEntryDefault(string id, Variant value) {
-        var entry = Tree?.FindEntry(id);
+        var entry = Source?.FindEntry(id);
         if (entry == null || BbTypes.SameValue(entry.Default, value)) return;
 
         // Merged with the previous step while the same entry keeps changing, so one slider drag is one undo.
-        Commit($"Missbehave: set default of {entry.Id}", () => entry.Default = value, rebuildRows: false,
+        Commit($"{UndoPrefix}: set default of {entry.Id}", () => entry.Default = value, rebuildRows: false,
             merge: UndoRedo.MergeMode.Ends);
     }
 
@@ -307,27 +313,27 @@ public partial class BlackboardPanel : VBoxContainer {
     /// them one by one — and show a warning on their box until they are relinked or the removal undone.
     /// </summary>
     public void RemoveEntry(string id) {
-        var entry = Tree?.FindEntry(id);
+        var entry = Source?.FindEntry(id);
         if (entry == null) return;
-        Commit($"Missbehave: remove blackboard entry {entry.Name}", () => Tree.Blackboard.Remove(entry));
+        Commit($"{UndoPrefix}: remove blackboard entry {entry.Name}", () => Source.Blackboard.Remove(entry));
     }
 
-    public void LinkParam(ABehaviorNode node, string member, string entryId) {
-        var param = ParamOf(node, member, out _);
-        var entry = Tree?.FindEntry(entryId);
+    public void LinkParam(IBbParamHost host, string member, string entryId) {
+        var param = ParamOf(host, member, out _);
+        var entry = Source?.FindEntry(entryId);
         if (param == null || entry == null) return;
 
-        Commit($"Missbehave: link {member} to {entry.Name}", () => {
+        Commit($"{UndoPrefix}: link {member} to {entry.Name}", () => {
             param.EntryId = entry.Id;
             param.EntryName = entry.Name;
         });
     }
 
-    public void UnlinkParam(ABehaviorNode node, string member) {
-        var param = ParamOf(node, member, out _);
+    public void UnlinkParam(IBbParamHost host, string member) {
+        var param = ParamOf(host, member, out _);
         if (param is not { IsLinked: true }) return;
 
-        Commit($"Missbehave: unlink {member}", () => {
+        Commit($"{UndoPrefix}: unlink {member}", () => {
             param.EntryId = "";
             param.EntryName = "";
         });
@@ -337,9 +343,9 @@ public partial class BlackboardPanel : VBoxContainer {
     /// Adds an entry shaped after a parameter — its type, and its current fixed value as the default —
     /// and links the parameter to it, as one undo step.
     /// </summary>
-    public BlackboardEntry CreateEntryForParam(ABehaviorNode node, string member, string name) {
-        var param = ParamOf(node, member, out var info);
-        if (param == null || Tree == null) return null;
+    public BlackboardEntry CreateEntryForParam(IBbParamHost host, string member, string name) {
+        var param = ParamOf(host, member, out var info);
+        if (param == null || Source == null) return null;
 
         var (type, className) = BbTypes.Describe(info.ValueType);
         var literal = param.Literal;
@@ -353,26 +359,26 @@ public partial class BlackboardPanel : VBoxContainer {
         };
         _pool[entry.Id] = entry;
 
-        Commit($"Missbehave: new blackboard entry {entry.Name} for {member}", () => {
-            Tree.Blackboard.Add(entry);
+        Commit($"{UndoPrefix}: new blackboard entry {entry.Name} for {member}", () => {
+            Source.Blackboard.Add(entry);
             param.EntryId = entry.Id;
             param.EntryName = entry.Name;
         });
         return entry;
     }
 
-    IBbParam ParamOf(ABehaviorNode node, string member, out BbParamMember info) {
-        info = node == null ? null : BbParams.Find(node.GetType(), member);
-        return info?.On(node);
+    IBbParam ParamOf(IBbParamHost host, string member, out BbParamMember info) {
+        info = host == null ? null : BbParams.Find(host.GetType(), member);
+        return info?.On(host);
     }
 
-    public bool Contains(ABehaviorNode node) => node != null && Tree != null && Tree.AllNodes().Contains(node);
+    public bool Contains(IBbParamHost host) => host != null && Source != null && Source.ParamHosts().Contains(host);
 
     public string UniqueName(string wanted) {
         wanted = string.IsNullOrWhiteSpace(wanted) ? "Entry" : wanted.Trim();
-        if (Tree?.FindEntryByName(wanted) == null) return wanted;
+        if (Source?.FindEntryByName(wanted) == null) return wanted;
         for (var i = 2; ; i++) {
-            if (Tree.FindEntryByName($"{wanted}{i}") == null) return $"{wanted}{i}";
+            if (Source.FindEntryByName($"{wanted}{i}") == null) return $"{wanted}{i}";
         }
     }
 
@@ -390,8 +396,8 @@ public partial class BlackboardPanel : VBoxContainer {
 
         var undoRedo = Engine.IsEditorHint() ? EditorInterface.Singleton?.GetEditorUndoRedo() : null;
         if (undoRedo != null) {
-            // Unsaved trees are tracked by the editor panel — see BehaviorTreeGraphEdit.Commit.
-            undoRedo.CreateAction(actionName, merge, Tree, false, false);
+            // No history context of its own: whoever shows the source tracks what is unsaved.
+            undoRedo.CreateAction(actionName, merge, Source as GodotObject, false, false);
             undoRedo.AddDoMethod(this, MethodName.RestoreSnapshot, after);
             undoRedo.AddUndoMethod(this, MethodName.RestoreSnapshot, before);
             undoRedo.CommitAction(false);
@@ -402,7 +408,7 @@ public partial class BlackboardPanel : VBoxContainer {
 
     internal Godot.Collections.Dictionary TakeSnapshot() {
         var entries = new Godot.Collections.Array();
-        foreach (var entry in Tree.Blackboard) {
+        foreach (var entry in Source.Blackboard) {
             if (entry == null) continue;
             entries.Add(new Godot.Collections.Dictionary {
                 { "id", entry.Id },
@@ -414,23 +420,23 @@ public partial class BlackboardPanel : VBoxContainer {
         }
 
         var parameters = new Godot.Collections.Dictionary();
-        foreach (var node in Tree.AllNodes()) {
+        foreach (var host in Source.ParamHosts()) {
             var stored = new Godot.Collections.Dictionary();
-            foreach (var (member, param) in node.BlackboardParams()) stored[member.Name] = BbParams.ToStorage(param);
-            if (stored.Count > 0) parameters[node.Id] = stored;
+            foreach (var (member, param) in BbParams.On(host)) stored[member.Name] = BbParams.ToStorage(param);
+            if (stored.Count > 0) parameters[host.Id] = stored;
         }
 
-        return new Godot.Collections.Dictionary { { "tree", Tree }, { "entries", entries }, { "params", parameters } };
+        return new Godot.Collections.Dictionary { { "source", Source as GodotObject }, { "entries", entries }, { "params", parameters } };
     }
 
     public void RestoreSnapshot(Godot.Collections.Dictionary snapshot) {
-        // As in the graph: another tree's edit opens that tree rather than landing in this one.
-        if (snapshot.TryGetValue("tree", out var owner) && owner.AsGodotObject() is BehaviorTree ownerTree
-            && !ReferenceEquals(ownerTree, Tree)) {
-            EmitSignal(SignalName.TreeRequested, ownerTree);
-            if (!ReferenceEquals(ownerTree, Tree)) return;
+        // Another source's edit opens that source rather than landing in this one.
+        if (snapshot.TryGetValue("source", out var owner) && owner.AsGodotObject() is IBlackboardSource other
+            && !ReferenceEquals(other, Source)) {
+            EmitSignal(SignalName.SourceRequested, owner);
+            if (!ReferenceEquals(other, Source)) return;
         }
-        if (Tree == null) return;
+        if (Source == null) return;
         EnsurePool();
 
         var entries = new Godot.Collections.Array<BlackboardEntry>();
@@ -447,13 +453,13 @@ public partial class BlackboardPanel : VBoxContainer {
             entry.Default = data["default"];
             entries.Add(entry);
         }
-        Tree.Blackboard = entries;
+        Source.Blackboard = entries;
 
         var parameters = snapshot["params"].AsGodotDictionary();
-        foreach (var node in Tree.AllNodes()) {
-            if (!parameters.TryGetValue(node.Id, out var stored)) continue;
+        foreach (var host in Source.ParamHosts()) {
+            if (!parameters.TryGetValue(host.Id, out var stored)) continue;
             var values = stored.AsGodotDictionary();
-            foreach (var (member, param) in node.BlackboardParams()) {
+            foreach (var (member, param) in BbParams.On(host)) {
                 if (values.TryGetValue(member.Name, out var value)) BbParams.FromStorage(param, value);
             }
         }
@@ -465,10 +471,10 @@ public partial class BlackboardPanel : VBoxContainer {
         if (rebuildRows) {
             QueueRefresh();
             // The Inspector rebuilds from this, so a parameter's link menu and label follow at once.
-            foreach (var node in Tree.AllNodes()) node.NotifyPropertyListChanged();
+            foreach (var host in Source.ParamHosts()) (host as GodotObject)?.NotifyPropertyListChanged();
         }
-        // Runners in open scenes list the entries in their Inspector.
-        Tree.EmitChanged();
+        // Whatever uses the source in an open scene may list the entries in its Inspector.
+        (Source as Resource)?.EmitChanged();
         EmitSignal(SignalName.BlackboardEdited);
     }
 }

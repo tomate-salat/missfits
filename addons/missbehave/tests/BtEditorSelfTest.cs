@@ -4,6 +4,8 @@ using System.Linq;
 using Godot;
 using Missbehave.Editor;
 using Missbehave.Tests;
+using Misscore;
+using Misscore.Editor;
 
 namespace Missbehave;
 
@@ -619,7 +621,7 @@ public partial class BtEditorSelfTest : Node {
 
         var register = new Godot.Collections.Array {
             42L,
-            "res://addons/missbehave/demo/demo_tree.tres",
+            "res://missbehave demo/demo_tree.tres",
             "EnemyNear",
             new[] { _root.Id, _leaf.Id },
             new[] { -1, 0 },
@@ -915,7 +917,7 @@ public partial class BtEditorSelfTest : Node {
 
         var runner = new RunnerInfo {
             Id = 7,
-            TreePath = "res://addons/missbehave/demo/demo_tree.tres",
+            TreePath = "res://missbehave demo/demo_tree.tres",
             ActorName = "EnemyNear",
             IdTable = [],
         };
@@ -1045,11 +1047,13 @@ public partial class BtEditorSelfTest : Node {
     /// </summary>
     void EditorSourcesDoNotWireDelegates() {
         const string editor = "res://addons/missbehave/editor";
+        // The blackboard's editor lives in the core, and is held to the same rule.
+        const string coreEditor = "res://addons/misscore/editor";
         string[] unauditable = [
             $"{editor}/MissbehaveEditorPlugin.cs",
             $"{editor}/BehaviorTreeInspectorPlugin.cs",
             $"{editor}/debug/MissbehaveDebuggerPlugin.cs",
-            $"{editor}/blackboard/BbParamEditorProperty.cs",
+            $"{coreEditor}/blackboard/BbParamEditorProperty.cs",
         ];
 
         var offenders = new List<string>();
@@ -1058,7 +1062,7 @@ public partial class BtEditorSelfTest : Node {
         var scanned = 0;
         var pluginsScanned = 0;
 
-        foreach (var path in CsFilesUnder(editor)) {
+        foreach (var path in CsFilesUnder(editor).Concat(CsFilesUnder(coreEditor))) {
             using var file = FileAccess.Open(path, FileAccess.ModeFlags.Read);
             if (file == null) continue;
             scanned++;
@@ -1097,7 +1101,7 @@ public partial class BtEditorSelfTest : Node {
 
     async System.Threading.Tasks.Task TheBlackboardSitsBesideTheGraph() {
         var blackboard = _panel.Blackboard;
-        Check("the panel has a blackboard", blackboard != null && blackboard.Tree == _tree);
+        Check("the panel has a blackboard", blackboard != null && blackboard.Source == _tree);
         Check("the blackboard shares a split with the graph",
             blackboard?.GetParent() is HSplitContainer split && _graph.GetParent() == split);
         Check("the blackboard is shown by default", blackboard?.IsVisibleInTree() == true);

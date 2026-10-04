@@ -1,9 +1,10 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave;
 
 /// <summary>Compares two values, each either fixed or read from a blackboard entry.</summary>
-[GlobalClass, Tool, Icon("res://addons/missbehave/icons/blackboard.svg")]
+[GlobalClass, Tool, Icon("res://addons/misscore/icons/blackboard.svg")]
 public partial class BlackboardCompareNode : ConditionNode {
     public enum CompareOperator {
         Equal,

@@ -1,4 +1,5 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave;
 
@@ -30,4 +31,13 @@ public readonly record struct BtContext {
     public BehaviorTreeRunner Runner { get; init; }
     
     public T GetActor<T>() where T : Node => Actor as T;
+}
+
+/// <summary>Lets a node hand its context to a parameter, which itself only knows the blackboard.</summary>
+public static class BbParamContextExtensions {
+    /// <inheritdoc cref="BbParam{T}.Get(Blackboard)"/>
+    public static T Get<[MustBeVariant] T>(this BbParam<T> param, BtContext ctx) => param.Get(ctx.Blackboard);
+
+    /// <inheritdoc cref="BbParam{T}.Set(Blackboard, T)"/>
+    public static void Set<[MustBeVariant] T>(this BbParam<T> param, BtContext ctx, T value) => param.Set(ctx.Blackboard, value);
 }

@@ -1,5 +1,6 @@
 #if TOOLS
 using Godot;
+using Misscore.Editor;
 
 namespace Missbehave.Editor;
 

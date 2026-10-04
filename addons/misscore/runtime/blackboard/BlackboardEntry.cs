@@ -1,19 +1,23 @@
+using System;
 using Godot;
 
-namespace Missbehave;
+namespace Misscore;
 
 /// <summary>
-/// One value a tree declares on its blackboard: a type, a default and a name to show.
+/// One value an <see cref="IBlackboardSource"/> declares on its blackboard: a type, a default and a
+/// name to show.
 /// <para>
 /// Everything refers to an entry by <see cref="Id"/>, never by <see cref="Name"/>, so an entry can be
-/// renamed at any time without breaking a single node. The name only matters to people, and to code
-/// outside the tree that looks a value up by name.
+/// renamed at any time without breaking a single link. The name only matters to people, and to code
+/// outside that looks a value up by name.
 /// </para>
 /// </summary>
 [GlobalClass, Tool]
 public partial class BlackboardEntry : Resource {
     [Export]
-    public string Id { get; set; } = ABehaviorNode.NewId();
+    public string Id { get; set; } = NewId();
+
+    public static string NewId() => Guid.NewGuid().ToString("N");
 
     [Export]
     public string Name { get; set; } = "";
@@ -36,8 +40,8 @@ public partial class BlackboardEntry : Resource {
     string _className = "";
 
     /// <summary>
-    /// The value every runner starts with, unless the runner overrides it. Scene nodes cannot live in
-    /// a resource, so node entries have no default and are always filled in on the runner.
+    /// The value every instance starts with, unless it is overridden there. Scene nodes cannot live in
+    /// a resource, so node entries have no default and are always filled in per instance.
     /// </summary>
     [Export]
     public Variant Default { get; set; }

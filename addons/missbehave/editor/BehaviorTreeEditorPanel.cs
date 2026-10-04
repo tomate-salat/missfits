@@ -2,6 +2,7 @@
 using System;
 using System.Linq;
 using Godot;
+using Misscore.Editor;
 
 namespace Missbehave.Editor;
 
@@ -82,11 +83,14 @@ public partial class BehaviorTreeEditorPanel : VBoxContainer {
         Graph.Connect(BehaviorTreeGraphEdit.SignalName.Rebuilt, new Callable(this, MethodName.OnGraphRebuilt));
         Graph.Connect(BehaviorTreeGraphEdit.SignalName.TreeRequested, new Callable(this, MethodName.OnTreeRequested));
 
-        _blackboard = new BlackboardPanel();
+        _blackboard = new BlackboardPanel {
+            UndoPrefix = "Missbehave",
+            NotOpenHint = "Open this tree in Missbehave to link entries",
+        };
         split.AddChild(Blackboard);
         Blackboard.Connect(BlackboardPanel.SignalName.BlackboardEdited, new Callable(this, MethodName.OnBlackboardEdited));
         Blackboard.Connect(BlackboardPanel.SignalName.EditRejected, new Callable(this, MethodName.OnGraphRejected));
-        Blackboard.Connect(BlackboardPanel.SignalName.TreeRequested, new Callable(this, MethodName.OnTreeRequested));
+        Blackboard.Connect(BlackboardPanel.SignalName.SourceRequested, new Callable(this, MethodName.OnTreeRequested));
 
         _status = new Label { Text = "No tree open." };
         _status.AddThemeFontSizeOverride("font_size", 11);
@@ -199,7 +203,7 @@ public partial class BehaviorTreeEditorPanel : VBoxContainer {
         ClearStatuses();
         _tree = tree;
         Graph.LoadTree(tree);
-        Blackboard.ShowTree(tree);
+        Blackboard.ShowSource(tree);
 
         _title.Text = string.IsNullOrEmpty(tree.ResourcePath) ? "(unsaved tree)" : tree.ResourcePath;
         ShowDirtyState();
@@ -392,7 +396,7 @@ public partial class BehaviorTreeEditorPanel : VBoxContainer {
 
         _unsavedTrees.Remove(tree);
         Graph.LoadTree(tree);
-        Blackboard.ShowTree(tree);
+        Blackboard.ShowSource(tree);
         // The Inspector may be showing one of the nodes; its values just changed underneath it.
         foreach (var node in tree.AllNodes()) node.NotifyPropertyListChanged();
         tree.NotifyPropertyListChanged();

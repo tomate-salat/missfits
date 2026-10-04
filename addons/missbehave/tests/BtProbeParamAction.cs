@@ -1,4 +1,5 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave.Tests;
 

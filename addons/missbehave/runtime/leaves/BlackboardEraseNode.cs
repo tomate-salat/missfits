@@ -1,4 +1,5 @@
 using Godot;
+using Misscore;
 
 namespace Missbehave;
 
@@ -6,7 +7,7 @@ namespace Missbehave;
 /// Removes a blackboard entry's value, so that <see cref="BlackboardHasNode"/> fails and parameters
 /// linked to it fall back to their fixed value. Succeeds whether or not there was a value.
 /// </summary>
-[GlobalClass, Tool, Icon("res://addons/missbehave/icons/blackboard.svg")]
+[GlobalClass, Tool, Icon("res://addons/misscore/icons/blackboard.svg")]
 public partial class BlackboardEraseNode : ActionNode {
     [BbEntryOnly]
     public BbParam<Variant> Entry { get; set; }

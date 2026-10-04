@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using Misscore;
 
 namespace Missbehave;
 
@@ -15,7 +16,7 @@ namespace Missbehave;
 /// </para>
 /// </summary>
 [GlobalClass, Tool]
-public abstract partial class ABehaviorNode : Resource, ISerializationListener {
+public abstract partial class ABehaviorNode : Resource, ISerializationListener, IBbParamHost {
     /// <summary>Optional label shown in the graph instead of the class name.</summary>
     [Export]
     public string DisplayName { get; set; } = "";
@@ -121,7 +122,7 @@ public abstract partial class ABehaviorNode : Resource, ISerializationListener {
     /// </summary>
     void RefreshParams(BtContext ctx) {
         _paramsForTicking ??= [.. BlackboardParams().Select(p => p.Param)];
-        foreach (var param in _paramsForTicking) param.Refresh(ctx);
+        foreach (var param in _paramsForTicking) param.Refresh(ctx.Blackboard);
     }
 
     internal BehaviorStatus TickInternal(BtContext ctx) {
@@ -184,21 +185,14 @@ public abstract partial class ABehaviorNode : Resource, ISerializationListener {
 
     // ---- blackboard parameters ---------------------------------------------------------------
 
-    /// <summary>
-    /// Suffix of a hidden property that reads and writes just a parameter's fixed value. It is not
-    /// listed or saved; the editor points a stock value editor at it.
-    /// </summary>
-    public const string LiteralSuffix = "__literal";
+    /// <inheritdoc cref="BbParams.LiteralSuffix"/>
+    public const string LiteralSuffix = BbParams.LiteralSuffix;
 
     /// <summary>Holds the parameters while the assembly reloads, see <see cref="OnBeforeSerialize"/>.</summary>
     Godot.Collections.Dictionary _paramsAcrossReload;
 
     /// <summary>Every <see cref="BbParam{T}"/> member of this node, with its current parameter.</summary>
-    public IEnumerable<(BbParamMember Member, IBbParam Param)> BlackboardParams() {
-        foreach (var member in BbParams.Of(GetType())) {
-            if (member.On(this) is { } param) yield return (member, param);
-        }
-    }
+    public IEnumerable<(BbParamMember Member, IBbParam Param)> BlackboardParams() => BbParams.On(this);
 
     /// <summary>
     /// Lists each <see cref="BbParam{T}"/> as a stored property, which is all it takes for Godot to

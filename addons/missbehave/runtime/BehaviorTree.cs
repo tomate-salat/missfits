@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Godot;
+using Misscore;
 
 namespace Missbehave;
 
@@ -9,7 +10,7 @@ namespace Missbehave;
 /// number of runners.
 /// </summary>
 [GlobalClass, Tool, Icon("res://addons/missbehave/icons/tree.svg")]
-public partial class BehaviorTree : Resource {
+public partial class BehaviorTree : Resource, IBlackboardSource {
     [Export]
     public ABehaviorNode Root { get; set; }
 
@@ -66,6 +67,8 @@ public partial class BehaviorTree : Resource {
         into.Add(node);
         foreach (var child in node.Children) Flatten(child, into);
     }
+
+    IEnumerable<IBbParamHost> IBlackboardSource.ParamHosts() => AllNodes();
 
     /// <summary>Every node reachable from the root plus every orphan, for editor-side iteration.</summary>
     public IEnumerable<ABehaviorNode> AllNodes() {

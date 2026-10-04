@@ -1,7 +1,7 @@
 #if TOOLS
 using Godot;
 
-namespace Missbehave.Editor;
+namespace Misscore.Editor;
 
 /// <summary>
 /// One entry in the blackboard panel, drawn as a card: the name with a remove button, and below it
@@ -52,7 +52,7 @@ public partial class BlackboardEntryRow : PanelContainer {
             Text = entry.Name,
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             Flat = true,
-            TooltipText = "Rename — nodes link to the entry itself, so nothing breaks",
+            TooltipText = "Rename — parameters link to the entry itself, so nothing breaks",
         };
         if (BlackboardStyles.BoldFont() is { } bold) _name.AddThemeFontOverride("font", bold);
         _name.AddThemeConstantOverride("minimum_character_width", 4);
@@ -118,7 +118,7 @@ public partial class BlackboardEntryRow : PanelContainer {
     /// <see cref="BlackboardEntry.Default"/>. Outside the editor — in the headless test — a label.
     /// </summary>
     Control BuildValueEditor(BlackboardEntry entry) {
-        if (entry.IsNode) return Hint("set on each runner");
+        if (entry.IsNode) return Hint("set per instance");
         if (!Engine.IsEditorHint()) return new Label { Name = "Value", Text = BbTypes.Format(entry.Default) };
 
         var hint = entry.VariantType == Variant.Type.Object ? PropertyHint.ResourceType : PropertyHint.None;
@@ -142,7 +142,7 @@ public partial class BlackboardEntryRow : PanelContainer {
             Name = "Value",
             Text = text,
             HorizontalAlignment = HorizontalAlignment.Right,
-            TooltipText = "Scene nodes cannot be stored in the tree — assign this in each runner's Inspector",
+            TooltipText = "Scene nodes cannot be stored in a resource — assign this where the blackboard is used",
             MouseFilter = MouseFilterEnum.Pass,
         };
         label.AddThemeColorOverride("font_color", new Color(1, 1, 1, 0.4f));

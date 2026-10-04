@@ -1,14 +1,14 @@
 using System.Collections.Generic;
 using Godot;
 
-namespace Missbehave;
+namespace Misscore;
 
 /// <summary>
-/// Scratch memory for one tree instance. Deliberately a plain C# class rather than a Resource or a
-/// Node: it has no lifecycle of its own.
+/// Scratch memory for one running instance — of a behavior tree, say. Deliberately a plain C# class
+/// rather than a Resource or a Node: it has no lifecycle of its own.
 /// <para>
-/// Values the tree declares (<see cref="BehaviorTree.Blackboard"/>) are stored under their entry's
-/// id, which is what nodes use through <see cref="BbParam{T}"/>. Code outside the tree usually
+/// Values the source declares (<see cref="IBlackboardSource.Blackboard"/>) are stored under their
+/// entry's id, which is what parameters use through <see cref="BbParam{T}"/>. Code outside usually
 /// knows a value by name instead, so every by-name call first looks for a declared entry of that name
 /// and only otherwise keeps an ad-hoc value under the name itself.
 /// </para>
@@ -20,8 +20,8 @@ public sealed class Blackboard {
     readonly Dictionary<string, string> _nameById = [];
 
     /// <summary>
-    /// Registers the tree's entries and sets each to its default. Array and dictionary defaults are
-    /// copied, so runners sharing a tree never write into one shared collection.
+    /// Registers the source's entries and sets each to its default. Array and dictionary defaults are
+    /// copied, so instances sharing a source never write into one shared collection.
     /// </summary>
     public void Declare(IEnumerable<BlackboardEntry> entries) {
         if (entries == null) return;
@@ -46,7 +46,7 @@ public sealed class Blackboard {
         return _idByName.GetValueOrDefault(name, name);
     }
 
-    /// <summary>Whether <paramref name="name"/> belongs to an entry the tree declares.</summary>
+    /// <summary>Whether <paramref name="name"/> belongs to a declared entry.</summary>
     public bool IsDeclared(string name) => _idByName.ContainsKey(name ?? "");
 
     // ---- by name -----------------------------------------------------------------------------
