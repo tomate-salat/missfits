@@ -1,50 +1,46 @@
+using System;
+using System.Text;
 using Godot;
+using Misscore;
 
 namespace Misstate;
 
 /// <summary>
-/// Runtime half of the live-debug channel. No-ops outside an editor-launched game, so shipped
-/// builds pay nothing but a couple of branch predictions.
-/// <para>
-/// Only runners whose machine is the one currently open in the editor send anything, and only when
-/// something changed. The bookkeeping itself lives in <see cref="FsmDebugStream"/>.
-/// </para>
+/// Runtime half of the live-debug channel: where a runner's machine is, sent to the editor that has
+/// the machine open. The bookkeeping — who watches what, and sending only what changed — is
+/// <see cref="RunnerDebugChannel"/>'s; this says what the state of a machine is.
 /// </summary>
 public static class MisstateDebug {
     public const string Prefix = "misstate";
 
-    static FsmDebugStream _stream;
-    static Callable _capture;
+    static readonly RunnerDebugChannel Channel = new(Prefix, SourcePath, StateOf);
 
-    static bool Active => !Engine.IsEditorHint() && OS.HasFeature("editor") && EngineDebugger.IsActive();
+    public static void Register(FsmRunner runner) => Channel.Register(runner);
 
-    public static void Register(FsmRunner runner) {
-        if (!Active) return;
-        Stream.Register(runner);
-    }
+    public static void Unregister(FsmRunner runner) => Channel.Unregister(runner);
 
-    public static void Unregister(FsmRunner runner) {
-        if (!Active) return;
-        Stream.Unregister(runner);
-    }
+    public static void SendState(FsmRunner runner) => Channel.SendState(runner);
 
-    public static void SendState(FsmRunner runner) {
-        if (!Active) return;
-        Stream.SendState(runner);
-    }
+    /// <summary>A stream that sends to wherever it is told instead of to the debugger. For tests.</summary>
+    internal static RunnerDebugStream NewStream(Action<string, Godot.Collections.Array> send, Func<ulong> clock) => Channel.NewStream(send, clock);
 
-    static FsmDebugStream Stream {
-        get {
-            if (_stream != null) return _stream;
+    static string SourcePath(MissRunner runner) => (runner as FsmRunner)?.Machine?.ResourcePath;
 
-            _stream = new FsmDebugStream(
-                (message, data) => EngineDebugger.SendMessage($"{Prefix}:{message}", data),
-                Time.GetTicksMsec);
+    /// <summary>The state the machine is in, what its actions last returned, the tick, and the transition that led there.</summary>
+    static RunnerDebugState? StateOf(MissRunner runner, int tick) {
+        if (runner is not FsmRunner { Instance: { } instance }) return null;
 
-            // Registered lazily on the first runner, so the addon needs no autoload.
-            _capture = Callable.From<string, Godot.Collections.Array, bool>(_stream.OnEditorMessage);
-            EngineDebugger.RegisterMessageCapture(Prefix, _capture);
-            return _stream;
-        }
+        var stateId = instance.Current?.Id ?? "";
+        var statuses = instance.ActionStatuses;
+        var enteredBy = instance.EnteredBy?.Id ?? "";
+
+        // What tells a change: the state and the transition travel in the frame too, since a state
+        // entered again by another way has the same action statuses.
+        var id = Encoding.UTF8.GetBytes(stateId + enteredBy);
+        var frame = new byte[id.Length + statuses.Length];
+        id.CopyTo(frame, 0);
+        statuses.CopyTo(frame, id.Length);
+
+        return new RunnerDebugState(frame, [stateId, (byte[]) statuses.Clone(), tick, enteredBy]);
     }
 }

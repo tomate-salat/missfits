@@ -69,14 +69,21 @@ public partial class DialogueRunner : MissRunner {
         if (Autostart) Start();
     }
 
+    public override void _ExitTree() {
+        if (Engine.IsEditorHint()) return;
+        MisspeakDebug.Unregister(this);
+    }
+
     protected override void BuildInstance() {
+        if (Instance != null) MisspeakDebug.Unregister(this);
         Instance?.Cancel(Context(0));
 
         Instance = DialogueInstance.Create(Dialogue);
         if (Instance == null) {
-            if (Dialogue != null) GD.PushWarning($"misspeak: {Name} has a dialogue without lines.");
+            if (Dialogue != null) GD.PushWarning($"misspeak: {Name} has a dialogue without sections.");
             return;
         }
+        MisspeakDebug.Register(this);
 
         Instance.Translate = (text, context) => Tr(text, context);
         Instance.Started += () => EmitSignalDialogueStarted();
@@ -92,6 +99,8 @@ public partial class DialogueRunner : MissRunner {
     }
 
     protected override void InterruptInstance(MissContext ctx) => Instance.Interrupt(ctx);
+
+    protected override void AfterTick() => MisspeakDebug.SendState(this);
 
     /// <summary>
     /// Starts a dialogue: the given one, which then becomes <see cref="Dialogue"/>, or the one the

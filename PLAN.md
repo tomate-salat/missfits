@@ -63,7 +63,7 @@ Noch im BT-Addon, mögliche Kandidaten für später:
 
 | Heute | Anmerkung |
 |---|---|
-| `runtime/debug/DebugStream.cs`, `FrameThrottle.cs` | Debug-Transport, sofern nicht BT-spezifisch |
+| `runtime/debug/DebugStream.cs` | Debug-Transport des BT; die gemeinsame Basis liegt inzwischen im Core, siehe unten |
 | `editor/GraphNodeStyles.cs`, `NodeTypeRegistry.cs` | zu prüfen, wie viel davon generisch ist |
 
 ## Was misstate zeigt
@@ -79,7 +79,7 @@ Was der FSM-Editor gezeigt hat:
 
 Offen:
 
-- **Debug-Kanal doppelt:** `misstate` hat einen eigenen Debug-Kanal nach dem Muster von `missbehave` (Stream im Spiel, Router und Debugger-Plugin im Editor). Geteilt wird nur `FrameThrottle`. Die beiden Kanäle sind sich sehr ähnlich; bei einem dritten Addon lohnt es, den gemeinsamen Teil in den Core zu ziehen.
+- **Debug-Kanal von `missbehave`:** `misstate` und `misspeak` teilen sich den Kanal aus dem Core (`RunnerDebugChannel` und `RunnerDebugStream` im Spiel, `RunnerDebugRouter` und `RunnerDebuggerPlugin` im Editor); ein Addon liefert nur noch seinen Präfix und was der Zustand eines Runners ist. `missbehave` hat weiter seinen eigenen Kanal nach demselben Muster, weil er pro Tick die Status aller Knoten schickt. Er ließe sich auf dieselbe Basis stellen.
 - **Teilbäume:** Eine Action eines States kann ein BT-Teilbaum sein, zusammenbauen lässt er sich aber nur im Inspector, nicht im Graph.
 
 Entscheidungen aus dem ersten Ausprobieren im Editor:
@@ -98,9 +98,8 @@ Entscheidungen aus dem ersten Ausprobieren im Editor:
 
 Offen:
 
-- **Live-Ansicht:** Der Graph-Editor zeigt noch nicht, wo ein laufender Dialog steht. Das wäre der dritte Debug-Kanal und damit der Anlass, den gemeinsamen Teil der Kanäle in den Core zu ziehen.
-- **Panel dreifach:** `DialogueEditorPanel` ist bis auf die Typen `FsmEditorPanel` (Toolbar, Speichern, Zurücksetzen, ungespeicherte Änderungen, Abgleich mit dem Inspector). Der Graph ist geteilt, das Panel noch nicht.
-- **Reroutes:** `Dialogue` hat noch keine; die Datenklasse `MissReroute` und ihre Box liegen dafür inzwischen im Core.
+- **Panel doppelt:** `DialogueEditorPanel` ist bis auf die Typen `FsmEditorPanel` (Toolbar, Speichern, Zurücksetzen, ungespeicherte Änderungen, Abgleich mit dem Inspector, Instanz-Auswahl). Graph und Debug-Kanal sind geteilt, das Panel noch nicht.
+- **Text nur im Inspector:** Sprecher und Text einer Zeile lassen sich im Graph nicht direkt tippen.
 
 Der Core bekommt kein `plugin.cfg`. Als reine Bibliothek muss ihn niemand aktivieren; Editor-Widgets dürfen darin liegen, registriert werden sie vom jeweiligen Addon-Plugin.
 
@@ -133,5 +132,5 @@ Verworfen:
 4. **Umgesetzt:** Graph-Editor für `misstate`. Ein Editor-Teil kam dafür in den Core: die Abgrenzung der Blackboard-Panels.
 5. **Umgesetzt:** Live-Ansicht für `misstate`: aktueller State und Status seiner Actions im Graph, während das Spiel läuft.
 6. **Skript umgesetzt, Veröffentlichung offen:** Build-Skript für die Addon-Zips, danach erste gemeinsame Veröffentlichung von `missbehave` und `misstate`.
-7. **Umgesetzt bis auf die Live-Ansicht:** `misspeak`, mit Actions und Conditions für BT und FSM.
+7. **Umgesetzt:** `misspeak`, mit Actions und Conditions für BT und FSM.
 8. `mission`.

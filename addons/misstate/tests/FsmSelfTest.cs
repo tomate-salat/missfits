@@ -59,6 +59,9 @@ public partial class FsmSelfTest : Node {
 
         foreach (var failure in _failures) GD.PrintErr($"FAIL  {failure}");
         GD.Print($"misstate self test: {_checks - _failures.Count}/{_checks} checks passed");
+        // Godot arrays the tests left behind are finalized now, not after the engine has shut down.
+        System.GC.Collect();
+        System.GC.WaitForPendingFinalizers();
         GetTree().Quit(_failures.Count == 0 ? 0 : 1);
     }
 
@@ -507,7 +510,7 @@ public partial class FsmSelfTest : Node {
     void TheDebugStreamSendsWhereAMachineIs() {
         var sent = new List<(string Message, Godot.Collections.Array Data)>();
         ulong now = 1000;
-        var stream = new FsmDebugStream((message, data) => sent.Add((message, data)), () => now);
+        var stream = MisstateDebug.NewStream((message, data) => sent.Add((message, data)), () => now);
 
         const string path = "user://misstate_debug_machine.tres";
         var work = State("Work", new FsmProbeAction { RunningTicks = 1 });

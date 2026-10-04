@@ -203,6 +203,72 @@ public partial class DialogueGraphEdit : MissGraphEdit {
         foreach (var name in selectedReroutes) {
             if (RerouteBoxFor(name) is { } reroute) reroute.Selected = true;
         }
+
+        // A paused game sends nothing further, so an edit that rebuilds the graph has to repaint it.
+        if (_live) PaintLive();
+    }
+
+    // ---- live debugging ----------------------------------------------------------------------
+
+    /// <summary>Where a running game last reported the dialogue to be, kept so a rebuild can show it again.</summary>
+    bool _live;
+    string _liveSection = "";
+    string _liveLine = "";
+    string _liveEnteredBy = "";
+
+    /// <summary>Shows where a running dialogue is: its section, the line it is at, and the option that led there.</summary>
+    /// <param name="sectionId">Empty while the runner has no dialogue under way.</param>
+    public void ShowLive(string sectionId, string lineId, string enteredBy = "") {
+        _live = true;
+        _liveSection = sectionId ?? "";
+        _liveLine = lineId ?? "";
+        _liveEnteredBy = enteredBy ?? "";
+        PaintLive();
+    }
+
+    void PaintLive() {
+        // Between talks nothing stands out, and nothing fades either.
+        if (_liveSection == "") {
+            foreach (var box in Boxes()) box.ClearLive();
+            WireOverlay?.ClearWires();
+            return;
+        }
+
+        foreach (var box in Boxes()) box.ShowLive(box.Name == _liveSection, _liveLine);
+        PlaceWireOverlay();
+        WireOverlay?.ShowWires(LiveWires());
+    }
+
+    public void ClearLive() {
+        if (!_live) return;
+        _live = false;
+        foreach (var box in Boxes()) box.ClearLive();
+        WireOverlay?.ClearWires();
+    }
+
+    /// <summary>
+    /// The wires to highlight: every way out of the current section, and the way the dialogue came
+    /// in — each followed through its reroutes. An option that was edited away since the game
+    /// started is simply not found.
+    /// </summary>
+    List<LiveWire> LiveWires() {
+        var wires = new List<LiveWire>();
+        var dialogue = Dialogue;
+        if (dialogue == null) return wires;
+
+        foreach (var section in dialogue.Sections) {
+            if (section == null) continue;
+            var port = 0;
+            foreach (var option in section.Options) {
+                if (option == null) continue;
+
+                var taken = option.Id == _liveEnteredBy && dialogue.Destination(option.TargetSectionId)?.Id == _liveSection;
+                if (taken) FollowWire(wires, section.Id, port, option.TargetSectionId, taken: true);
+                if (section.Id == _liveSection) FollowWire(wires, section.Id, port, option.TargetSectionId, taken: false);
+                port++;
+            }
+        }
+        return wires;
     }
 
     void QueueRebuild() {

@@ -61,6 +61,7 @@ public partial class SpeakEditorSelfTest : Node {
         await ReroutesLeadWiresAround();
         await NodesLinkToTheBlackboardBesideTheGraph();
         await SavingAndRevertingFollowTheFile();
+        await TheGraphShowsWhereARunningDialogueIs();
 
         foreach (var failure in _failures) GD.PrintErr($"FAIL  {failure}");
         GD.Print($"misspeak editor self test: {_checks - _failures.Count}/{_checks} checks passed");
@@ -410,6 +411,58 @@ public partial class SpeakEditorSelfTest : Node {
                                                             && _dialogue.Reroutes.Count == 0 && ask?.Lines[1].Text == "What do you need?");
         Check("keeps the dialogue resource itself", ReferenceEquals(_panel.Dialogue, _dialogue) && _graph.BoxFor(added.Id) == null);
         Check("and leaves nothing unsaved", !_panel.HasUnsavedChanges(_dialogue));
+    }
+
+    // ---- live debugging ----------------------------------------------------------------------
+
+    /// <summary>
+    /// The editor half of the debug channel, fed the messages a running game sends: the section the
+    /// watched runner is in stands out, the line it is at is tinted, and the wires say how it got
+    /// there and where it may go.
+    /// </summary>
+    async System.Threading.Tasks.Task TheGraphShowsWhereARunningDialogueIs() {
+        var router = new RunnerDebugRouter(MisspeakDebug.Prefix);
+        var path = _dialogue.ResourcePath;
+        var ask = _dialogue.FindSectionByName("Ask");
+        var sword = _dialogue.FindSectionByName("Sword");
+        var overlay = _graph.WireOverlay;
+
+        Check("a runner announcing itself is accepted, in the form the editor is handed",
+            router.Handle("misspeak:register", [42L, path, "Smith"], _panel) && router.Selected == 42);
+
+        router.Handle("misspeak:state", [42L, ask.Id, ask.Lines[1].Id, (int) DialogueWait.Choice, 1, ""], _panel);
+        var askBox = _graph.BoxFor(ask.Id);
+        Check("the section the dialogue is in stands out", askBox.IsCurrent && askBox.Modulate.A == 1f
+                                                         && askBox.GetThemeStylebox("panel") is StyleBoxFlat outline && outline.BorderColor == GraphRow.Running);
+        Check("the others fade", !_graph.BoxFor(sword.Id).IsCurrent && _graph.BoxFor(sword.Id).Modulate.A == SectionBox.DimmedAlpha);
+        Check("the line it is at is tinted, the others are not",
+            askBox.Rows(SpeakRow.Line).Select(r => r.LiveStatus).SequenceEqual([null, MissStatus.Running]));
+        Check("the ways out that lead somewhere are highlighted as not taken yet",
+            overlay.Wires.SequenceEqual([new LiveWire(ask.Id, 0, sword.Id, Taken: false)]));
+
+        router.Handle("state", [42L, sword.Id, sword.Lines[0].Id, (int) DialogueWait.Advance, 2, ask.Options[0].Id], _panel);
+        Check("a change of section moves the highlight, in the bare form too", _graph.BoxFor(sword.Id).IsCurrent && !_graph.BoxFor(ask.Id).IsCurrent
+                                                                              && _graph.BoxFor(ask.Id).Rows(SpeakRow.Line).All(r => r.LiveStatus == null));
+        Check("the option the dialogue came in by is highlighted as taken",
+            overlay.Wires.Where(w => w.Taken).SequenceEqual([new LiveWire(ask.Id, 0, sword.Id, true)])
+            && overlay.Wires.Where(w => !w.Taken).SequenceEqual([new LiveWire(sword.Id, 0, ask.Id, false)]));
+
+        _graph.AddSection(new Vector2(40, 500), "Later");
+        await Settle();
+        Check("an edit that rebuilds the graph keeps the live picture", _graph.BoxFor(sword.Id).IsCurrent && overlay.Wires.Count == 2);
+
+        router.Handle("misspeak:state", [42L, "", "", (int) DialogueWait.Nothing, 3, ""], _panel);
+        Check("between talks nothing stands out and nothing fades",
+            !_graph.BoxFor(sword.Id).IsCurrent && _graph.BoxFor(ask.Id).Modulate.A == 1f && overlay.Wires.Count == 0);
+
+        router.Handle("misspeak:state", [7L, ask.Id, "", 0, 1, ""], _panel);
+        Check("a runner the router was never told about makes it ask again", router.MissesRunners && !_graph.BoxFor(ask.Id).IsCurrent);
+
+        router.Handle("misspeak:state", [42L, ask.Id, ask.Lines[0].Id, (int) DialogueWait.Advance, 4, ""], _panel);
+        router.Reset(_panel);
+        Check("when the game stops, the graph looks as it does while editing",
+            !_graph.BoxFor(ask.Id).IsCurrent && _graph.BoxFor(sword.Id).Modulate.A == 1f && overlay.Wires.Count == 0
+            && _graph.BoxFor(ask.Id).Rows(SpeakRow.Line).All(r => r.LiveStatus == null));
     }
 
     // ---- sources -----------------------------------------------------------------------------

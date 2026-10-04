@@ -70,7 +70,7 @@ public partial class MisstateEditorPlugin : EditorPlugin {
     void OnInstanceRequested(long runnerId) => Debugger?.WatchInstance(runnerId);
 
     void OnMachineOpened(string path) {
-        Debugger?.WatchMachine();
+        Debugger?.WatchSource();
         if (!string.IsNullOrEmpty(path)) Metadata()?.SetProjectMetadata(MetaSection, MetaKey, path);
     }
 

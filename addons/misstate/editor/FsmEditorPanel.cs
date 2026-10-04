@@ -16,7 +16,7 @@ namespace Misstate.Editor;
 /// </para>
 /// </summary>
 [Tool]
-public partial class FsmEditorPanel : VBoxContainer {
+public partial class FsmEditorPanel : VBoxContainer, IRunnerDebugView {
     /// <summary>The dirty flag changed, so the dock title can show an asterisk.</summary>
     [Signal]
     public delegate void DirtyStateChangedEventHandler(bool dirty);
@@ -210,16 +210,25 @@ public partial class FsmEditorPanel : VBoxContainer {
 
     public void ClearLive() => Graph?.ClearLive();
 
+    /// <summary>Path of the open machine, for the debugger: empty for one without a file, null for none.</summary>
+    public string WatchedPath => Machine?.ResourcePath;
+
+    /// <summary>What the game reported: the state's id, its action statuses, the tick, and the transition that led there.</summary>
+    public void ShowLive(Godot.Collections.Array state) {
+        if (state.Count < 2) return;
+        ShowLive(state[0].AsString(), state[1].AsByteArray(), state.Count > 3 ? state[3].AsString() : "");
+    }
+
     void OnInstanceSelected(long index) => EmitSignal(SignalName.InstanceRequested, _instances.GetItemMetadata((int) index).AsInt64());
 
     /// <summary>Refreshes the instance picker from the runners the debugger knows about.</summary>
-    public void OnRunnersChanged(IReadOnlyList<FsmRunnerInfo> runners, long selected) {
+    public void OnRunnersChanged(IReadOnlyList<RunnerDebugInfo> runners, long selected) {
         if (_instances == null) return;
 
         _instances.Clear();
         var matching = 0;
         foreach (var runner in runners) {
-            if (Machine != null && runner.MachinePath != Machine.ResourcePath) continue;
+            if (Machine != null && runner.SourcePath != Machine.ResourcePath) continue;
 
             _instances.AddItem(runner.ActorName);
             _instances.SetItemMetadata(_instances.ItemCount - 1, runner.Id);
@@ -231,7 +240,7 @@ public partial class FsmEditorPanel : VBoxContainer {
         // Nothing open but something is running: pick the running machine up instead of showing an
         // instance list over an empty canvas.
         if (Machine == null && runners.Count > 0) {
-            _pendingAutoOpen = runners[0].MachinePath;
+            _pendingAutoOpen = runners[0].SourcePath;
             CallDeferred(MethodName.OpenPendingMachine);
             return;
         }

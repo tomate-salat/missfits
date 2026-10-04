@@ -24,9 +24,11 @@ public partial class MisspeakEditorPlugin : EditorPlugin {
     GodotObject _panel;
     GodotObject _inspector;
     GodotObject _parser;
+    GodotObject _debugger;
 
     DialogueEditorPanel Panel => ReloadSafe.Get<DialogueEditorPanel>(ref _panel);
     DialogueInspectorPlugin Inspector => ReloadSafe.Get<DialogueInspectorPlugin>(ref _inspector);
+    MisspeakDebuggerPlugin Debugger => ReloadSafe.Get<MisspeakDebuggerPlugin>(ref _debugger);
 
     /// <summary>The open dialogue's blackboard, which node parameters in the Inspector link against.</summary>
     internal BlackboardPanel Blackboard => Panel?.Blackboard;
@@ -55,6 +57,12 @@ public partial class MisspeakEditorPlugin : EditorPlugin {
         _inspector = inspector;
         AddInspectorPlugin(inspector);
 
+        var debugger = new MisspeakDebuggerPlugin();
+        debugger.Attach(panel);
+        _debugger = debugger;
+        AddDebuggerPlugin(debugger);
+
+        panel.Connect(DialogueEditorPanel.SignalName.InstanceRequested, new Callable(this, MethodName.OnInstanceRequested));
         panel.Connect(DialogueEditorPanel.SignalName.DirtyStateChanged, new Callable(this, MethodName.OnDirtyChanged));
         panel.Connect(DialogueEditorPanel.SignalName.DialogueOpened, new Callable(this, MethodName.OnDialogueOpened));
 
@@ -65,7 +73,10 @@ public partial class MisspeakEditorPlugin : EditorPlugin {
         if (_dock != null) _dock.Title = dirty ? $"{DockTitle} *" : DockTitle;
     }
 
+    void OnInstanceRequested(long runnerId) => Debugger?.WatchInstance(runnerId);
+
     void OnDialogueOpened(string path) {
+        Debugger?.WatchSource();
         if (!string.IsNullOrEmpty(path)) Metadata()?.SetProjectMetadata(MetaSection, MetaKey, path);
     }
 
@@ -82,6 +93,11 @@ public partial class MisspeakEditorPlugin : EditorPlugin {
     public override void _ExitTree() {
         if (ReloadSafe.Get<DialogueTranslationParser>(ref _parser) is { } parser) RemoveTranslationParserPlugin(parser);
         _parser = null;
+
+        if (Debugger != null) {
+            RemoveDebuggerPlugin(Debugger);
+            _debugger = null;
+        }
 
         if (Inspector != null) {
             RemoveInspectorPlugin(Inspector);

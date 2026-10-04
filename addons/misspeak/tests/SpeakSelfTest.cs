@@ -44,6 +44,9 @@ public partial class SpeakSelfTest : Node {
         AnActionStartsADialogueAndWaitsForIt();
         AConditionTellsWhetherADialogueIsRunning();
 
+        // live debugging
+        TheDebugStreamSendsWhereADialogueIs();
+
         // instance isolation and serialisation
         TwoRunnersOfOneDialogueAreIndependent();
         ADialogueSurvivesSavingAndLoading();
@@ -51,6 +54,10 @@ public partial class SpeakSelfTest : Node {
 
         foreach (var failure in _failures) GD.PrintErr($"FAIL  {failure}");
         GD.Print($"misspeak self test: {_checks - _failures.Count}/{_checks} checks passed");
+
+        // Godot arrays the tests left behind are finalized now, not after the engine has shut down.
+        System.GC.Collect();
+        System.GC.WaitForPendingFinalizers();
         GetTree().Quit(_failures.Count == 0 ? 0 : 1);
     }
 
@@ -480,6 +487,73 @@ public partial class SpeakSelfTest : Node {
         var status = condition.Execute(ctx);
         condition.AfterRun(ctx);
         return status == MissStatus.Success;
+    }
+
+    // ---- live debugging ----------------------------------------------------------------------
+
+    /// <summary>
+    /// The game half of the debug channel, with a recorder in place of the debugger: a runner sends
+    /// where its dialogue is, to an editor that watches that dialogue, and only when it changed.
+    /// </summary>
+    void TheDebugStreamSendsWhereADialogueIs() {
+        var sent = new List<(string Message, Godot.Collections.Array Data)>();
+        ulong now = 1000;
+        var stream = MisspeakDebug.NewStream((message, data) => sent.Add((message, data)), () => now);
+
+        const string path = "user://misspeak_debug_dialogue.tres";
+        var busy = Line("", "Second.", new SpeakProbeAction { RunningTicks = 1 });
+        var first = Line("", "First.");
+        var ask = Section("Ask", first, busy);
+        var answer = Section("Answer", Line("", "Good."));
+        var choice = Choice(ask, "Go on.", answer);
+        var dialogue = Dialogue(ask, answer);
+        dialogue.TakeOverPath(path);
+        var talk = new Talk(this, dialogue);
+        var id = (long) talk.Runner.GetInstanceId();
+
+        stream.Register(talk.Runner);
+        Check("a runner announces itself with its dialogue and its actor",
+            sent.Count == 1 && sent[0].Message == "register" && sent[0].Data[0].AsInt64() == id
+            && sent[0].Data[1].AsString() == path && sent[0].Data[2].AsString() == "Speaker");
+
+        talk.Runner.Start();
+        talk.Runner.Tick(Step);
+        stream.SendState(talk.Runner);
+        Check("nothing is streamed while the editor watches no dialogue", sent.Count == 1);
+
+        stream.OnEditorMessage("watch_path", [path]);
+        var state = sent.LastOrDefault(m => m.Message == "state").Data;
+        Check("watching a dialogue brings where its runner is, right away: the section and the line on show",
+            state != null && state[0].AsInt64() == id && state[1].AsString() == ask.Id && state[2].AsString() == first.Id
+            && state[3].AsInt32() == (int) DialogueWait.Advance && state[5].AsString() == "");
+
+        var before = sent.Count;
+        now += 100;
+        talk.Runner.Tick(Step);
+        stream.SendState(talk.Runner);
+        Check("an unchanged picture is not sent again", sent.Count == before);
+
+        now += 100;
+        talk.Runner.Advance();
+        stream.SendState(talk.Runner);
+        Check("a line whose actions are still running is the line the dialogue is at",
+            sent.Count == before + 1 && sent[^1].Data[2].AsString() == busy.Id && sent[^1].Data[3].AsInt32() == (int) DialogueWait.Actions);
+
+        now += 100;
+        talk.Runner.Tick(Step);
+        talk.Runner.Choose(0);
+        stream.SendState(talk.Runner);
+        Check("a change of section is sent with the option that led there",
+            sent[^1].Data[1].AsString() == answer.Id && sent[^1].Data[5].AsString() == choice.Id && talk.Runner.Instance.EnteredBy == choice);
+
+        now += 100;
+        talk.Runner.Advance();
+        stream.SendState(talk.Runner);
+        Check("the end of the talk is sent as being in no section", sent[^1].Message == "state" && sent[^1].Data[1].AsString() == "");
+
+        stream.Unregister(talk.Runner);
+        Check("a runner that goes says so", sent[^1].Message == "unregister" && sent[^1].Data[0].AsInt64() == id);
+        talk.Free();
     }
 
     // ---- instance isolation and serialisation ------------------------------------------------

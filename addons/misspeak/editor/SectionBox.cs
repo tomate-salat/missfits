@@ -151,10 +151,38 @@ public partial class SectionBox : MissGraphBox {
         HideTitlebar();
     }
 
-    static StyleBoxFlat Outline(bool selected) {
+    /// <summary>Opacity of a section the running dialogue is not in.</summary>
+    public const float DimmedAlpha = 0.45f;
+
+    /// <summary>Whether a running game last reported the dialogue to be in this section.</summary>
+    public bool IsCurrent { get; private set; }
+
+    /// <summary>
+    /// Shows where a running dialogue is: the section it is in gets an outline in the colour of
+    /// "running" and the line it is at the same tint; every other section fades.
+    /// </summary>
+    /// <param name="lineId">The line the dialogue is at, or empty for none.</param>
+    public void ShowLive(bool current, string lineId) {
+        IsCurrent = current;
+        Modulate = new Color(1, 1, 1, current ? 1f : DimmedAlpha);
+        AddThemeStyleboxOverride("panel", Outline(selected: false, current));
+        AddThemeStyleboxOverride("panel_selected", Outline(selected: true, current));
+        foreach (var row in Rows(SpeakRow.Line)) row.ShowStatus(current && row.Id == lineId ? MissStatus.Running : null);
+    }
+
+    /// <summary>Back to how the box looks while no dialogue is running.</summary>
+    public void ClearLive() {
+        IsCurrent = false;
+        Modulate = Colors.White;
+        AddThemeStyleboxOverride("panel", Outline(selected: false));
+        AddThemeStyleboxOverride("panel_selected", Outline(selected: true));
+        foreach (var row in Rows(SpeakRow.Line)) row.ShowStatus(null);
+    }
+
+    static StyleBoxFlat Outline(bool selected, bool current = false) {
         var style = new StyleBoxFlat {
             BgColor = selected ? new Color("#31353c") : new Color("#2a2d32"),
-            BorderColor = selected ? SelectedEdge : Edge,
+            BorderColor = current ? GraphRow.Running : selected ? SelectedEdge : Edge,
             ContentMarginLeft = 12,
             ContentMarginRight = 12,
             ContentMarginTop = 6,

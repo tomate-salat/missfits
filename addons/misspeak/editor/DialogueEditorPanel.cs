@@ -16,7 +16,7 @@ namespace Misspeak.Editor;
 /// </para>
 /// </summary>
 [Tool]
-public partial class DialogueEditorPanel : VBoxContainer {
+public partial class DialogueEditorPanel : VBoxContainer, IRunnerDebugView {
     /// <summary>The dirty flag changed, so the dock title can show an asterisk.</summary>
     [Signal]
     public delegate void DirtyStateChangedEventHandler(bool dirty);
@@ -24,6 +24,10 @@ public partial class DialogueEditorPanel : VBoxContainer {
     /// <summary>A dialogue was opened, so the debugger can follow it.</summary>
     [Signal]
     public delegate void DialogueOpenedEventHandler(string resourcePath);
+
+    /// <summary>The user picked a different running instance to watch.</summary>
+    [Signal]
+    public delegate void InstanceRequestedEventHandler(long runnerId);
 
     // Untyped so an assembly reload can restore them — see ReloadSafe.
     GodotObject _dialogue;
@@ -46,6 +50,8 @@ public partial class DialogueEditorPanel : VBoxContainer {
     Button _revertButton;
     ConfirmationDialog _revertDialog;
     Button _blackboardToggle;
+    OptionButton _instances;
+    string _pendingAutoOpen;
 
     /// <summary>
     /// Dialogues edited since they were last saved. Holding them here also keeps an unsaved dialogue
@@ -112,6 +118,14 @@ public partial class DialogueEditorPanel : VBoxContainer {
         _title = new Label { Text = "—", SizeFlagsHorizontal = SizeFlags.ExpandFill };
         bar.AddChild(_title);
 
+        _instances = new OptionButton {
+            TooltipText = "Which running instance of this dialogue to show live",
+            Visible = false,
+            Flat = true,
+        };
+        _instances.Connect(OptionButton.SignalName.ItemSelected, new Callable(this, MethodName.OnInstanceSelected));
+        bar.AddChild(_instances);
+
         bar.AddChild(Tool("Add section", "Add a section to the dialogue", MethodName.AddSectionPressed));
 
         _saveButton = Tool("Save", "Save the dialogue resource (Ctrl+S)", MethodName.Save);
@@ -173,6 +187,8 @@ public partial class DialogueEditorPanel : VBoxContainer {
         }
 
         // No saving on the way out: the dialogue left behind keeps its unsaved edits in memory.
+        // What was shown live belongs to the previous dialogue; the debugger resends for this one.
+        ClearLive();
         _dialogue = dialogue;
         Graph.LoadDialogue(dialogue);
         Blackboard.ShowSource(dialogue);
@@ -186,6 +202,58 @@ public partial class DialogueEditorPanel : VBoxContainer {
 
     /// <summary>Undo or redo went back to an edit of a dialogue that is not open.</summary>
     void OnDialogueRequested(Resource dialogue) => OpenDialogue(dialogue as Dialogue);
+
+    // ---- live debugging ----------------------------------------------------------------------
+
+    /// <summary>Path of the open dialogue, for the debugger: empty for one without a file, null for none.</summary>
+    public string WatchedPath => Dialogue?.ResourcePath;
+
+    /// <summary>What the game reported: the section's id, the line's, what the dialogue waits for, the tick, and the option that led there.</summary>
+    public void ShowLive(Godot.Collections.Array state) {
+        if (state.Count < 2) return;
+        Graph?.ShowLive(state[0].AsString(), state[1].AsString(), state.Count > 4 ? state[4].AsString() : "");
+    }
+
+    public void ClearLive() => Graph?.ClearLive();
+
+    void OnInstanceSelected(long index) => EmitSignal(SignalName.InstanceRequested, _instances.GetItemMetadata((int) index).AsInt64());
+
+    /// <summary>Refreshes the instance picker from the runners the debugger knows about.</summary>
+    public void OnRunnersChanged(IReadOnlyList<RunnerDebugInfo> runners, long selected) {
+        if (_instances == null) return;
+
+        _instances.Clear();
+        var matching = 0;
+        foreach (var runner in runners) {
+            if (Dialogue != null && runner.SourcePath != Dialogue.ResourcePath) continue;
+
+            _instances.AddItem(runner.ActorName);
+            _instances.SetItemMetadata(_instances.ItemCount - 1, runner.Id);
+            if (runner.Id == selected) _instances.Selected = _instances.ItemCount - 1;
+            matching++;
+        }
+        // One runner is the rule for dialogues; a picker with a single entry would only be in the way.
+        _instances.Visible = matching > 1;
+
+        // Nothing open but something is running: pick the running dialogue up instead of showing
+        // an empty canvas.
+        if (Dialogue == null && runners.Count > 0) {
+            _pendingAutoOpen = runners[0].SourcePath;
+            CallDeferred(MethodName.OpenPendingDialogue);
+            return;
+        }
+
+        if (matching == 0 && runners.Count > 0) SetStatus("The running game is not using this dialogue.", warning: true);
+        else if (matching > 1) SetStatus($"{matching} running instances — showing the selected one.");
+    }
+
+    public void OpenPendingDialogue() {
+        var path = _pendingAutoOpen;
+        _pendingAutoOpen = null;
+        if (string.IsNullOrEmpty(path) || Dialogue != null || !ResourceLoader.Exists(path)) return;
+
+        if (ResourceLoader.Load(path) is Dialogue dialogue) OpenDialogue(dialogue);
+    }
 
     void ShowEmptyState() {
         _title.Text = "—";

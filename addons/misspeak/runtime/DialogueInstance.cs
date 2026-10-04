@@ -71,6 +71,19 @@ public sealed partial class DialogueInstance {
     /// <summary>The line being shown, as authored — or null while none is.</summary>
     public DialogueLine CurrentLine => _shown?.Definition;
 
+    /// <summary>
+    /// The line the dialogue is at: the one on show, or the one whose actions are running before it
+    /// is shown. Null while none is — between sections, or with choices on offer by themselves.
+    /// </summary>
+    public DialogueLine ActiveLine => _shown?.Definition
+                                      ?? (_current != null && Waiting == DialogueWait.Actions && _line < _current.Lines.Length ? _current.Lines[_line].Definition : null);
+
+    /// <summary>
+    /// The option that brought the dialogue into its current section, as authored — or null when it
+    /// got there by being started. For live debugging.
+    /// </summary>
+    public DialogueOption EnteredBy { get; private set; }
+
     public DialogueWait Waiting { get; private set; }
 
     /// <summary>Speaker of the line being shown, or empty.</summary>
@@ -157,6 +170,7 @@ public sealed partial class DialogueInstance {
 
     void Enter(RuntimeSection section) {
         _current = section;
+        EnteredBy = null;
         TurnTo(0, admitted: false);
         Hide();
     }
@@ -331,11 +345,13 @@ public sealed partial class DialogueInstance {
         }
 
         Enter(target);
+        EnteredBy = option.Definition;
         if (atOnce) Work(ctx);
     }
 
     void End() {
         _current = null;
+        EnteredBy = null;
         _actionRunning = false;
         Waiting = DialogueWait.Nothing;
         Hide();

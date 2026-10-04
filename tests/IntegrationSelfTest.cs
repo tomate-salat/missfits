@@ -31,6 +31,9 @@ public partial class IntegrationSelfTest : Node {
 
         foreach (var failure in _failures) GD.PrintErr($"FAIL  {failure}");
         GD.Print($"missfits integration test: {_checks - _failures.Count}/{_checks} checks passed");
+        // Godot arrays the tests left behind are finalized now, not after the engine has shut down.
+        System.GC.Collect();
+        System.GC.WaitForPendingFinalizers();
         GetTree().Quit(_failures.Count == 0 ? 0 : 1);
     }
 

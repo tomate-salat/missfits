@@ -5,8 +5,8 @@ same actions and conditions the other [Missfits](https://github.com/tomate-salat
 run, so a behavior tree or a state machine can start a dialogue, and a dialogue can do anything an
 action can do.
 
-> **State of things:** runtime, graph editor, translation support and an example dialogue box are
-> here. What the editor does not do yet is show a running dialogue live.
+> **State of things:** runtime, graph editor with live view, translation support and an example
+> dialogue box are here.
 
 Needs `addons/misscore`. Does not need, and does not know, any other Missfits addon.
 
@@ -85,6 +85,17 @@ Texts may name blackboard entries in braces: `You have {gold} coins.`
 
 Every edit in the graph is one undo step. *Save* writes the dialogue; the dock title carries a `*`
 while it has unsaved edits, and *Revert* goes back to the file.
+
+## Live debugging
+
+Open a dialogue, run the game, and the graph shows where the dialogue is: the section it is in gets
+an amber outline, the others fade, and the line it is at — on show, or still running its actions —
+is tinted. The option the dialogue came in by is green; the options out of the current section are
+amber with dots travelling along them. Between talks the graph looks as it does while editing.
+
+Only the dialogue open in the dock sends anything, and only when something changed. With nothing
+open, the dock opens the dialogue the game is playing. When several runners play the same dialogue,
+pick which one to watch from the toolbar dropdown.
 
 ## Translation
 
