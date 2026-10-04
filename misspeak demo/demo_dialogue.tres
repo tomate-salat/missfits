@@ -1,0 +1,311 @@
+[gd_resource type="Resource" script_class="Dialogue" format=3]
+
+[ext_resource type="Script" path="res://addons/misscore/runtime/blackboard/BlackboardEntry.cs" id="1_e3hlc"]
+[ext_resource type="Script" path="res://addons/misspeak/runtime/DialogueSection.cs" id="2_j7bj8"]
+[ext_resource type="Script" path="res://addons/misspeak/runtime/DialogueLine.cs" id="3_nkyny"]
+[ext_resource type="Script" path="res://addons/misscore/runtime/nodes/MissNode.cs" id="4_ymv4k"]
+[ext_resource type="Script" path="res://addons/misspeak/runtime/DialogueOption.cs" id="5_odud1"]
+[ext_resource type="Script" path="res://addons/misscore/runtime/nodes/BlackboardCompareNode.cs" id="6_tgpvt"]
+[ext_resource type="Script" path="res://addons/misscore/runtime/nodes/BlackboardSetNode.cs" id="7_mjlkt"]
+[ext_resource type="Script" path="res://addons/misspeak/runtime/Dialogue.cs" id="8_3anbh"]
+
+[sub_resource type="Resource" id="Resource_aygu5"]
+script = ExtResource("1_e3hlc")
+Id = "96ecd718cf6545e9b69cbcb0578fa48f"
+Name = "gold"
+VariantType = 2
+Default = 10
+
+[sub_resource type="Resource" id="Resource_8c4iu"]
+script = ExtResource("1_e3hlc")
+Id = "104b85314c2a479fbc0012022c565889"
+Name = "has_sword"
+VariantType = 1
+Default = false
+
+[sub_resource type="Resource" id="Resource_ou5yn"]
+script = ExtResource("3_nkyny")
+Id = "058b2ede65a24fcdb0420115b7220370"
+Speaker = "Smith"
+Text = "Welcome to my forge."
+
+[sub_resource type="Resource" id="Resource_nr20p"]
+script = ExtResource("5_odud1")
+Id = "92e0bc729c1349c1814c1df6bfe70b3f"
+TargetSectionId = "f2b6cc6a479f4a61aa38884a40452d7d"
+
+[sub_resource type="Resource" id="Resource_78d7r"]
+script = ExtResource("2_j7bj8")
+Id = "4963620915cc4bdf9f9dafb181ec2ac6"
+Name = "Greeting"
+Lines = Array[ExtResource("3_nkyny")]([SubResource("Resource_ou5yn")])
+Options = Array[ExtResource("5_odud1")]([SubResource("Resource_nr20p")])
+GraphPosition = Vector2(40, 200)
+
+[sub_resource type="Resource" id="Resource_vynea"]
+script = ExtResource("3_nkyny")
+Id = "d4571cf62103451d95e356082f3a4c32"
+Speaker = "Smith"
+Text = "What can I do for you? You have {gold} coins."
+
+[sub_resource type="Resource" id="Resource_rrnpy"]
+script = ExtResource("6_tgpvt")
+Left = {
+"entry": "104b85314c2a479fbc0012022c565889",
+"name": "has_sword",
+"value": null
+}
+Right = {
+"value": false
+}
+Id = "77f90998dc8b430e9830af0924d13d0c"
+
+[sub_resource type="Resource" id="Resource_1sse5"]
+script = ExtResource("5_odud1")
+Id = "38d46910e28441b5b147505b3516b15d"
+Text = "A sword, please. (8 coins)"
+TargetSectionId = "deaeb8f27b6f486d8b1d227e21a9c1c0"
+Conditions = Array[ExtResource("4_ymv4k")]([SubResource("Resource_rrnpy")])
+
+[sub_resource type="Resource" id="Resource_che21"]
+script = ExtResource("5_odud1")
+Id = "8151c3dd2a2349088204bf0f5bdd7d05"
+Text = "A shield, please. (12 coins)"
+TargetSectionId = "89653a4407554f57bb69b106aa14852f"
+
+[sub_resource type="Resource" id="Resource_pmg3k"]
+script = ExtResource("5_odud1")
+Id = "60d5c994f0954db68cb1a0a06aa4b737"
+Text = "Tell me about this place."
+TargetSectionId = "1c2e4bd82d504a7b9656f0c81dfc6d0f"
+
+[sub_resource type="Resource" id="Resource_ti26o"]
+script = ExtResource("5_odud1")
+Id = "04c74ea76b8f4db19d940964d0e1f25a"
+Text = "Goodbye."
+TargetSectionId = "58dbd844123a4acf87c01102ec61abc3"
+
+[sub_resource type="Resource" id="Resource_57vy7"]
+script = ExtResource("2_j7bj8")
+Id = "f2b6cc6a479f4a61aa38884a40452d7d"
+Name = "Hub"
+Lines = Array[ExtResource("3_nkyny")]([SubResource("Resource_vynea")])
+Options = Array[ExtResource("5_odud1")]([SubResource("Resource_1sse5"), SubResource("Resource_che21"), SubResource("Resource_pmg3k"), SubResource("Resource_ti26o")])
+GraphPosition = Vector2(360, 200)
+
+[sub_resource type="Resource" id="Resource_xyhj1"]
+script = ExtResource("6_tgpvt")
+Operator = 5
+Left = {
+"entry": "96ecd718cf6545e9b69cbcb0578fa48f",
+"name": "gold",
+"value": null
+}
+Right = {
+"value": 8
+}
+Id = "684c64383d694da98d78dc8b3a2b3f40"
+
+[sub_resource type="Resource" id="Resource_7yaij"]
+script = ExtResource("5_odud1")
+Id = "e807d82bac814425b7d9475668970da9"
+TargetSectionId = "ea9ccf71b8dd4841a88d69ffc70db43d"
+Conditions = Array[ExtResource("4_ymv4k")]([SubResource("Resource_xyhj1")])
+
+[sub_resource type="Resource" id="Resource_3ko8f"]
+script = ExtResource("5_odud1")
+Id = "c7e3fab95071415191efd6c4d17dfdf5"
+TargetSectionId = "be40a534803148229dfef0484d01ca7d"
+
+[sub_resource type="Resource" id="Resource_iij43"]
+script = ExtResource("2_j7bj8")
+Id = "deaeb8f27b6f486d8b1d227e21a9c1c0"
+Name = "Buy sword"
+Options = Array[ExtResource("5_odud1")]([SubResource("Resource_7yaij"), SubResource("Resource_3ko8f")])
+GraphPosition = Vector2(760, 40)
+
+[sub_resource type="Resource" id="Resource_vxqpm"]
+script = ExtResource("7_mjlkt")
+Target = {
+"entry": "104b85314c2a479fbc0012022c565889",
+"name": "has_sword",
+"value": null
+}
+Value = {
+"value": true
+}
+Id = "fecebcdc170549798ec517092380965b"
+
+[sub_resource type="Resource" id="Resource_4inqf"]
+script = ExtResource("7_mjlkt")
+Target = {
+"entry": "96ecd718cf6545e9b69cbcb0578fa48f",
+"name": "gold",
+"value": null
+}
+Value = {
+"value": 2
+}
+Id = "b782276c1c67443583188c5fc117af85"
+
+[sub_resource type="Resource" id="Resource_u4irt"]
+script = ExtResource("3_nkyny")
+Id = "cf94d95efbf148b19ba1e4a841e3b911"
+Actions = Array[ExtResource("4_ymv4k")]([SubResource("Resource_vxqpm"), SubResource("Resource_4inqf")])
+
+[sub_resource type="Resource" id="Resource_1mauu"]
+script = ExtResource("3_nkyny")
+Id = "1238fe6551f44c1f9a84c08d019094c8"
+Speaker = "Smith"
+Text = "Here you go. A fine blade."
+
+[sub_resource type="Resource" id="Resource_hole3"]
+script = ExtResource("5_odud1")
+Id = "2c6a4f2a2a574ae99e8e822752b68946"
+TargetSectionId = "f2b6cc6a479f4a61aa38884a40452d7d"
+
+[sub_resource type="Resource" id="Resource_jdkgx"]
+script = ExtResource("2_j7bj8")
+Id = "ea9ccf71b8dd4841a88d69ffc70db43d"
+Name = "Sword sold"
+Lines = Array[ExtResource("3_nkyny")]([SubResource("Resource_u4irt"), SubResource("Resource_1mauu")])
+Options = Array[ExtResource("5_odud1")]([SubResource("Resource_hole3")])
+GraphPosition = Vector2(1080, 40)
+
+[sub_resource type="Resource" id="Resource_o38ro"]
+script = ExtResource("6_tgpvt")
+Operator = 5
+Left = {
+"entry": "96ecd718cf6545e9b69cbcb0578fa48f",
+"name": "gold",
+"value": null
+}
+Right = {
+"value": 12
+}
+Id = "0197f9e4d2f84b37a49bbf8a200b243e"
+
+[sub_resource type="Resource" id="Resource_uo8bb"]
+script = ExtResource("5_odud1")
+Id = "097e221e6ec24a6f86374175b8383960"
+TargetSectionId = "63221e3d6daf4a4d813661f4576451de"
+Conditions = Array[ExtResource("4_ymv4k")]([SubResource("Resource_o38ro")])
+
+[sub_resource type="Resource" id="Resource_b63di"]
+script = ExtResource("5_odud1")
+Id = "75cd2df8465c4c2fab5eabf3d1d81efd"
+TargetSectionId = "be40a534803148229dfef0484d01ca7d"
+
+[sub_resource type="Resource" id="Resource_4c0yx"]
+script = ExtResource("2_j7bj8")
+Id = "89653a4407554f57bb69b106aa14852f"
+Name = "Buy shield"
+Options = Array[ExtResource("5_odud1")]([SubResource("Resource_uo8bb"), SubResource("Resource_b63di")])
+GraphPosition = Vector2(760, 240)
+
+[sub_resource type="Resource" id="Resource_iqv2w"]
+script = ExtResource("3_nkyny")
+Id = "1942a53c250e4f0cbff62a56f2a7b5b3"
+Speaker = "Smith"
+Text = "A sturdy shield. Take care of it."
+
+[sub_resource type="Resource" id="Resource_8bwtx"]
+script = ExtResource("5_odud1")
+Id = "0b60e2e9e284433fbcb1a3d17b7c2bc2"
+TargetSectionId = "f2b6cc6a479f4a61aa38884a40452d7d"
+
+[sub_resource type="Resource" id="Resource_xl3yc"]
+script = ExtResource("2_j7bj8")
+Id = "63221e3d6daf4a4d813661f4576451de"
+Name = "Shield sold"
+Lines = Array[ExtResource("3_nkyny")]([SubResource("Resource_iqv2w")])
+Options = Array[ExtResource("5_odud1")]([SubResource("Resource_8bwtx")])
+GraphPosition = Vector2(1080, 200)
+
+[sub_resource type="Resource" id="Resource_ifya0"]
+script = ExtResource("3_nkyny")
+Id = "7c40f33d2e1c432a8f26c5290add0034"
+Speaker = "Smith"
+Text = "You cannot afford that."
+
+[sub_resource type="Resource" id="Resource_b046d"]
+script = ExtResource("5_odud1")
+Id = "eed2729e2a8a4efb83d8ed999d01e6a8"
+TargetSectionId = "f2b6cc6a479f4a61aa38884a40452d7d"
+
+[sub_resource type="Resource" id="Resource_twq4g"]
+script = ExtResource("2_j7bj8")
+Id = "be40a534803148229dfef0484d01ca7d"
+Name = "Too poor"
+Lines = Array[ExtResource("3_nkyny")]([SubResource("Resource_ifya0")])
+Options = Array[ExtResource("5_odud1")]([SubResource("Resource_b046d")])
+GraphPosition = Vector2(1080, 360)
+
+[sub_resource type="Resource" id="Resource_r7y50"]
+script = ExtResource("3_nkyny")
+Id = "f21ff4bb60b146a9abebde4f030da359"
+Speaker = "Smith"
+Text = "This forge has stood for a hundred years."
+
+[sub_resource type="Resource" id="Resource_7o7aw"]
+script = ExtResource("3_nkyny")
+Id = "d97bb8cffb974a0b98d1c7bd5d8dfb9e"
+Speaker = "Smith"
+Text = "My grandmother built it with her own hands."
+
+[sub_resource type="Resource" id="Resource_o43x8"]
+script = ExtResource("3_nkyny")
+Id = "49a0751648b7495b8c884e1e93e1e669"
+Speaker = "You"
+Text = "Impressive."
+
+[sub_resource type="Resource" id="Resource_bwusc"]
+script = ExtResource("5_odud1")
+Id = "dd52e0cc879b4352b48f86e926eae2bb"
+TargetSectionId = "f2b6cc6a479f4a61aa38884a40452d7d"
+
+[sub_resource type="Resource" id="Resource_q1jcx"]
+script = ExtResource("2_j7bj8")
+Id = "1c2e4bd82d504a7b9656f0c81dfc6d0f"
+Name = "Lore"
+Lines = Array[ExtResource("3_nkyny")]([SubResource("Resource_r7y50"), SubResource("Resource_7o7aw"), SubResource("Resource_o43x8")])
+Options = Array[ExtResource("5_odud1")]([SubResource("Resource_bwusc")])
+GraphPosition = Vector2(760, 460)
+
+[sub_resource type="Resource" id="Resource_xyrhi"]
+script = ExtResource("3_nkyny")
+Id = "0393cd61bc084a86bd1952c717250bac"
+Speaker = "Smith"
+Text = "Come back soon."
+
+[sub_resource type="Resource" id="Resource_q3hyl"]
+script = ExtResource("6_tgpvt")
+Left = {
+"entry": "104b85314c2a479fbc0012022c565889",
+"name": "has_sword",
+"value": null
+}
+Right = {
+"value": true
+}
+Id = "0bd31ad7f56a4defba2b8c100c7b52e8"
+
+[sub_resource type="Resource" id="Resource_pbtc0"]
+script = ExtResource("3_nkyny")
+Id = "e1e9de1588074ceaae2e87236367bc8b"
+Speaker = "Smith"
+Text = "And mind that blade."
+Conditions = Array[ExtResource("4_ymv4k")]([SubResource("Resource_q3hyl")])
+
+[sub_resource type="Resource" id="Resource_apqe8"]
+script = ExtResource("2_j7bj8")
+Id = "58dbd844123a4acf87c01102ec61abc3"
+Name = "Goodbye"
+Lines = Array[ExtResource("3_nkyny")]([SubResource("Resource_xyrhi"), SubResource("Resource_pbtc0")])
+GraphPosition = Vector2(760, 680)
+
+[resource]
+script = ExtResource("8_3anbh")
+Sections = Array[ExtResource("2_j7bj8")]([SubResource("Resource_78d7r"), SubResource("Resource_57vy7"), SubResource("Resource_iij43"), SubResource("Resource_jdkgx"), SubResource("Resource_4c0yx"), SubResource("Resource_xl3yc"), SubResource("Resource_twq4g"), SubResource("Resource_q1jcx"), SubResource("Resource_apqe8")])
+Description = "Demo: a talk with a smith. Buying the sword changes what is on offer afterwards. The shield is out of reach with 10 coins — give the runner more gold in the Inspector to afford it."
+Blackboard = Array[ExtResource("1_e3hlc")]([SubResource("Resource_aygu5"), SubResource("Resource_8c4iu")])

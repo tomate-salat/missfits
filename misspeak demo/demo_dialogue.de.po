@@ -1,0 +1,55 @@
+# German translation of the Misspeak demo dialogue.
+msgid ""
+msgstr ""
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8-bit\n"
+
+msgid "Smith"
+msgstr "Schmiedin"
+
+msgid "You"
+msgstr "Du"
+
+msgid "Welcome to my forge."
+msgstr "Willkommen in meiner Schmiede."
+
+msgid "What can I do for you? You have {gold} coins."
+msgstr "Was kann ich für dich tun? Du hast {gold} Münzen."
+
+msgid "A sword, please. (8 coins)"
+msgstr "Ein Schwert, bitte. (8 Münzen)"
+
+msgid "A shield, please. (12 coins)"
+msgstr "Einen Schild, bitte. (12 Münzen)"
+
+msgid "Tell me about this place."
+msgstr "Erzähl mir von diesem Ort."
+
+msgid "Goodbye."
+msgstr "Auf Wiedersehen."
+
+msgid "Here you go. A fine blade."
+msgstr "Bitte sehr. Eine feine Klinge."
+
+msgid "A sturdy shield. Take care of it."
+msgstr "Ein stabiler Schild. Pass gut auf ihn auf."
+
+msgid "You cannot afford that."
+msgstr "Das kannst du dir nicht leisten."
+
+msgid "This forge has stood for a hundred years."
+msgstr "Diese Schmiede steht seit hundert Jahren."
+
+msgid "My grandmother built it with her own hands."
+msgstr "Meine Großmutter hat sie mit eigenen Händen gebaut."
+
+msgid "Impressive."
+msgstr "Beeindruckend."
+
+msgid "Come back soon."
+msgstr "Komm bald wieder."
+
+msgid "And mind that blade."
+msgstr "Und pass auf mit der Klinge."

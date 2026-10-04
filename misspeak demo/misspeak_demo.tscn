@@ -1,0 +1,50 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://misspeak demo/SpeakDemo.cs" id="1_ynvrv"]
+[ext_resource type="Script" path="res://addons/misspeak/runtime/DialogueRunner.cs" id="2_5mnlc"]
+[ext_resource type="Resource" path="res://misspeak demo/demo_dialogue.tres" id="3_3r7dx"]
+[ext_resource type="PackedScene" path="res://addons/misspeak/ui/dialogue_box.tscn" id="4_dwt2h"]
+[ext_resource type="Script" path="res://addons/misspeak/ui/DialogueBox.cs" id="5_fvpah"]
+
+[node name="MisspeakDemo" type="Node" unique_id=718229598 node_paths=PackedStringArray("Runner", "Hint")]
+script = ExtResource("1_ynvrv")
+Runner = NodePath("DialogueRunner")
+Hint = NodePath("Hint")
+
+[node name="Backdrop" type="ColorRect" parent="." unique_id=881986714]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.11372549, 0.1254902, 0.14901961, 1)
+
+[node name="Title" type="Label" parent="." unique_id=155076073]
+offset_left = 32.0
+offset_top = 24.0
+offset_right = 32.0
+offset_bottom = 24.0
+theme_override_colors/font_color = Color(1, 1, 1, 0.5)
+text = "Misspeak demo — Enter or click: carry on · L: English / Deutsch"
+
+[node name="Hint" type="Label" parent="." unique_id=1543337332]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+text = "The talk is over. Press Enter to start again."
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="DialogueRunner" type="Node" parent="." unique_id=1859004509]
+script = ExtResource("2_5mnlc")
+Dialogue = ExtResource("3_3r7dx")
+Autostart = true
+
+[node name="DialogueBox" type="Control" parent="." unique_id=505306624 instance=ExtResource("4_dwt2h")]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("5_fvpah")

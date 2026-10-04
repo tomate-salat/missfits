@@ -9,7 +9,7 @@ Missfits ist eine Sammlung eigenständiger Godot-Addons (C#). Jedes Addon funkti
 | Core | `addons/misscore` | geteilte Basis, reine Bibliothek | – |
 | Behavior Tree | `addons/missbehave` | existiert | misbehave |
 | Statemachine | `addons/misstate` | Runtime, Graph-Editor und Live-Ansicht existieren | misstate / State |
-| Dialog | `addons/misspeak` | geplant | misspeak |
+| Dialog | `addons/misspeak` | Runtime, i18n und Beispiel-UI existieren, Graph-Editor fehlt | misspeak |
 | Quests | `addons/mission` | geplant | miss-ion |
 
 Alle Addons liegen in diesem einen Godot-Projekt (Monorepo). Demos liegen außerhalb von `addons/`.
@@ -87,6 +87,19 @@ Entscheidungen aus dem ersten Ausprobieren im Editor:
 - **Ein Plugin beansprucht nur die Knoten seiner eigenen offenen Resource.** Vorher holte Missbehave sein Dock nach vorn, sobald irgendein `MissNode` inspiziert wurde, auch einer in einer Statemachine.
 - **Alle Missfits-Resources erben von `MissResource`**, damit sie im Dialog *New Resource* unter einem Eintrag stehen.
 
+## Was misspeak zeigt
+
+- Ein Dialog besteht aus Abschnitten (`DialogueSection`), im Graph je eine Box: mehrere Zeilen, die nacheinander gesprochen werden, und am Ende die Optionen als Wege weiter. Drähte braucht es nur, wo verzweigt oder gesprungen wird. Das ist die Idee der Listen aus dem BT, auf einen Graphen angewandt, der wie eine FSM an einer Stelle steht und wartet.
+- Eine Zeile hat Sprecher, Text, Actions (laufen vor dem Text) und Conditions (sonst wird sie übersprungen). Eine Option mit Text ist eine Auswahl für den Spieler, eine ohne ist der Weg, den der Dialog von selbst nimmt. Ein Abschnitt, in dem nichts gesagt wird, ist eine Verzweigung. Eigene Knotentypen gibt es nicht.
+- Der Runner zeichnet nichts. Er meldet per Signal, was zu zeigen ist, und wird über `Advance()` und `Choose()` weitergeschaltet. Eine Beispiel-Dialogbox liegt als eine Szene mit einem Skript bei (`ui/dialogue_box.tscn`).
+- i18n über Godots eigenes System: Texte sind die Übersetzungsschlüssel, ein Parser-Plugin liefert sie an die POT-Erzeugung, und bei einem Sprachwechsel meldet der Runner die aktuelle Zeile neu. Der Sprecher als Übersetzungskontext ist abschaltbar und standardmäßig aus, weil CSV-Übersetzungen keinen Kontext kennen.
+- `StartDialogueAction` und `DialogueActiveCondition` sind die Brücke zu BT und FSM. Sie finden den `DialogueRunner` beim Actor oder über eine Node-Gruppe in der Szene; der Core musste dafür nicht wachsen.
+
+Offen:
+
+- **Graph-Editor:** Das Modell ist dem von `misstate` so ähnlich (Box mit Zeilen, Ports pro Option, Reroutes), dass sich vor dem Bau lohnt zu prüfen, was vom FSM-Graph in den Core gehört.
+- **Reroutes:** `FsmReroute` liegt in `misstate`; `misspeak` hat noch keine.
+
 Der Core bekommt kein `plugin.cfg`. Als reine Bibliothek muss ihn niemand aktivieren; Editor-Widgets dürfen darin liegen, registriert werden sie vom jeweiligen Addon-Plugin.
 
 ## Namespaces
@@ -118,5 +131,5 @@ Verworfen:
 4. **Umgesetzt:** Graph-Editor für `misstate`. Ein Editor-Teil kam dafür in den Core: die Abgrenzung der Blackboard-Panels.
 5. **Umgesetzt:** Live-Ansicht für `misstate`: aktueller State und Status seiner Actions im Graph, während das Spiel läuft.
 6. **Skript umgesetzt, Veröffentlichung offen:** Build-Skript für die Addon-Zips, danach erste gemeinsame Veröffentlichung von `missbehave` und `misstate`.
-7. `misspeak`, mit Actions und Conditions für BT und FSM.
+7. **Runtime, i18n und Beispiel-UI umgesetzt, Graph-Editor offen:** `misspeak`, mit Actions und Conditions für BT und FSM.
 8. `mission`.
