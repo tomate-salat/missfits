@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="Fsm" format=3 uid="uid://c45wys2j76kfm"]
+
+[ext_resource type="Script" uid="uid://coe1riq7exknh" path="res://addons/misscore/runtime/blackboard/BlackboardEntry.cs" id="1_1kn7y"]
+[ext_resource type="Script" uid="uid://dqi44n42kbdsa" path="res://addons/misstate/runtime/FsmState.cs" id="2_hp4so"]
+[ext_resource type="Script" uid="uid://bltujy5uigex5" path="res://addons/misscore/runtime/nodes/MissNode.cs" id="3_c588d"]
+[ext_resource type="Script" uid="uid://b45c6miy28l77" path="res://addons/misstate/runtime/FsmTransition.cs" id="4_0i54f"]
+[ext_resource type="Script" uid="uid://35450er1jth0" path="res://addons/misstate/runtime/Fsm.cs" id="5_8gqxr"]
+
+[sub_resource type="Resource" id="Resource_jnu4i"]
+script = ExtResource("2_hp4so")
+Id = "c9528c12e41d4cbf97ecc0983e4c5047"
+Name = "State"
+GraphPosition = Vector2(900, 420)
+
+[resource]
+script = ExtResource("5_8gqxr")
+States = Array[ExtResource("2_hp4so")]([SubResource("Resource_jnu4i")])
+InitialStateId = "a09a1707a1d940fa8e69597d12a16a90"
+metadata/_custom_type_script = "uid://35450er1jth0"

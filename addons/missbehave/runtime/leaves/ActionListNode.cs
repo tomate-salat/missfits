@@ -11,4 +11,7 @@ namespace Missbehave;
 [GlobalClass, Tool, Icon("res://addons/missbehave/icons/action_list.svg")]
 public partial class ActionListNode : AListNode {
     public override Type EntryType => typeof(ActionNode);
+
+    /// <summary>Filed with what it holds: an action list is used like an action.</summary>
+    public override string PickerGroup => NodeGroup.Action;
 }

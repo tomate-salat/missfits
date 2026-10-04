@@ -29,6 +29,20 @@ public partial class BbParamEditorProperty : EditorProperty {
 
     public void Attach(BlackboardPanel blackboard) => _blackboard = blackboard;
 
+    /// <summary>
+    /// For an addon's Inspector plugin, from <c>_ParseProperty</c>: the editor for a property that
+    /// is a <see cref="BbParam{T}"/> of an object <paramref name="blackboard"/> claims, or null when
+    /// it is no parameter or another addon's panel takes care of it.
+    /// </summary>
+    public static BbParamEditorProperty CreateFor(BlackboardPanel blackboard, GodotObject @object, string hintString) {
+        if (hintString != BbParams.HintString || @object is not IBbParamHost host) return null;
+        if (blackboard == null || !blackboard.Claims(host)) return null;
+
+        var editor = new BbParamEditorProperty();
+        editor.Attach(blackboard);
+        return editor;
+    }
+
     GodotObject Host => GetEditedObject();
     string Member => GetEditedProperty();
     BbParamMember Info => Host == null ? null : BbParams.Find(Host.GetType(), Member);

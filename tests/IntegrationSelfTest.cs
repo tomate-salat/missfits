@@ -34,7 +34,8 @@ public partial class IntegrationSelfTest : Node {
     void AStateCanRunABehaviorSubtree() {
         var first = new FsmProbeAction { RunningTicks = 1 };
         var second = new FsmProbeAction();
-        var combo = new FsmState { Name = "Combo", Node = Composite<SequenceNode>(first, second) };
+        var combo = new FsmState { Name = "Combo" };
+        combo.Actions.Add(Composite<SequenceNode>(first, second));
         var done = new FsmState { Name = "Done" };
         combo.Transitions.Add(new FsmTransition { TargetStateId = done.Id, On = FsmTrigger.Succeeded });
 
@@ -42,10 +43,10 @@ public partial class IntegrationSelfTest : Node {
         var ctx = new MissContext { Blackboard = new Blackboard(), Delta = Step };
 
         instance.Tick(ctx);
-        var sequence = instance.NodeOf(combo);
+        var sequence = instance.ActionsOf(combo)[0];
         var a = (FsmProbeAction) sequence.Children[0];
         var b = (FsmProbeAction) sequence.Children[1];
-        Check("a state runs a copy of a whole subtree", sequence is SequenceNode && !ReferenceEquals(a, first) && first.TotalTicks == 0);
+        Check("an action of a state can be a whole subtree, of which it runs a copy", sequence is SequenceNode && !ReferenceEquals(a, first) && first.TotalTicks == 0);
         Check("the sequence waits on its running child", instance.Current == combo && a.TotalTicks == 1 && b.TotalTicks == 0);
 
         instance.Tick(ctx);
@@ -54,14 +55,17 @@ public partial class IntegrationSelfTest : Node {
     }
 
     void LeavingAStateInterruptsTheSubtree() {
-        var busy = new FsmState { Name = "Busy", Node = Composite<SequenceNode>(new FsmProbeAction { RunningTicks = 100 }) };
+        var busy = new FsmState { Name = "Busy" };
+        busy.Actions.Add(Composite<SequenceNode>(new FsmProbeAction { RunningTicks = 100 }));
         var next = new FsmState { Name = "Next" };
-        busy.Transitions.Add(new FsmTransition { TargetStateId = next.Id, Condition = new FsmProbeCondition() });
+        var leave = new FsmTransition { TargetStateId = next.Id };
+        leave.Conditions.Add(new FsmProbeCondition());
+        busy.Transitions.Add(leave);
 
         var instance = FsmInstance.Create(Machine(busy, next));
         instance.Tick(new MissContext { Blackboard = new Blackboard(), Delta = Step });
 
-        var running = (FsmProbeAction) instance.NodeOf(busy).Children[0];
+        var running = (FsmProbeAction) instance.ActionsOf(busy)[0].Children[0];
         Check("leaving a state interrupts the child its subtree left running", instance.Current == next && running.Interrupts == 1);
     }
 
@@ -74,7 +78,9 @@ public partial class IntegrationSelfTest : Node {
             list.Mode = mode;
             var from = new FsmState { Name = "From" };
             var to = new FsmState { Name = "To" };
-            from.Transitions.Add(new FsmTransition { TargetStateId = to.Id, Condition = list });
+            var transition = new FsmTransition { TargetStateId = to.Id };
+            transition.Conditions.Add(list);
+            from.Transitions.Add(transition);
             var instance = FsmInstance.Create(Machine(from, to));
             instance.Tick(new MissContext { Blackboard = new Blackboard(), Delta = Step });
             return instance.Current;

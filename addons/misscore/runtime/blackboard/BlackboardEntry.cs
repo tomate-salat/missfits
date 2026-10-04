@@ -13,7 +13,7 @@ namespace Misscore;
 /// </para>
 /// </summary>
 [GlobalClass, Tool]
-public partial class BlackboardEntry : Resource {
+public partial class BlackboardEntry : MissResource {
     [Export]
     public string Id { get; set; } = NewId();
 

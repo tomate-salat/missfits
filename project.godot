@@ -24,7 +24,7 @@ project/assembly_name="Missfits"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/missbehave/plugin.cfg")
+enabled=PackedStringArray("res://addons/missbehave/plugin.cfg", "res://addons/misstate/plugin.cfg")
 
 [physics]
 

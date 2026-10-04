@@ -8,7 +8,7 @@ Missfits ist eine Sammlung eigenständiger Godot-Addons (C#). Jedes Addon funkti
 |---|---|---|---|
 | Core | `addons/misscore` | geteilte Basis, reine Bibliothek | – |
 | Behavior Tree | `addons/missbehave` | existiert | misbehave |
-| Statemachine | `addons/misstate` | Runtime existiert, Editor fehlt | misstate / State |
+| Statemachine | `addons/misstate` | Runtime und Graph-Editor existieren, Live-Ansicht fehlt | misstate / State |
 | Dialog | `addons/misspeak` | geplant | misspeak |
 | Quests | `addons/mission` | geplant | miss-ion |
 
@@ -71,10 +71,21 @@ Noch im BT-Addon, mögliche Kandidaten für später:
 - Mit installiertem `missbehave` kann ein State einen ganzen Teilbaum ausführen, ohne dass `misstate` davon weiß.
 - Der Core musste dafür nur an einer Stelle wachsen: Der BT-Runner wurde in `MissRunner` (Core) und `BehaviorTreeRunner` geteilt, `FsmRunner` nutzt dieselbe Basis.
 
-Offen für den FSM-Editor:
+Was der FSM-Editor gezeigt hat:
 
-- Das Inspector-Plugin von `missbehave` kümmert sich um die `BbParam` jedes `MissNode`. Ohne `missbehave` hat ein Knoten in einer FSM heute keinen Parameter-Editor; mit einem zweiten Plugin in `misstate` bekäme derselbe Parameter zwei. Das Plugin gehört vermutlich in den Core oder braucht eine Abgrenzung.
-- Für den Graph-Editor werden voraussichtlich weitere Editor-Teile aus `missbehave` in den Core wandern (Graph-Grundgerüst, Node-Picker, Debugger-Kanal).
+- Jedes Addon bringt sein eigenes Blackboard-Panel und Inspector-Plugin mit, und alle sehen jeden `MissNode`. Damit ein Parameter trotzdem genau einen Editor bekommt, kennen sich die Panels über eine Node-Gruppe: Das Panel, dessen Quelle den Knoten enthält, beansprucht ihn (`BlackboardPanel.Claims`). Eine Gruppe statt einer statischen Liste, weil sie einen Assembly-Reload übersteht.
+- Der Graph-Editor von `misstate` ist eigenständig geblieben. Aus `missbehave` musste dafür nichts weiter in den Core; geteilt werden Blackboard-Panel, Parameter-Editor und `ReloadSafe`.
+
+Offen:
+
+- **Live-Ansicht:** Der FSM-Editor zeigt noch nicht, in welchem State ein laufendes Spiel ist. Der Debugger-Kanal von `missbehave` ist BT-spezifisch; für eine zweite Nutzung wäre der Transport ein Kandidat für den Core.
+- **Teilbäume:** Eine Action eines States kann ein BT-Teilbaum sein, zusammenbauen lässt er sich aber nur im Inspector, nicht im Graph.
+
+Entscheidungen aus dem ersten Ausprobieren im Editor:
+
+- **Ein State ist eine Action-Liste**, kein einzelner Knoten: `Actions` mit `Mode` (Sequence oder Selector) und `Parallel`. Actions kommen über einen Picker im Graph dazu, nicht über die Knoten-Auswahl im Inspector. Transitions halten entsprechend eine Liste von `Conditions`.
+- **Ein Plugin beansprucht nur die Knoten seiner eigenen offenen Resource.** Vorher holte Missbehave sein Dock nach vorn, sobald irgendein `MissNode` inspiziert wurde, auch einer in einer Statemachine.
+- **Alle Missfits-Resources erben von `MissResource`**, damit sie im Dialog *New Resource* unter einem Eintrag stehen.
 
 Der Core bekommt kein `plugin.cfg`. Als reine Bibliothek muss ihn niemand aktivieren; Editor-Widgets dürfen darin liegen, registriert werden sie vom jeweiligen Addon-Plugin.
 
@@ -103,7 +114,8 @@ Verworfen:
 1. **Erledigt:** `misscore` anlegen und Blackboard samt Editor-Teilen aus `missbehave` dorthin verschieben. Selbsttests von `missbehave` laufen weiter.
 2. **Umgesetzt, Editor-Prüfung offen:** Knoten-Basis, Actions, Conditions, Kontext und Status in den Core ziehen; `missbehave` behält nur, was Behavior Tree ist.
 3. **Runtime umgesetzt:** `misstate` auf dem Core bauen: `Fsm`, `FsmState`, `FsmTransition`, `FsmRunner` mit Selbsttests.
-4. Graph-Editor für `misstate`, mit den dafür nötigen Editor-Teilen im Core.
-5. Build-Skript für die Addon-Zips, danach erste gemeinsame Veröffentlichung von `missbehave` und `misstate`.
-6. `misspeak`, mit Actions und Conditions für BT und FSM.
-7. `mission`.
+4. **Umgesetzt:** Graph-Editor für `misstate`. Ein Editor-Teil kam dafür in den Core: die Abgrenzung der Blackboard-Panels.
+5. Live-Ansicht für `misstate`: aktueller State eines laufenden Spiels im Graph.
+6. Build-Skript für die Addon-Zips, danach erste gemeinsame Veröffentlichung von `missbehave` und `misstate`.
+7. `misspeak`, mit Actions und Conditions für BT und FSM.
+8. `mission`.

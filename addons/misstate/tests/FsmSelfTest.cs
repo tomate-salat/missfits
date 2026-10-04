@@ -24,11 +24,15 @@ public partial class FsmSelfTest : Node {
         TheInitialStateIsEnteredOnTheFirstTick();
         AStateRunsItsNodeLikeARoot();
         AStateWithoutANodeJustWaits();
+        ActionsRunOneAfterTheOther();
+        ASelectorStopsAtTheFirstSuccess();
+        ParallelActionsRunAllAtOnce();
 
         // transitions
         AConditionMovesTheMachineOn();
         TriggersFollowHowTheNodeFinished();
         TheFirstTransitionThatFiresWins();
+        ConditionsHoldTogetherOrOneIsEnough();
         LeavingAStateInterruptsItsNode();
         ATransitionToNowhereIsIgnored();
 
@@ -78,8 +82,8 @@ public partial class FsmSelfTest : Node {
 
         run.Tick();
         run.Tick();
-        var clone = (FsmProbeAction) run.Instance.CurrentNode;
-        Check("a state runs a copy of its node", clone != null && !ReferenceEquals(clone, action) && action.TotalTicks == 0);
+        var clone = run.Current;
+        Check("a state runs a copy of its action", clone != null && !ReferenceEquals(clone, action) && action.TotalTicks == 0);
         Check("a running node is resumed, not restarted", clone.BeforeRuns == 1 && clone.Ticks == 2 && clone.AfterRuns == 0);
 
         run.Tick();
@@ -103,8 +107,120 @@ public partial class FsmSelfTest : Node {
         Check("and still takes its transitions", run.Instance.Current == done);
     }
 
+    void ActionsRunOneAfterTheOther() {
+        var first = new FsmProbeAction { RunningTicks = 1 };
+        var second = new FsmProbeAction { Result = MissStatus.Failure };
+        var third = new FsmProbeAction();
+        var work = State("Work", first, second, third);
+        var failed = State("Failed");
+        Link(work, failed, FsmTrigger.Failed);
+        var run = new MachineRun(Machine(work, failed));
+
+        run.Tick();
+        var actions = run.Instance.ActionsOf(work).Cast<FsmProbeAction>().ToList();
+        Check("a state waits on its running action", actions[0].TotalTicks == 1 && actions[1].TotalTicks == 0 && run.Instance.Current == work);
+        run.Tick();
+        Check("and carries on with the next one", actions[0].TotalTicks == 2 && actions[0].BeforeRuns == 1 && actions[1].TotalTicks == 1);
+        Check("a sequence ends with the first action that fails", actions[2].TotalTicks == 0 && run.Instance.Current == failed);
+
+        var all = State("All", new FsmProbeAction(), new FsmProbeAction());
+        var done = State("Done");
+        Link(all, done, FsmTrigger.Succeeded);
+        run = new MachineRun(Machine(all, done));
+        run.Tick();
+        Check("a sequence succeeds once every action has", run.Instance.Current == done
+                                                         && run.Instance.ActionsOf(all).Cast<FsmProbeAction>().All(a => a.TotalTicks == 1 && a.AfterRuns == 1));
+    }
+
+    void ASelectorStopsAtTheFirstSuccess() {
+        var work = State("Work", new FsmProbeAction { Result = MissStatus.Failure }, new FsmProbeAction(), new FsmProbeAction());
+        work.Mode = ListMode.Selector;
+        var done = State("Done");
+        Link(work, done, FsmTrigger.Succeeded);
+        var run = new MachineRun(Machine(work, done));
+
+        run.Tick();
+        var actions = run.Instance.ActionsOf(work).Cast<FsmProbeAction>().ToList();
+        Check("a selector goes on past a failure", actions[0].TotalTicks == 1 && actions[1].TotalTicks == 1);
+        Check("and ends with the first action that succeeds", actions[2].TotalTicks == 0 && run.Instance.Current == done);
+
+        var none = State("None", new FsmProbeAction { Result = MissStatus.Failure }, new FsmProbeAction { Result = MissStatus.Failure });
+        none.Mode = ListMode.Selector;
+        var failed = State("Failed");
+        Link(none, failed, FsmTrigger.Failed);
+        run = new MachineRun(Machine(none, failed));
+        run.Tick();
+        Check("a selector fails once every action has", run.Instance.Current == failed);
+    }
+
+    void ParallelActionsRunAllAtOnce() {
+        var slow = new FsmProbeAction { RunningTicks = 2 };
+        var quick = new FsmProbeAction();
+        var work = State("Work", slow, quick);
+        work.Parallel = true;
+        var done = State("Done");
+        Link(work, done, FsmTrigger.Succeeded);
+        var run = new MachineRun(Machine(work, done));
+
+        run.Tick();
+        var actions = run.Instance.ActionsOf(work).Cast<FsmProbeAction>().ToList();
+        Check("parallel actions are all ticked on the same tick", actions[0].TotalTicks == 1 && actions[1].TotalTicks == 1);
+        run.Tick();
+        Check("one that is through is not ticked again while the others run", actions[0].TotalTicks == 2 && actions[1].TotalTicks == 1);
+        Check("the run is not over until every action is", run.Instance.Current == work);
+        run.Tick();
+        Check("a parallel sequence succeeds once all have succeeded", run.Instance.Current == done && actions[0].AfterRuns == 1);
+
+        var endless = new FsmProbeAction { RunningTicks = 100 };
+        var failing = new FsmProbeAction { RunningTicks = 1, Result = MissStatus.Failure };
+        var risky = State("Risky", endless, failing);
+        risky.Parallel = true;
+        var failed = State("Failed");
+        Link(risky, failed, FsmTrigger.Failed);
+        run = new MachineRun(Machine(risky, failed));
+        run.Tick();
+        run.Tick();
+        actions = [.. run.Instance.ActionsOf(risky).Cast<FsmProbeAction>()];
+        Check("a parallel sequence fails as soon as one action does", run.Instance.Current == failed);
+        Check("and interrupts the ones still running", actions[0].Interrupts == 1 && actions[1].Interrupts == 0);
+
+        var racer = State("Race", new FsmProbeAction { RunningTicks = 100 }, new FsmProbeAction { RunningTicks = 1 });
+        racer.Parallel = true;
+        racer.Mode = ListMode.Selector;
+        var won = State("Won");
+        Link(racer, won, FsmTrigger.Succeeded);
+        run = new MachineRun(Machine(racer, won));
+        run.Tick();
+        run.Tick();
+        Check("a parallel selector succeeds with the first action that does", run.Instance.Current == won
+                                                                           && ((FsmProbeAction) run.Instance.ActionsOf(racer)[0]).Interrupts == 1);
+
+        var loop = State("Loop", new FsmProbeAction(), new FsmProbeAction());
+        loop.Parallel = true;
+        run = new MachineRun(Machine(loop));
+        run.Tick();
+        run.Tick();
+        Check("a parallel run that is over starts afresh on the next tick",
+            run.Instance.ActionsOf(loop).Cast<FsmProbeAction>().All(a => a.TotalTicks == 2 && a.BeforeRuns == 2));
+    }
+
     // ---- transitions -------------------------------------------------------------------------
 
+    void ConditionsHoldTogetherOrOneIsEnough() {
+        FsmState Arrive(ListMode mode, params int[] thresholds) {
+            var from = State("From");
+            var to = State("To");
+            var transition = new FsmTransition { TargetStateId = to.Id, Mode = mode };
+            foreach (var threshold in thresholds) transition.Conditions.Add(new FsmProbeCondition { AtLeast = threshold });
+            from.Transitions.Add(transition);
+            var run = new MachineRun(Machine(from, to));
+            run.Tick();
+            return run.Instance.Current;
+        }
+
+        Check("as a sequence, every condition has to hold", Arrive(ListMode.Sequence, 0, 1).Name == "From" && Arrive(ListMode.Sequence, 0, 0).Name == "To");
+        Check("as a selector, one is enough", Arrive(ListMode.Selector, 1, 0).Name == "To" && Arrive(ListMode.Selector, 1, 1).Name == "From");
+    }
     void AConditionMovesTheMachineOn() {
         var count = Entry("count", Variant.Type.Int, 0);
         var action = new FsmProbeAction { RunningTicks = 100 };
@@ -125,7 +241,7 @@ public partial class FsmSelfTest : Node {
         run.Tick();
         Check("once it holds, the machine moves on", run.Instance.Current == rest);
 
-        var restNode = (FsmProbeAction) run.Instance.CurrentNode;
+        var restNode = run.Current;
         Check("the new state starts on the next tick, not the same one", restNode.TotalTicks == 0);
         run.Tick();
         Check("and then runs its own node", restNode.TotalTicks == 1);
@@ -253,7 +369,7 @@ public partial class FsmSelfTest : Node {
 
         runner.Tick(Step);
         runner.Tick(Step);
-        var node = (FsmProbeAction) runner.Instance.CurrentNode;
+        var node = (FsmProbeAction) runner.Instance.ActionsOf(runner.Instance.Current)[0];
         Check("a node can stop the runner from inside a tick", !runner.Enabled && node.TotalTicks == 2);
         Check("which interrupts what was running, after the tick", node.Interrupts == 1);
 
@@ -324,8 +440,8 @@ public partial class FsmSelfTest : Node {
         first.Tick();
         first.Tick();
         second.Tick();
-        var a = (FsmProbeAction) first.Instance.CurrentNode;
-        var b = (FsmProbeAction) second.Instance.CurrentNode;
+        var a = first.Current;
+        var b = second.Current;
         Check("two runners of one machine do not share a node", !ReferenceEquals(a, b) && a.TotalTicks == 2 && b.TotalTicks == 1);
         Check("and neither ticks the definition", action.TotalTicks == 0 && action.IsDefinition && !a.IsDefinition);
     }
@@ -346,9 +462,10 @@ public partial class FsmSelfTest : Node {
         var loaded = ResourceLoader.Load<Fsm>(path, cacheMode: ResourceLoader.CacheMode.Ignore);
         var loadedWork = loaded?.FindStateByName("Work");
         Check("states come back with their ids", loadedWork?.Id == work.Id && loaded.InitialState == loadedWork);
-        Check("a state's node comes back with its link", loadedWork?.Node is FsmProbeAction { RunningTicks: 1 } node && node.Counter.EntryId == count.Id);
+        Check("a state's action comes back with its link", loadedWork?.Actions.FirstOrDefault() is FsmProbeAction { RunningTicks: 1 } node && node.Counter.EntryId == count.Id);
         Check("a transition comes back with its target, trigger and condition",
-            loadedWork?.Transitions.FirstOrDefault() is { On: FsmTrigger.Finished, Condition: FsmProbeCondition { AtLeast: 2 } } transition
+            loadedWork?.Transitions.FirstOrDefault() is { On: FsmTrigger.Finished } transition
+            && transition.Conditions.FirstOrDefault() is FsmProbeCondition { AtLeast: 2 }
             && transition.TargetStateId == rest.Id);
 
         var run = new MachineRun(loaded);
@@ -392,7 +509,10 @@ public partial class FsmSelfTest : Node {
 
         public void Tick(double delta = Step) => Instance.Tick(new MissContext { Blackboard = Board, Delta = delta });
 
-        public FsmProbeAction NodeOf(FsmState state) => Instance.NodeOf(state) as FsmProbeAction;
+        /// <summary>This run's copy of a state's first action.</summary>
+        public FsmProbeAction NodeOf(FsmState state) => Instance.ActionsOf(state).FirstOrDefault() as FsmProbeAction;
+
+        public FsmProbeAction Current => NodeOf(Instance.Current);
     }
 
     FsmRunner Runner(Fsm machine) {
@@ -407,10 +527,17 @@ public partial class FsmSelfTest : Node {
         return machine;
     }
 
-    static FsmState State(string name, MissNode node = null) => new() { Name = name, Node = node };
+    static FsmState State(string name, params MissNode[] actions) {
+        var state = new FsmState { Name = name };
+        foreach (var action in actions) state.Actions.Add(action);
+        return state;
+    }
 
-    static void Link(FsmState from, FsmState to, FsmTrigger on = FsmTrigger.Always, MissNode condition = null)
-        => from.Transitions.Add(new FsmTransition { TargetStateId = to.Id, On = on, Condition = condition });
+    static void Link(FsmState from, FsmState to, FsmTrigger on = FsmTrigger.Always, MissNode condition = null) {
+        var transition = new FsmTransition { TargetStateId = to.Id, On = on };
+        if (condition != null) transition.Conditions.Add(condition);
+        from.Transitions.Add(transition);
+    }
 
     static BlackboardEntry Entry(string name, Variant.Type type, Variant value)
         => new() { Name = name, VariantType = type, Default = value };

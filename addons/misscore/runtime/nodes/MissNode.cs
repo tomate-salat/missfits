@@ -64,6 +64,17 @@ public abstract partial class MissNode : BbParamResource, IBbParamHost {
     /// <summary>One of <see cref="NodeCategory"/> — drives graph slots and the create dialog.</summary>
     public virtual string Category => NodeCategory.Leaf;
 
+    /// <summary>
+    /// One of <see cref="NodeGroup"/>: where a node picker files this type. Follows the
+    /// <see cref="Category"/> unless a type says otherwise — a list of conditions is a composite,
+    /// but belongs with the conditions.
+    /// </summary>
+    public virtual string PickerGroup => Category switch {
+        NodeCategory.Composite => NodeGroup.Composite,
+        NodeCategory.Decorator => NodeGroup.Decorator,
+        _ => NodeGroup.Other,
+    };
+
     /// <summary>Short second line rendered on the graph node, e.g. a decorator's parameter.</summary>
     public virtual string GetSummary() => "";
 
@@ -176,6 +187,15 @@ public abstract partial class MissNode : BbParamResource, IBbParamHost {
 
     /// <inheritdoc cref="BbParams.LiteralSuffix"/>
     public const string LiteralSuffix = BbParams.LiteralSuffix;
+}
+
+/// <summary>The groups a node picker files node types in.</summary>
+public static class NodeGroup {
+    public const string Composite = "Composite";
+    public const string Decorator = "Decorator";
+    public const string Action = "Action";
+    public const string Condition = "Condition";
+    public const string Other = "Other";
 }
 
 public static class NodeCategory {

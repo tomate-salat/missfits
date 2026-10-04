@@ -1,4 +1,5 @@
 #if TOOLS
+using System.Linq;
 using Godot;
 using Misscore.Editor;
 using Misscore;
@@ -121,9 +122,12 @@ public partial class MissbehaveEditorPlugin : EditorPlugin {
 
     /// <summary>
     /// Also handles individual nodes: selecting one in the graph hands it to the inspector, and if
-    /// this returned false for it the editor would immediately hide our dock again.
+    /// this returned false for it the editor would immediately hide our dock again. Only the nodes
+    /// of the open tree, though: nodes are shared with the other Missfits addons, and claiming one
+    /// that sits in a state machine would bring this dock to the front while that one is edited.
     /// </summary>
-    public override bool _Handles(GodotObject @object) => @object is BehaviorTree or MissNode;
+    public override bool _Handles(GodotObject @object)
+        => @object is BehaviorTree || (@object is MissNode node && Panel?.Tree != null && Panel.Tree.AllNodes().Contains(node));
 
     public override void _Edit(GodotObject @object) {
         switch (@object) {

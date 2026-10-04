@@ -5,14 +5,6 @@ using Misscore;
 
 namespace Missbehave;
 
-/// <summary>How a list works through its entries.</summary>
-public enum ListMode {
-    /// <summary>Front to back until one fails; succeeds when all succeed.</summary>
-    Sequence,
-
-    /// <summary>Front to back until one succeeds; fails when all fail.</summary>
-    Selector,
-}
 
 /// <summary>
 /// Several leaves of one kind folded into a single box: the graph draws the entries as rows inside

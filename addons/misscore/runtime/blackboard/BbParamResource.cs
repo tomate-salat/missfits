@@ -10,7 +10,7 @@ namespace Misscore;
 /// them, and carries them across an assembly reload.
 /// </summary>
 [GlobalClass, Tool]
-public abstract partial class BbParamResource : Resource, ISerializationListener {
+public abstract partial class BbParamResource : MissResource, ISerializationListener {
     /// <summary>
     /// Creates every <see cref="BbParam{T}"/> member a subclass left without an initializer, so none
     /// needs a <c>new()</c>. Subclass initializers have already run by now — C# runs them before the

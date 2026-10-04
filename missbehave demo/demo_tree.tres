@@ -2,10 +2,10 @@
 
 [ext_resource type="Script" uid="uid://bltujy5uigex5" path="res://addons/misscore/runtime/nodes/MissNode.cs" id="1_qobcg"]
 [ext_resource type="Script" uid="uid://coe1riq7exknh" path="res://addons/misscore/runtime/blackboard/BlackboardEntry.cs" id="1_rnnma"]
-[ext_resource type="Script" uid="uid://defsjwwnycjh1" path="res://demo/BtDemoPlayerNear.cs" id="2_rnnma"]
-[ext_resource type="Script" uid="uid://dfqp6r8c2266v" path="res://demo/BtDemoChase.cs" id="3_eu73x"]
+[ext_resource type="Script" uid="uid://defsjwwnycjh1" path="res://missbehave demo/BtDemoPlayerNear.cs" id="2_rnnma"]
+[ext_resource type="Script" uid="uid://dfqp6r8c2266v" path="res://missbehave demo/BtDemoChase.cs" id="3_eu73x"]
 [ext_resource type="Script" uid="uid://dyhxcuvvacakm" path="res://addons/missbehave/runtime/composites/SequenceNode.cs" id="4_nf8lx"]
-[ext_resource type="Script" uid="uid://dh0prtiwjcf6d" path="res://demo/BtDemoIdle.cs" id="5_fdjhv"]
+[ext_resource type="Script" uid="uid://dh0prtiwjcf6d" path="res://missbehave demo/BtDemoIdle.cs" id="5_fdjhv"]
 [ext_resource type="Script" uid="uid://bntxocvo6bbvd" path="res://addons/missbehave/runtime/composites/SelectorReactiveNode.cs" id="6_yfru4"]
 [ext_resource type="Script" uid="uid://b626ibeh17exn" path="res://addons/missbehave/runtime/BehaviorTree.cs" id="7_xfbwf"]
 

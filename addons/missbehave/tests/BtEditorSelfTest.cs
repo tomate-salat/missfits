@@ -420,6 +420,11 @@ public partial class BtEditorSelfTest : Node {
         Check("a box exists per node plus the root entry", BoxCount() == 5);
         Check("boxes keep their id as their node name", _graph.BoxFor(_leaf.Id) != null);
         Check("every parent-child pair is wired", ConnectionCount() == 4);
+
+        // Zooming scales a box as drawn, so its text needs a font that survives scaling.
+        var font = _graph.BoxFor(_leaf.Id).GetNode<Label>("Row/NodeName").GetThemeFont("font");
+        Check("the text of a box is drawn from a distance field, so it stays sharp when zoomed",
+            font is FontFile { MultichannelSignedDistanceField: true } or FontVariation { BaseFont: FontFile { MultichannelSignedDistanceField: true } });
     }
 
     /// <summary>

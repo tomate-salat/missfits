@@ -3,12 +3,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
-using Misscore;
 
-namespace Missbehave.Editor;
+namespace Misscore.Editor;
 
 /// <summary>One creatable node type as offered by the create dialog.</summary>
-public sealed class BtNodeType {
+public sealed class NodeTypeInfo {
     public Type Type { get; init; }
 
     /// <summary>Shown in the dialog: the <see cref="NodeNameAttribute"/> name, or the class name.</summary>
@@ -24,7 +23,7 @@ public sealed class BtNodeType {
 
     /// <summary>
     /// False when the class is missing <c>[GlobalClass]</c>. Such a node cannot round-trip through
-    /// a tree resource, so the dialog flags it instead of failing silently on save.
+    /// a resource file, so the dialog flags it instead of failing silently on save.
     /// </summary>
     public bool IsGlobalClass { get; init; }
 
@@ -38,28 +37,28 @@ public sealed class BtNodeType {
 }
 
 /// <summary>
-/// Finds every creatable behavior node in the project.
+/// Finds every creatable node type in the project, for the node pickers of the Missfits editors.
 /// <para>
 /// Discovery is plain .NET reflection: Godot compiles the whole project — addons included — into
-/// one assembly, and this plugin runs inside it, so every built-in and user-authored node type is
+/// one assembly, and the editors run inside it, so every built-in and user-authored node type is
 /// simply a subclass in <c>typeof(MissNode).Assembly</c>. The global class list is consulted
 /// only for icons and for the missing-<c>[GlobalClass]</c> warning.
 /// </para>
 /// </summary>
 public static class NodeTypeRegistry {
-    public const string GroupComposite = "Composite";
-    public const string GroupDecorator = "Decorator";
-    public const string GroupAction = "Action";
-    public const string GroupCondition = "Condition";
-    public const string GroupOther = "Other";
+    public const string GroupComposite = NodeGroup.Composite;
+    public const string GroupDecorator = NodeGroup.Decorator;
+    public const string GroupAction = NodeGroup.Action;
+    public const string GroupCondition = NodeGroup.Condition;
+    public const string GroupOther = NodeGroup.Other;
 
     public static readonly string[] Groups = [
         GroupComposite, GroupDecorator, GroupAction, GroupCondition, GroupOther,
     ];
 
-    static List<BtNodeType> _types;
+    static List<NodeTypeInfo> _types;
 
-    public static IReadOnlyList<BtNodeType> Types {
+    public static IReadOnlyList<NodeTypeInfo> Types {
         get {
             if (_types == null) Refresh();
             return _types;
@@ -72,7 +71,7 @@ public static class NodeTypeRegistry {
         _types = [.. typeof(MissNode).Assembly
             .GetTypes()
             .Where(IsCreatable)
-            .Select(type => new BtNodeType {
+            .Select(type => new NodeTypeInfo {
                 Type = type,
                 Name = NodeAttributes.NameOf(type),
                 Group = GroupOf(type),
@@ -83,17 +82,24 @@ public static class NodeTypeRegistry {
             })
             .OrderBy(t => Array.IndexOf(Groups, t.Group))
             // A list heads its group, so it is not lost among the conditions or actions it holds.
-            .ThenBy(t => typeof(AListNode).IsAssignableFrom(t.Type) ? 0 : 1)
+            .ThenBy(t => Pristine(t.Type)?.Category == NodeCategory.Leaf ? 1 : 0)
             .ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase)];
     }
 
-    public static IEnumerable<BtNodeType> InGroup(string group)
+    public static IEnumerable<NodeTypeInfo> InGroup(string group)
         => Types.Where(t => t.Group == group);
 
-    public static BtNodeType Find(Type type) => Types.FirstOrDefault(t => t.Type == type);
+    public static NodeTypeInfo Find(Type type) => Types.FirstOrDefault(t => t.Type == type);
+
+    /// <summary>A new node of that type, with an id.</summary>
+    public static MissNode Create(Type type) {
+        var node = (MissNode) Activator.CreateInstance(type);
+        node.EnsureId();
+        return node;
+    }
 
     /// <summary>Looks a type up by its full .NET name, as carried through signals.</summary>
-    public static BtNodeType FindByName(string fullName)
+    public static NodeTypeInfo FindByName(string fullName)
         => string.IsNullOrEmpty(fullName) ? null : Types.FirstOrDefault(t => t.Type.FullName == fullName);
 
     public static string IconFor(MissNode node)
@@ -116,13 +122,6 @@ public static class NodeTypeRegistry {
     }
 
     /// <summary>
-    /// Whether a type is one of the probe nodes the Missfits self tests build with — this addon's or
-    /// another's, since actions and conditions are shared.
-    /// </summary>
-    static bool IsTestType(Type type)
-        => type.Namespace is { } ns && ns.StartsWith("Miss") && ns.EndsWith(".Tests");
-
-    /// <summary>
     /// Whether the probe nodes of the self tests are offered. Off in the editor, where they would only
     /// clutter the picker; the editor self test switches it on to create them the usual way.
     /// </summary>
@@ -135,21 +134,29 @@ public static class NodeTypeRegistry {
            && type != typeof(MissNode)
            && type.GetConstructor(Type.EmptyTypes) != null;
 
-    /// <summary>Composite, Decorator, Action, Condition or Other.</summary>
-    public static string GroupOf(Type type) {
-        // A list is filed with what it holds: a condition list is used like a condition.
-        if (typeof(ConditionListNode).IsAssignableFrom(type)) return GroupCondition;
-        if (typeof(ActionListNode).IsAssignableFrom(type)) return GroupAction;
-        if (typeof(ACompositeNode).IsAssignableFrom(type)) return GroupComposite;
-        if (typeof(ADecoratorNode).IsAssignableFrom(type)) return GroupDecorator;
-        if (typeof(ConditionNode).IsAssignableFrom(type)) return GroupCondition;
-        if (typeof(ActionNode).IsAssignableFrom(type)) return GroupAction;
-        return GroupOther;
+    /// <summary>
+    /// Whether a type is one of the probe nodes the Missfits self tests build with — any addon's,
+    /// since actions and conditions are shared.
+    /// </summary>
+    public static bool IsTestType(Type type)
+        => type.Namespace is { } ns && ns.StartsWith("Miss") && ns.EndsWith(".Tests");
+
+    /// <summary>One untouched node per type, to ask what only an instance can say.</summary>
+    static readonly Dictionary<Type, MissNode> Pristines = [];
+
+    static MissNode Pristine(Type type) {
+        if (Pristines.TryGetValue(type, out var known)) return known;
+        var node = type.IsAbstract || type.GetConstructor(Type.EmptyTypes) == null ? null : (MissNode) Activator.CreateInstance(type);
+        Pristines[type] = node;
+        return node;
     }
+
+    /// <summary>Composite, Decorator, Action, Condition or Other — see <see cref="MissNode.PickerGroup"/>.</summary>
+    public static string GroupOf(Type type) => Pristine(type)?.PickerGroup ?? GroupOther;
 
     static string DescriptionOf(Type type) {
         // Namespace is a decent stand-in for "where does this come from": addon nodes live in
-        // Missbehave, project nodes in whatever the game uses.
+        // the addons' own, project nodes in whatever the game uses.
         return type.Namespace ?? "";
     }
 

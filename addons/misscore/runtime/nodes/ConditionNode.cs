@@ -12,6 +12,8 @@ public abstract partial class ConditionNode : ALeafNode {
     [Export]
     public bool Negate { get; set; }
 
+    public override string PickerGroup => NodeGroup.Condition;
+
     protected abstract bool Check(MissContext ctx);
 
     protected override MissStatus Tick(MissContext ctx) {

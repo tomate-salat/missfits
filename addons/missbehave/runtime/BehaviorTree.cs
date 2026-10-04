@@ -10,7 +10,7 @@ namespace Missbehave;
 /// number of runners.
 /// </summary>
 [GlobalClass, Tool, Icon("res://addons/missbehave/icons/tree.svg")]
-public partial class BehaviorTree : Resource, IBlackboardSource {
+public partial class BehaviorTree : MissResource, IBlackboardSource {
     [Export]
     public MissNode Root { get; set; }
 

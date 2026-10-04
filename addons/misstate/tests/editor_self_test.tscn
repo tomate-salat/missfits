@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/misstate/tests/FsmEditorSelfTest.cs" id="1_editortest"]
+
+[node name="FsmEditorSelfTest" type="Node"]
+script = ExtResource("1_editortest")

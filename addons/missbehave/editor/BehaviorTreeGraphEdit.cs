@@ -820,7 +820,7 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
     /// Adds a node of the given type, optionally hanging it off <paramref name="parentName"/>.
     /// Public so the headless editor test can exercise the same path as the create dialog.
     /// </summary>
-    public MissNode CreateNode(BtNodeType type, Vector2 position, StringName parentName = null) {
+    public MissNode CreateNode(NodeTypeInfo type, Vector2 position, StringName parentName = null) {
         if (Tree == null || type == null) return null;
 
         var node = type.Create();
@@ -866,7 +866,7 @@ public partial class BehaviorTreeGraphEdit : GraphEdit {
     /// keyed by id, and it has to be able to tell the two objects apart to bring the original back.
     /// </para>
     /// </summary>
-    public MissNode ReplaceNode(StringName name, BtNodeType type) {
+    public MissNode ReplaceNode(StringName name, NodeTypeInfo type) {
         if (Tree == null || type == null) return null;
 
         var old = Resolve(name);

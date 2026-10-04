@@ -3,31 +3,30 @@ using Godot;
 using Misscore;
 using Misscore.Editor;
 
-namespace Missbehave.Editor;
+namespace Misstate.Editor;
 
 /// <summary>
-/// Adds an "Open in Missbehave" button to a BehaviorTree's inspector — double-clicking the resource
-/// already opens the panel; this is the discoverable second entry point — and gives every
-/// <see cref="BbParam{T}"/> of a node its own editor.
+/// Adds an "Open in Misstate" button to an Fsm's inspector, and gives the <see cref="BbParam{T}"/>
+/// of every node in the open machine its own editor.
 /// </summary>
 [Tool]
-public partial class BehaviorTreeInspectorPlugin : EditorInspectorPlugin {
+public partial class FsmInspectorPlugin : EditorInspectorPlugin {
     // Untyped so an assembly reload can restore them — see ReloadSafe.
     GodotObject _plugin;
     GodotObject _current;
 
-    MissbehaveEditorPlugin Plugin => ReloadSafe.Get<MissbehaveEditorPlugin>(ref _plugin);
-    BehaviorTree Current => ReloadSafe.Get<BehaviorTree>(ref _current);
+    MisstateEditorPlugin Plugin => ReloadSafe.Get<MisstateEditorPlugin>(ref _plugin);
+    Fsm Current => ReloadSafe.Get<Fsm>(ref _current);
 
-    public void Attach(MissbehaveEditorPlugin plugin) => _plugin = plugin;
+    public void Attach(MisstateEditorPlugin plugin) => _plugin = plugin;
 
-    public override bool _CanHandle(GodotObject @object) => @object is BehaviorTree or MissNode;
+    public override bool _CanHandle(GodotObject @object) => @object is Fsm or IBbParamHost;
 
     public override void _ParseBegin(GodotObject @object) {
-        _current = @object as BehaviorTree;
+        _current = @object as Fsm;
         if (_current == null) return;
 
-        var button = new Button { Text = "Open in Missbehave" };
+        var button = new Button { Text = "Open in Misstate" };
         // A native method callable rather than +=, which would not survive an assembly reload.
         button.Connect(BaseButton.SignalName.Pressed, new Callable(this, MethodName.OnOpenPressed));
         AddCustomControl(button);
@@ -43,6 +42,6 @@ public partial class BehaviorTreeInspectorPlugin : EditorInspectorPlugin {
         return true;
     }
 
-    void OnOpenPressed() => Plugin?.OpenTree(Current);
+    void OnOpenPressed() => Plugin?.OpenMachine(Current);
 }
 #endif

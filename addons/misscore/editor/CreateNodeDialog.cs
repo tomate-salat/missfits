@@ -2,13 +2,13 @@
 using System;
 using System.Linq;
 using Godot;
-using Misscore;
 
-namespace Missbehave.Editor;
+namespace Misscore.Editor;
 
 /// <summary>
-/// Searchable picker listing every behavior node type found in the project. Used both to create a
-/// node and to pick the type an existing node should be replaced with.
+/// Searchable picker listing the node types found in the project, in groups and with their icons.
+/// Used to create a node, to pick the type an existing node should be replaced with, or — narrowed
+/// to one kind — to pick what can go into a particular place.
 /// </summary>
 [Tool]
 public partial class CreateNodeDialog : ConfirmationDialog {
@@ -46,7 +46,7 @@ public partial class CreateNodeDialog : ConfirmationDialog {
         box.AddChild(_tree);
 
         // Native method callables, not +=: a delegate connection does not survive the assembly
-        // reload that pressing play triggers. See BehaviorTreeGraphEdit for the full story.
+        // reload that pressing play triggers.
         _filter.Connect(LineEdit.SignalName.TextChanged, new Callable(this, MethodName.OnFilterChanged));
         _filter.Connect(LineEdit.SignalName.TextSubmitted, new Callable(this, MethodName.OnFilterSubmitted));
         _filter.Connect(Control.SignalName.GuiInput, new Callable(this, MethodName.OnFilterGuiInput));
@@ -64,6 +64,20 @@ public partial class CreateNodeDialog : ConfirmationDialog {
         _preferredGroup = "";
         _requiredName = required?.FullName ?? "";
         Present(graphPosition);
+    }
+
+    /// <summary>
+    /// Opens the picker for one kind of node only — the actions a state can run, say — under a
+    /// title and a button that say what the choice is for.
+    /// </summary>
+    public void OpenFor(string title, string okText, Type required) {
+        NodeTypeRegistry.Refresh();
+        Title = title;
+        OkButtonText = okText;
+        _excludedType = "";
+        _preferredGroup = "";
+        _requiredName = required?.FullName ?? "";
+        Present(Vector2.Zero);
     }
 
     public void OpenForReplace(MissNode node) {
@@ -119,7 +133,7 @@ public partial class CreateNodeDialog : ConfirmationDialog {
     /// <paramref name="depth"/> first, each filled the same way, then the types filed right here — in
     /// the registry's order, lists first.
     /// </summary>
-    void AddLevel(TreeItem parent, System.Collections.Generic.List<BtNodeType> types, int depth) {
+    void AddLevel(TreeItem parent, System.Collections.Generic.List<NodeTypeInfo> types, int depth) {
         var folders = types
             .Where(t => t.SubGroup.Length > depth)
             .GroupBy(t => t.SubGroup[depth], StringComparer.OrdinalIgnoreCase)
@@ -147,7 +161,7 @@ public partial class CreateNodeDialog : ConfirmationDialog {
             if (!type.IsGlobalClass) {
                 item.SetCustomColor(0, new Color("#e0b400"));
                 item.SetTooltipText(0,
-                    $"{type.Description}\n\nMissing [GlobalClass] — this node cannot be saved into a tree resource.");
+                    $"{type.Description}\n\nMissing [GlobalClass] — this node cannot be saved into a resource.");
             }
         }
     }
@@ -184,7 +198,7 @@ public partial class CreateNodeDialog : ConfirmationDialog {
     /// A type is found by its shown name, its class name, or the name of a sub-group it is in — so
     /// typing "enemies" lists everything filed under Enemies.
     /// </summary>
-    static bool Matches(BtNodeType type, string needle)
+    static bool Matches(NodeTypeInfo type, string needle)
         => type.Name.Contains(needle, StringComparison.OrdinalIgnoreCase)
            || type.Type.Name.Contains(needle, StringComparison.OrdinalIgnoreCase)
            || type.SubGroup.Any(level => level.Contains(needle, StringComparison.OrdinalIgnoreCase));

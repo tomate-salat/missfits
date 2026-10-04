@@ -11,4 +11,7 @@ namespace Missbehave;
 [GlobalClass, Tool, Icon("res://addons/missbehave/icons/condition_list.svg")]
 public partial class ConditionListNode : AListNode {
     public override Type EntryType => typeof(ConditionNode);
+
+    /// <summary>Filed with what it holds: a condition list is used like a condition.</summary>
+    public override string PickerGroup => NodeGroup.Condition;
 }

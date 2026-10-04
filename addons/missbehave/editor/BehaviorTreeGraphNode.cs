@@ -112,6 +112,9 @@ public partial class BehaviorTreeGraphNode : GraphNode {
             _noPort = ImageTexture.CreateFromImage(image);
         }
         AddThemeIconOverride("port", _noPort);
+
+        // Zooming the graph scales the box as it is; an ordinary font would be a blown-up bitmap.
+        Theme = ZoomFonts.ThemeFor(this);
         Connect(Control.SignalName.Resized, new Callable(this, CanvasItem.MethodName.QueueRedraw));
 
         var row = new HBoxContainer { Name = "Row", CustomMinimumSize = new Vector2(0, 22) };

@@ -68,8 +68,12 @@ public partial class BlackboardPanel : VBoxContainer {
         ("Variant (any)", Variant.Type.Nil),
     ];
 
+    /// <summary>Every blackboard panel in the editor is in this group, whichever addon it belongs to.</summary>
+    public const string PanelGroup = "misscore_blackboard_panels";
+
     public override void _Ready() {
         Name = "Blackboard";
+        AddToGroup(PanelGroup);
         CustomMinimumSize = new Vector2(240, 0);
         AddThemeConstantOverride("separation", 6);
 
@@ -373,6 +377,28 @@ public partial class BlackboardPanel : VBoxContainer {
     }
 
     public bool Contains(IBbParamHost host) => host != null && Source != null && Source.ParamHosts().Contains(host);
+
+    /// <summary>
+    /// Whether this panel is the one to edit the parameters of <paramref name="host"/>. Several
+    /// addons each bring a panel and an Inspector plugin, and a parameter must get one editor, not
+    /// one per addon: the panel whose source holds the host claims it, and a host in no open source
+    /// goes to the first panel, which then only says where to open it.
+    /// <para>
+    /// The panels find each other through a node group rather than a static list, since group
+    /// membership is the engine's and survives an assembly reload.
+    /// </para>
+    /// </summary>
+    public bool Claims(IBbParamHost host) {
+        if (host == null || !IsInsideTree()) return false;
+
+        BlackboardPanel first = null;
+        foreach (var node in GetTree().GetNodesInGroup(PanelGroup)) {
+            if (node is not BlackboardPanel panel) continue;
+            first ??= panel;
+            if (panel.Contains(host)) return ReferenceEquals(panel, this);
+        }
+        return ReferenceEquals(first, this);
+    }
 
     public string UniqueName(string wanted) {
         wanted = string.IsNullOrWhiteSpace(wanted) ? "Entry" : wanted.Trim();

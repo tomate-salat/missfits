@@ -16,6 +16,8 @@ namespace Misscore;
 /// </summary>
 [GlobalClass, Tool, Icon("res://addons/misscore/icons/action.svg")]
 public abstract partial class ActionNode : ALeafNode {
+    public override string PickerGroup => NodeGroup.Action;
+
     protected abstract MissStatus Run(MissContext ctx);
 
     protected override MissStatus Tick(MissContext ctx) => Run(ctx);

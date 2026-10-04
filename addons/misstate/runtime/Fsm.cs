@@ -10,7 +10,7 @@ namespace Misstate;
 /// directly, and it may be assigned to any number of runners, each of which works on its own copy.
 /// </summary>
 [GlobalClass, Tool]
-public partial class Fsm : Resource, IBlackboardSource {
+public partial class Fsm : MissResource, IBlackboardSource {
     [Export]
     public Godot.Collections.Array<FsmState> States { get; set; } = [];
 
@@ -22,7 +22,7 @@ public partial class Fsm : Resource, IBlackboardSource {
     public string Description { get; set; } = "";
 
     /// <summary>
-    /// The values this machine works with; the nodes of its states link to entries by id through
+    /// The values this machine works with; the actions and conditions link to entries by id through
     /// <see cref="BbParam{T}"/>.
     /// </summary>
     [Export]
@@ -55,9 +55,14 @@ public partial class Fsm : Resource, IBlackboardSource {
     public IEnumerable<MissNode> AllNodes() {
         foreach (var state in States) {
             if (state == null) continue;
-            foreach (var node in Walk(state.Node)) yield return node;
+            foreach (var action in state.Actions) {
+                foreach (var node in Walk(action)) yield return node;
+            }
             foreach (var transition in state.Transitions) {
-                foreach (var node in Walk(transition?.Condition)) yield return node;
+                if (transition == null) continue;
+                foreach (var condition in transition.Conditions) {
+                    foreach (var node in Walk(condition)) yield return node;
+                }
             }
         }
     }
@@ -71,6 +76,14 @@ public partial class Fsm : Resource, IBlackboardSource {
     }
 
     IEnumerable<IBbParamHost> IBlackboardSource.ParamHosts() => AllNodes();
+
+    /// <summary>
+    /// Gives every node that has none an id. The blackboard editor tells nodes apart by it, and a node
+    /// created in the Inspector starts without one.
+    /// </summary>
+    public void EnsureNodeIds() {
+        foreach (var node in AllNodes()) node.EnsureId();
+    }
 
     public string[] Validate() {
         var problems = new List<string>();
@@ -91,7 +104,7 @@ public partial class Fsm : Resource, IBlackboardSource {
                 var transition = state.Transitions[i];
                 if (transition == null) problems.Add($"{name}: transition #{i + 1} is empty.");
                 else if (FindState(transition.TargetStateId) == null) problems.Add($"{name}: transition #{i + 1} leads nowhere.");
-                else if (transition is { On: FsmTrigger.Always, Condition: null }) {
+                else if (transition.On == FsmTrigger.Always && !transition.Conditions.Any(c => c != null)) {
                     problems.Add($"{name}: transition #{i + 1} has neither a trigger nor a condition, so the state is left after one tick.");
                 }
             }

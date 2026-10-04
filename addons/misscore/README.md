@@ -6,6 +6,9 @@ addon ships with it.
 
 ## What is in it
 
+`MissResource` is the base of every resource the addons define, so Godot's class lists show them
+together under one entry.
+
 **Blackboard** (`Misscore`)
 
 - `Blackboard` — scratch memory for one running instance, by entry id or by name.
@@ -28,6 +31,7 @@ addon ships with it.
 - `MissRunner` — base class of the runner nodes: actor, tick thread and rate, stopping, and a
   blackboard the Inspector fills from the source's entries.
 - `MissStatus` — `Success`, `Failure` or `Running`.
+- `ListMode` — `Sequence` or `Selector`: how a list of nodes comes to a result.
 - `BlackboardSetNode`, `BlackboardEraseNode`, `BlackboardHasNode`, `BlackboardCompareNode` — ready-made
   leaves working on the blackboard.
 - `[NodeName]`, `[NodeGroup]` — how a node type is named and filed in a node picker.
@@ -40,6 +44,9 @@ copy from `CloneRuntime()`.
 - `BlackboardPanel` — edits the entries of an `IBlackboardSource`, each edit one undo step.
 - `BbParamEditorProperty` — the Inspector editor for a `BbParam<T>`.
 - `ReloadSafe` — references to script objects that survive an assembly reload.
+- `NodeTypeRegistry` — every creatable node class in the project, with its group, name and icon.
+- `CreateNodeDialog` — the searchable node picker, for all node types or narrowed to one kind.
+- `ZoomFonts` — fonts that stay sharp when a graph is zoomed.
 
 ## Compatibility
 
