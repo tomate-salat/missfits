@@ -27,14 +27,32 @@ public abstract partial class MissGraphBox : GraphNode {
         }
     }
 
-    public override void _Draw() {
-        if (!_hinted) return;
+    bool _awaited;
 
-        var around = new Rect2(Vector2.Zero, Size).Grow(4);
-        var style = new StyleBoxFlat { DrawCenter = false, BorderColor = new Color(HintColor, 0.6f) };
+    /// <summary>
+    /// Marks the box, while a game runs, as where the game may come back to — the section an option
+    /// that leads back would return to. The same thin outline as <see cref="Hinted"/>, in the colour
+    /// of "running".
+    /// </summary>
+    public bool Awaited {
+        get => _awaited;
+        set {
+            if (_awaited == value) return;
+            _awaited = value;
+            QueueRedraw();
+        }
+    }
+
+    public override void _Draw() {
+        if (_awaited) Outline(GraphRow.Running, 4);
+        if (_hinted) Outline(HintColor, _awaited ? 8 : 4);
+    }
+
+    void Outline(Color color, float outside) {
+        var style = new StyleBoxFlat { DrawCenter = false, BorderColor = new Color(color, 0.7f) };
         style.SetBorderWidthAll(2);
         style.SetCornerRadiusAll(9);
-        DrawStyleBox(style, around);
+        DrawStyleBox(style, new Rect2(Vector2.Zero, Size).Grow(outside));
     }
 
     /// <summary>

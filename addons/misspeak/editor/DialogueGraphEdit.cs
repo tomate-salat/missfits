@@ -243,12 +243,22 @@ public partial class DialogueGraphEdit : MissGraphEdit {
     void PaintLive() {
         // Between talks nothing stands out, and nothing fades either.
         if (_liveSection == "") {
-            foreach (var box in Boxes()) box.ClearLive();
-            WireOverlay?.ClearWires();
+            StopShowingLive();
             return;
         }
 
-        foreach (var box in Boxes()) box.ShowLive(box.Name == _liveSection, _liveLine);
+        // Leading back draws no wire. The option's row names where it would go, and that section
+        // gets a quiet outline — but only while the current section can lead back at all.
+        var dialogue = Dialogue;
+        var target = dialogue?.FindSection(_liveBackTo);
+        var backTo = target == null ? null : string.IsNullOrEmpty(target.Name) ? "(unnamed)" : target.Name;
+        var canGoBack = dialogue?.FindSection(_liveSection)?.Options.Any(o => o != null && o.Back) == true;
+        var wentBackBy = _liveTrail.Length > 0 && Find(_liveTrail[^1], out _, out _, out var last) && last.Back ? last.Id : "";
+
+        foreach (var box in Boxes()) {
+            box.ShowLive(box.Name == _liveSection, _liveLine, dialogue, backTo, wentBackBy);
+            box.Awaited = canGoBack && target != null && box.Name == target.Id;
+        }
         PlaceWireOverlay();
         WireOverlay?.ShowWires(LiveWires());
     }
@@ -256,16 +266,24 @@ public partial class DialogueGraphEdit : MissGraphEdit {
     public void ClearLive() {
         if (!_live) return;
         _live = false;
-        foreach (var box in Boxes()) box.ClearLive();
+        StopShowingLive();
+    }
+
+    void StopShowingLive() {
+        foreach (var box in Boxes()) {
+            box.ClearLive(Dialogue);
+            box.Awaited = false;
+        }
         WireOverlay?.ClearWires();
     }
 
     /// <summary>
     /// The wires to highlight. As taken: every option on the trail, so the way is drawn from where
     /// the player last did something, through any sections the dialogue passed by itself. As
-    /// waiting: every way out of the current section. Wires that ports hide and ways that lead back
-    /// are drawn all the same — while a game runs, where it goes matters more than tidiness. An
-    /// option that was edited away since the game started is simply not found.
+    /// waiting: every way out of the current section that follows a wire. Wires that ports hide are
+    /// drawn all the same — while a game runs, where it goes matters more than tidiness. An option
+    /// that leads back has no wire; its row and its target say it instead. An option that was edited
+    /// away since the game started is simply not found.
     /// </summary>
     List<LiveWire> LiveWires() {
         var wires = new List<LiveWire>();
@@ -277,8 +295,7 @@ public partial class DialogueGraphEdit : MissGraphEdit {
 
             // Where the option led: the section the next one on the trail leaves, or the current one.
             var led = i + 1 < _liveTrail.Length && Find(_liveTrail[i + 1], out var next, out _, out _) ? next.Id : _liveSection;
-            if (option.Back) wires.Add(new LiveWire(from.Id, port, led, Taken: true));
-            else if (dialogue.Destination(option.TargetSectionId)?.Id == led) FollowWire(wires, from.Id, port, option.TargetSectionId, taken: true);
+            if (!option.Back && dialogue.Destination(option.TargetSectionId)?.Id == led) FollowWire(wires, from.Id, port, option.TargetSectionId, taken: true);
         }
 
         if (dialogue.FindSection(_liveSection) is { } current) {
@@ -286,7 +303,6 @@ public partial class DialogueGraphEdit : MissGraphEdit {
             foreach (var option in current.Options) {
                 if (option == null) continue;
                 if (!option.Back) FollowWire(wires, current.Id, port, option.TargetSectionId, taken: false);
-                else if (HasBox(_liveBackTo)) wires.Add(new LiveWire(current.Id, port, _liveBackTo, Taken: false));
                 port++;
             }
         }

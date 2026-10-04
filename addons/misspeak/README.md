@@ -113,9 +113,10 @@ an amber outline, the others fade, and the line it is at — on show, or still r
 is tinted. The way the dialogue came is green, from where the player last did something: through
 any sections it passed by itself, so a choice that went through a branch is drawn all the way. The
 options out of the current section are amber with dots travelling along them. While a game runs,
-what the graph otherwise hides is drawn too: the wire behind a port, and an option that leads
-back — amber to the section it would return to, green once it was taken. Between talks the graph
-looks as it does while editing.
+the wire behind a port is drawn as well. An option that leads back draws no wire: while the
+dialogue is in its section, its row reads *↩ back to Hub* in amber and that section gets a thin
+amber outline; once it was taken, the row is green. Between talks the graph looks as it does while
+editing.
 
 Only the dialogue open in the dock sends anything, and only when something changed. With nothing
 open, the dock opens the dialogue the game is playing. When several runners play the same dialogue,

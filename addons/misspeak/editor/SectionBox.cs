@@ -162,21 +162,42 @@ public partial class SectionBox : MissGraphBox {
     /// "running" and the line it is at the same tint; every other section fades.
     /// </summary>
     /// <param name="lineId">The line the dialogue is at, or empty for none.</param>
-    public void ShowLive(bool current, string lineId) {
+    /// <param name="dialogue">The dialogue the section belongs to.</param>
+    /// <param name="backTo">Name of the section an option that leads back would return to; null when there is none.</param>
+    /// <param name="wentBackBy">Id of the option that has just led the dialogue back, or empty.</param>
+    public void ShowLive(bool current, string lineId, Dialogue dialogue = null, string backTo = null, string wentBackBy = "") {
         IsCurrent = current;
         Modulate = new Color(1, 1, 1, current ? 1f : DimmedAlpha);
         AddThemeStyleboxOverride("panel", Outline(selected: false, current));
         AddThemeStyleboxOverride("panel_selected", Outline(selected: true, current));
         foreach (var row in Rows(SpeakRow.Line)) row.ShowStatus(current && row.Id == lineId ? MissStatus.Running : null);
+
+        // An option that leads back has no wire to light up, so its row says it: where it would
+        // go while the dialogue is here, and that it was the way out once it has been taken.
+        foreach (var row in Rows(SpeakRow.Option)) {
+            var option = Section?.Options.FirstOrDefault(o => o != null && o.Id == row.Id);
+            if (option == null) continue;
+
+            var waiting = current && option.Back;
+            var text = SpeakLabels.Describe(option, dialogue);
+            if (waiting) text += backTo == null ? " — ends the dialogue" : $" to {backTo}";
+            row.Show(text, row.Warning, IsPicked(row));
+            row.ShowStatus(option.Id == wentBackBy && wentBackBy != "" ? MissStatus.Success : waiting ? MissStatus.Running : null);
+        }
     }
 
     /// <summary>Back to how the box looks while no dialogue is running.</summary>
-    public void ClearLive() {
+    public void ClearLive(Dialogue dialogue = null) {
         IsCurrent = false;
         Modulate = Colors.White;
         AddThemeStyleboxOverride("panel", Outline(selected: false));
         AddThemeStyleboxOverride("panel_selected", Outline(selected: true));
         foreach (var row in Rows(SpeakRow.Line)) row.ShowStatus(null);
+        foreach (var row in Rows(SpeakRow.Option)) {
+            var option = Section?.Options.FirstOrDefault(o => o != null && o.Id == row.Id);
+            if (option != null) row.Show(SpeakLabels.Describe(option, dialogue), row.Warning, IsPicked(row));
+            row.ShowStatus(null);
+        }
     }
 
     static StyleBoxFlat Outline(bool selected, bool current = false) {

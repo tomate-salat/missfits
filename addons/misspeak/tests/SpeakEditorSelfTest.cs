@@ -600,10 +600,19 @@ public partial class SpeakEditorSelfTest : Node {
                 new LiveWire(branch.Id, 0, port.Id, true),
                 new LiveWire(port.Id, 0, sword.Id, true),
             ]));
-        Check("an option that leads back is drawn to where it would go", overlay.Wires.Where(w => !w.Taken).SequenceEqual([new LiveWire(sword.Id, 0, ask.Id, false)]));
+        var backRow = _graph.BoxFor(sword.Id).Rows(SpeakRow.Option).First();
+        Check("an option that leads back draws no wire", overlay.Wires.All(w => w.Taken));
+        Check("its row says where it would go, in the colour of waiting", backRow.Text == "↩ back to Ask" && backRow.LiveStatus == MissStatus.Running);
+        Check("and that section gets a quiet outline", _graph.BoxFor(ask.Id).Awaited && !_graph.BoxFor(branch.Id).Awaited && !_graph.BoxFor(sword.Id).Awaited);
+
+        router.Handle("misspeak:state", [42L, sword.Id, sword.Lines[0].Id, (int) DialogueWait.Advance, 5, branch.Options[0].Id,
+            new[] { ask.Options[0].Id, branch.Options[0].Id }, ""], _panel);
+        Check("with nowhere to go back to, the row says that it ends the dialogue", backRow.Text == "↩ back — ends the dialogue" && !_graph.BoxFor(ask.Id).Awaited);
 
         router.Handle("misspeak:state", [42L, ask.Id, ask.Lines[0].Id, (int) DialogueWait.Advance, 6, sword.Options[0].Id, new[] { sword.Options[0].Id }, ""], _panel);
-        Check("and once taken, as the way the dialogue came back by", overlay.Wires.Where(w => w.Taken).SequenceEqual([new LiveWire(sword.Id, 0, ask.Id, true)]));
+        backRow = _graph.BoxFor(sword.Id).Rows(SpeakRow.Option).First();
+        Check("once taken, the row shows as the way the dialogue left by, again without a wire",
+            backRow.LiveStatus == MissStatus.Success && backRow.Text == "↩ back" && !overlay.Wires.Any(w => w.Taken) && !_graph.BoxFor(ask.Id).Awaited);
 
         _graph.RestoreSnapshot(before);
         await Settle();
@@ -622,7 +631,8 @@ public partial class SpeakEditorSelfTest : Node {
         router.Reset(_panel);
         Check("when the game stops, the graph looks as it does while editing",
             !_graph.BoxFor(ask.Id).IsCurrent && _graph.BoxFor(sword.Id).Modulate.A == 1f && overlay.Wires.Count == 0
-            && _graph.BoxFor(ask.Id).Rows(SpeakRow.Line).All(r => r.LiveStatus == null));
+            && _graph.BoxFor(ask.Id).Rows(SpeakRow.Line).All(r => r.LiveStatus == null)
+            && _graph.GetChildren().OfType<SectionBox>().All(b => !b.Awaited && b.Rows(SpeakRow.Option).All(r => r.LiveStatus == null)));
     }
 
     // ---- sources -----------------------------------------------------------------------------
