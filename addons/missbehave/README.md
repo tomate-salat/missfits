@@ -68,7 +68,7 @@ carried into every runtime instance for free.
 using Godot;
 using Misscore;
 
-[GlobalClass]
+[GlobalClass, Tool]
 public partial class FollowTarget : ActionNode {
     [Export] public float Speed { get; set; } = 4f;
 
@@ -84,7 +84,9 @@ public partial class FollowTarget : ActionNode {
 in `Missbehave`: an action or condition is not tied to behavior trees, and the other Missfits addons
 run the very same classes.
 
-`[GlobalClass]` is required — without it Godot cannot write the node into a tree resource, and the
+`[Tool]` is required because the editor only runs tool scripts: without it the node turns into a
+placeholder the next time its tree is loaded, and the tree is refused with a message naming the class.
+`[GlobalClass]` is required too — without it Godot cannot write the node into a tree resource, and the
 node picker flags the class in yellow. Rebuild and the picker lists it; no restart needed.
 
 Two optional attributes tidy up the picker once a project has many nodes:

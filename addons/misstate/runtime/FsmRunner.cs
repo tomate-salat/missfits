@@ -32,10 +32,21 @@ public partial class FsmRunner : MissRunner {
 
     protected override bool HasInstance => Instance != null;
 
+    public override void _ExitTree() {
+        if (Engine.IsEditorHint()) return;
+        MisstateDebug.Unregister(this);
+    }
+
     protected override void BuildInstance() {
+        if (Instance != null) MisstateDebug.Unregister(this);
+
         Instance = FsmInstance.Create(Machine);
         if (Instance != null) Instance.StateChanged += (from, to) => EmitSignalStateChanged(from?.Name ?? "", to?.Name ?? "");
-        if (Instance == null && Machine != null) GD.PushWarning($"misstate: {Name} has a machine without states.");
+        if (Instance == null) {
+            if (Machine != null) GD.PushWarning($"misstate: {Name} has a machine without states.");
+            return;
+        }
+        MisstateDebug.Register(this);
     }
 
     /// <summary>A machine with a state to be in is running; there is nothing for it to finish.</summary>
@@ -45,6 +56,8 @@ public partial class FsmRunner : MissRunner {
     }
 
     protected override void InterruptInstance(MissContext ctx) => Instance.Interrupt(ctx);
+
+    protected override void AfterTick() => MisstateDebug.SendState(this);
 
     /// <summary>
     /// Sends the machine to the state of that name, whatever its transitions say. Safe to call from

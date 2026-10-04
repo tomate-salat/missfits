@@ -8,7 +8,7 @@ Missfits ist eine Sammlung eigenständiger Godot-Addons (C#). Jedes Addon funkti
 |---|---|---|---|
 | Core | `addons/misscore` | geteilte Basis, reine Bibliothek | – |
 | Behavior Tree | `addons/missbehave` | existiert | misbehave |
-| Statemachine | `addons/misstate` | Runtime und Graph-Editor existieren, Live-Ansicht fehlt | misstate / State |
+| Statemachine | `addons/misstate` | Runtime, Graph-Editor und Live-Ansicht existieren | misstate / State |
 | Dialog | `addons/misspeak` | geplant | misspeak |
 | Quests | `addons/mission` | geplant | miss-ion |
 
@@ -78,7 +78,7 @@ Was der FSM-Editor gezeigt hat:
 
 Offen:
 
-- **Live-Ansicht:** Der FSM-Editor zeigt noch nicht, in welchem State ein laufendes Spiel ist. Der Debugger-Kanal von `missbehave` ist BT-spezifisch; für eine zweite Nutzung wäre der Transport ein Kandidat für den Core.
+- **Debug-Kanal doppelt:** `misstate` hat einen eigenen Debug-Kanal nach dem Muster von `missbehave` (Stream im Spiel, Router und Debugger-Plugin im Editor). Geteilt wird nur `FrameThrottle`. Die beiden Kanäle sind sich sehr ähnlich; bei einem dritten Addon lohnt es, den gemeinsamen Teil in den Core zu ziehen.
 - **Teilbäume:** Eine Action eines States kann ein BT-Teilbaum sein, zusammenbauen lässt er sich aber nur im Inspector, nicht im Graph.
 
 Entscheidungen aus dem ersten Ausprobieren im Editor:
@@ -115,7 +115,7 @@ Verworfen:
 2. **Umgesetzt, Editor-Prüfung offen:** Knoten-Basis, Actions, Conditions, Kontext und Status in den Core ziehen; `missbehave` behält nur, was Behavior Tree ist.
 3. **Runtime umgesetzt:** `misstate` auf dem Core bauen: `Fsm`, `FsmState`, `FsmTransition`, `FsmRunner` mit Selbsttests.
 4. **Umgesetzt:** Graph-Editor für `misstate`. Ein Editor-Teil kam dafür in den Core: die Abgrenzung der Blackboard-Panels.
-5. Live-Ansicht für `misstate`: aktueller State eines laufenden Spiels im Graph.
+5. **Umgesetzt:** Live-Ansicht für `misstate`: aktueller State und Status seiner Actions im Graph, während das Spiel läuft.
 6. Build-Skript für die Addon-Zips, danach erste gemeinsame Veröffentlichung von `missbehave` und `misstate`.
 7. `misspeak`, mit Actions und Conditions für BT und FSM.
 8. `mission`.

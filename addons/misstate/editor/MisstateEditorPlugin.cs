@@ -22,9 +22,11 @@ public partial class MisstateEditorPlugin : EditorPlugin {
     EditorDock _dock;
     GodotObject _panel;
     GodotObject _inspector;
+    GodotObject _debugger;
 
     FsmEditorPanel Panel => ReloadSafe.Get<FsmEditorPanel>(ref _panel);
     FsmInspectorPlugin Inspector => ReloadSafe.Get<FsmInspectorPlugin>(ref _inspector);
+    MisstateDebuggerPlugin Debugger => ReloadSafe.Get<MisstateDebuggerPlugin>(ref _debugger);
 
     /// <summary>The open machine's blackboard, which node parameters in the Inspector link against.</summary>
     internal BlackboardPanel Blackboard => Panel?.Blackboard;
@@ -49,7 +51,13 @@ public partial class MisstateEditorPlugin : EditorPlugin {
         _inspector = inspector;
         AddInspectorPlugin(inspector);
 
+        var debugger = new MisstateDebuggerPlugin();
+        debugger.Attach(panel);
+        _debugger = debugger;
+        AddDebuggerPlugin(debugger);
+
         panel.Connect(FsmEditorPanel.SignalName.DirtyStateChanged, new Callable(this, MethodName.OnDirtyChanged));
+        panel.Connect(FsmEditorPanel.SignalName.InstanceRequested, new Callable(this, MethodName.OnInstanceRequested));
         panel.Connect(FsmEditorPanel.SignalName.MachineOpened, new Callable(this, MethodName.OnMachineOpened));
 
         RestoreLastMachine();
@@ -59,7 +67,10 @@ public partial class MisstateEditorPlugin : EditorPlugin {
         if (_dock != null) _dock.Title = dirty ? $"{DockTitle} *" : DockTitle;
     }
 
+    void OnInstanceRequested(long runnerId) => Debugger?.WatchInstance(runnerId);
+
     void OnMachineOpened(string path) {
+        Debugger?.WatchMachine();
         if (!string.IsNullOrEmpty(path)) Metadata()?.SetProjectMetadata(MetaSection, MetaKey, path);
     }
 
@@ -75,6 +86,11 @@ public partial class MisstateEditorPlugin : EditorPlugin {
     static EditorSettings Metadata() => EditorInterface.Singleton?.GetEditorSettings();
 
     public override void _ExitTree() {
+        if (Debugger != null) {
+            RemoveDebuggerPlugin(Debugger);
+            _debugger = null;
+        }
+
         if (Inspector != null) {
             RemoveInspectorPlugin(Inspector);
             _inspector = null;

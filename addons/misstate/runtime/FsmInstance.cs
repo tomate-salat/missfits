@@ -27,6 +27,12 @@ public sealed class FsmInstance {
         public bool ParallelRun;
         public bool[] Running;
         public bool[] Done;
+
+        /// <summary>What each action last returned in the current run, or not ticked.</summary>
+        public byte[] Statuses;
+
+        /// <summary>How the run of this visit ended, or null while it has not. Kept until the state is entered again.</summary>
+        public MissStatus? Result;
     }
 
     public Fsm Definition { get; }
@@ -39,6 +45,13 @@ public sealed class FsmInstance {
 
     /// <summary>The state the machine is in, as authored — or null before the first tick.</summary>
     public FsmState Current => _current?.Definition;
+
+    /// <summary>
+    /// What each action of the current state last returned in the state's current run, in order;
+    /// <see cref="MissStatusExtensions.NotTicked"/> for one the run has not reached. An action that is
+    /// through keeps its result until the next run starts. For live debugging.
+    /// </summary>
+    public byte[] ActionStatuses => _current?.Statuses ?? [];
 
     /// <summary>This instance's copies of the actions of <paramref name="state"/>, in order.</summary>
     public IReadOnlyList<MissNode> ActionsOf(FsmState state)
@@ -58,12 +71,15 @@ public sealed class FsmInstance {
                 transitions.Add(new RuntimeTransition { Definition = transition, Conditions = Clones(transition.Conditions) });
             }
             var actions = Clones(state.Actions);
+            var statuses = new byte[actions.Length];
+            Array.Fill(statuses, MissStatusExtensions.NotTicked);
             _states[state.Id] = new RuntimeState {
                 Definition = state,
                 Actions = actions,
                 Transitions = [.. transitions],
                 Running = new bool[actions.Length],
                 Done = new bool[actions.Length],
+                Statuses = statuses,
             };
         }
     }
@@ -74,14 +90,14 @@ public sealed class FsmInstance {
 
     /// <summary>
     /// One tick: enters the initial state if the machine is in none, runs the current state's
-    /// actions, then takes the first transition that fires. The state arrived at starts on the next
+    /// actions unless they are through, then takes the first transition that fires. The state arrived at starts on the next
     /// tick, so a tick never takes more than one transition.
     /// </summary>
     public void Tick(MissContext ctx) {
         if (_current == null) Enter(_states[Definition.InitialState.Id]);
         var state = _current;
 
-        var finished = state.Definition.Parallel ? TickAllAtOnce(state, ctx) : TickOneByOne(state, ctx);
+        var finished = Run(state, ctx);
 
         // An action itself sent the machine elsewhere: the transitions of the state just left no
         // longer apply.
@@ -92,6 +108,20 @@ public sealed class FsmInstance {
             GoTo(transition.Definition.TargetStateId, ctx);
             break;
         }
+    }
+
+    /// <summary>
+    /// Advances the state's actions and says how their run ended — null while it has not. A state
+    /// that does not repeat is through once a run has ended: it keeps reporting that result and runs
+    /// nothing further until it is entered again.
+    /// </summary>
+    MissStatus? Run(RuntimeState state, MissContext ctx) {
+        if (state.Result != null) return state.Result;
+
+        var finished = state.Definition.Parallel ? TickAllAtOnce(state, ctx) : TickOneByOne(state, ctx);
+        // Only for the state the machine is still in: an action may have sent it elsewhere.
+        if (finished != null && !state.Definition.Repeat && ReferenceEquals(_current, state)) state.Result = finished;
+        return finished;
     }
 
     /// <summary>How a run that worked through every action without a deciding result ends.</summary>
@@ -105,11 +135,13 @@ public sealed class FsmInstance {
         if (state.Actions.Length == 0) return null;
 
         var mode = state.Definition.Mode;
+        if (state.RunningIndex < 0) Array.Fill(state.Statuses, MissStatusExtensions.NotTicked);
         for (var i = Math.Max(state.RunningIndex, 0); i < state.Actions.Length; i++) {
             var action = state.Actions[i];
             var resumed = i == state.RunningIndex;
             if (!resumed) action.Begin(ctx);
             var status = action.Execute(ctx);
+            state.Statuses[i] = (byte) status;
 
             if (!ReferenceEquals(_current, state)) {
                 CloseAfterLeaving(action, status, resumed, ctx);
@@ -142,6 +174,7 @@ public sealed class FsmInstance {
             state.ParallelRun = true;
             Array.Fill(state.Running, false);
             Array.Fill(state.Done, false);
+            Array.Fill(state.Statuses, MissStatusExtensions.NotTicked);
         }
 
         var mode = state.Definition.Mode;
@@ -152,6 +185,7 @@ public sealed class FsmInstance {
             var resumed = state.Running[i];
             if (!resumed) action.Begin(ctx);
             var status = action.Execute(ctx);
+            state.Statuses[i] = (byte) status;
 
             if (!ReferenceEquals(_current, state)) {
                 CloseAfterLeaving(action, status, resumed, ctx);
@@ -229,6 +263,14 @@ public sealed class FsmInstance {
     void Enter(RuntimeState state) {
         var left = _current?.Definition;
         _current = state;
+
+        // A new visit: whatever the last one left behind is gone, and the actions run again.
+        state.Result = null;
+        state.RunningIndex = -1;
+        state.ParallelRun = false;
+        Array.Fill(state.Running, false);
+        Array.Fill(state.Done, false);
+        Array.Fill(state.Statuses, MissStatusExtensions.NotTicked);
         StateChanged?.Invoke(left, state.Definition);
     }
 

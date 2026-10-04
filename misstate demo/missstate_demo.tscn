@@ -1,0 +1,12 @@
+[gd_scene format=3 uid="uid://cf5wab0xvme88"]
+
+[ext_resource type="Script" uid="uid://cycu0dc85hcjw" path="res://addons/misstate/runtime/FsmRunner.cs" id="1_0g8pg"]
+[ext_resource type="Resource" uid="uid://c45wys2j76kfm" path="res://misstate demo/demo state.tres" id="2_clvde"]
+
+[node name="Missstate Demo" type="Node" unique_id=1511589013]
+
+[node name="FsmRunner" type="Node" parent="." unique_id=987277008 node_paths=PackedStringArray("Actor")]
+script = ExtResource("1_0g8pg")
+Machine = ExtResource("2_clvde")
+Actor = NodePath(".")
+metadata/_custom_type_script = "uid://cycu0dc85hcjw"

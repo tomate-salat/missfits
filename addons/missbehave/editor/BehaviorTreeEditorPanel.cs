@@ -198,6 +198,13 @@ public partial class BehaviorTreeEditorPanel : VBoxContainer {
     public void OpenTree(BehaviorTree tree) {
         if (tree == null || ReferenceEquals(tree, Tree)) return;
 
+        // A node that is no tool script is only a placeholder in the editor.
+        if (ToolScripts.Explain(tree.ResourcePath) is { } problem) {
+            GD.PushWarning($"missbehave: {problem}");
+            SetStatus(problem, warning: true);
+            return;
+        }
+
         // No saving on the way out: the tree left behind keeps its unsaved edits in memory, and
         // they are saved with it later, or when the editor saves or runs the project.
         // Statuses belong to the previous tree; the debugger resends for this one.

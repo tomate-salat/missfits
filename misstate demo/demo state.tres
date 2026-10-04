@@ -4,16 +4,81 @@
 [ext_resource type="Script" uid="uid://dqi44n42kbdsa" path="res://addons/misstate/runtime/FsmState.cs" id="2_hp4so"]
 [ext_resource type="Script" uid="uid://bltujy5uigex5" path="res://addons/misscore/runtime/nodes/MissNode.cs" id="3_c588d"]
 [ext_resource type="Script" uid="uid://b45c6miy28l77" path="res://addons/misstate/runtime/FsmTransition.cs" id="4_0i54f"]
+[ext_resource type="Script" uid="uid://bq85i2duuc8x8" path="res://misstate demo/StateLogAction.cs" id="4_omkeb"]
 [ext_resource type="Script" uid="uid://35450er1jth0" path="res://addons/misstate/runtime/Fsm.cs" id="5_8gqxr"]
+[ext_resource type="Script" uid="uid://dbsa67emujutd" path="res://misstate demo/StateClickCondition.cs" id="6_poi4j"]
+
+[sub_resource type="Resource" id="Resource_6f7wy"]
+script = ExtResource("1_1kn7y")
+Id = "e40e8057defa4028bcc41b6f54351f7a"
+Name = "LogMessage"
+VariantType = 4
+Default = "Enter State"
+
+[sub_resource type="Resource" id="Resource_poi4j"]
+script = ExtResource("1_1kn7y")
+Id = "8cc2c46a554c4005b2aff05cb29259be"
+Name = "Trans Message"
+VariantType = 4
+Default = "Trans State"
+
+[sub_resource type="Resource" id="Resource_xx1wx"]
+script = ExtResource("4_omkeb")
+LogMessage = {
+"entry": "e40e8057defa4028bcc41b6f54351f7a",
+"name": "LogMessage",
+"value": "Enter State"
+}
+Id = "0667289a7c004bec928119f0aecb2d94"
+
+[sub_resource type="Resource" id="Resource_2hoet"]
+script = ExtResource("6_poi4j")
+Id = "2c33518203874662874910c13fe1eabd"
+
+[sub_resource type="Resource" id="Resource_fp6oi"]
+script = ExtResource("4_0i54f")
+Id = "41319615f5b0442791ce38a089840465"
+TargetStateId = "7362e3786a5040c3a0f1a78d68528b28"
+Conditions = Array[ExtResource("3_c588d")]([SubResource("Resource_2hoet")])
 
 [sub_resource type="Resource" id="Resource_jnu4i"]
 script = ExtResource("2_hp4so")
 Id = "c9528c12e41d4cbf97ecc0983e4c5047"
-Name = "State"
-GraphPosition = Vector2(900, 420)
+Name = "Enter"
+Actions = Array[ExtResource("3_c588d")]([SubResource("Resource_xx1wx")])
+Transitions = Array[ExtResource("4_0i54f")]([SubResource("Resource_fp6oi")])
+GraphPosition = Vector2(900, 440)
+
+[sub_resource type="Resource" id="Resource_s31pr"]
+script = ExtResource("4_omkeb")
+LogMessage = {
+"entry": "8cc2c46a554c4005b2aff05cb29259be",
+"name": "Trans Message",
+"value": ""
+}
+Id = "871bdd18897746f2ba6fd1012ff0632e"
+
+[sub_resource type="Resource" id="Resource_wjd3p"]
+script = ExtResource("6_poi4j")
+Id = "5f33347b2e70423fa2a00a5bdd74acd4"
+
+[sub_resource type="Resource" id="Resource_60s0w"]
+script = ExtResource("4_0i54f")
+Id = "9f97d8e0b1524861a35b90f364180aa6"
+TargetStateId = "c9528c12e41d4cbf97ecc0983e4c5047"
+Conditions = Array[ExtResource("3_c588d")]([SubResource("Resource_wjd3p")])
+
+[sub_resource type="Resource" id="Resource_omkeb"]
+script = ExtResource("2_hp4so")
+Id = "7362e3786a5040c3a0f1a78d68528b28"
+Name = "Transition"
+Actions = Array[ExtResource("3_c588d")]([SubResource("Resource_s31pr")])
+Transitions = Array[ExtResource("4_0i54f")]([SubResource("Resource_60s0w")])
+GraphPosition = Vector2(900, 700)
 
 [resource]
 script = ExtResource("5_8gqxr")
-States = Array[ExtResource("2_hp4so")]([SubResource("Resource_jnu4i")])
+States = Array[ExtResource("2_hp4so")]([SubResource("Resource_jnu4i"), SubResource("Resource_omkeb")])
 InitialStateId = "a09a1707a1d940fa8e69597d12a16a90"
+Blackboard = Array[ExtResource("1_1kn7y")]([SubResource("Resource_6f7wy"), SubResource("Resource_poi4j")])
 metadata/_custom_type_script = "uid://35450er1jth0"

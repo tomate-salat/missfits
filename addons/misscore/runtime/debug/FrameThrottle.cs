@@ -1,8 +1,8 @@
-namespace Missbehave;
+namespace Misscore;
 
 /// <summary>
 /// Decides whether a status frame is worth putting on the debug channel. A frame identical to the
-/// last one sent is dropped, so a tree that is simply sitting there costs nothing, and sends are
+/// last one sent is dropped, so something that is simply sitting there costs nothing, and sends are
 /// capped so a fast tick rate cannot flood the channel.
 /// <para>
 /// Whenever the editor changes what it watches, call <see cref="Invalidate"/>. The newly watched
@@ -11,7 +11,7 @@ namespace Missbehave;
 /// clears the old colours, no replacement frame ever arrives, and the graph stays blank.
 /// </para>
 /// </summary>
-internal sealed class FrameThrottle {
+public sealed class FrameThrottle {
     byte[] _lastSent;
     ulong _lastSentMsec;
 

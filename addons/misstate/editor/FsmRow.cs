@@ -1,5 +1,6 @@
 #if TOOLS
 using Godot;
+using Misscore;
 
 namespace Misstate.Editor;
 
@@ -38,6 +39,31 @@ public partial class FsmRow : PanelContainer {
 
     Label _text;
     Label _warning;
+    bool _picked;
+
+    /// <summary>What a running game last reported for this row's action, or -1 for nothing.</summary>
+    int _status = -1;
+
+    public static readonly Color Success = new("#3fb950");
+    public static readonly Color Failure = new("#f85149");
+    public static readonly Color Running = new("#e3b341");
+
+    public static Color ColorOf(MissStatus status) => status switch {
+        MissStatus.Success => Success,
+        MissStatus.Failure => Failure,
+        _ => Running,
+    };
+
+    /// <summary>The status a running game reported for this row, or null when there is none to show.</summary>
+    public MissStatus? LiveStatus => _status < 0 ? null : (MissStatus) _status;
+
+    /// <summary>Tints the row with a live status, or takes the tint away again.</summary>
+    public void ShowStatus(MissStatus? status) {
+        var value = status == null ? -1 : (int) status.Value;
+        if (value == _status) return;
+        _status = value;
+        Show(_text.Text, _warning.TooltipText, _picked);
+    }
 
     public void Build(string kind, string id) {
         Kind = kind;
@@ -64,12 +90,13 @@ public partial class FsmRow : PanelContainer {
     public string Warning => _warning.TooltipText;
 
     public void Show(string text, string warning, bool picked) {
+        _picked = picked;
         _text.Text = text;
         _warning.Text = string.IsNullOrEmpty(warning) ? "" : "⚠";
         _warning.TooltipText = warning;
 
         var style = new StyleBoxFlat {
-            BgColor = new Color(1, 1, 1, picked ? 0.12f : 0.04f),
+            BgColor = LiveStatus is { } live ? new Color(ColorOf(live), 0.25f) : new Color(1, 1, 1, picked ? 0.12f : 0.04f),
             ContentMarginLeft = Kind == Condition ? 6 + ConditionIndent : 6,
             ContentMarginRight = 6,
             ContentMarginTop = 1,
@@ -77,7 +104,7 @@ public partial class FsmRow : PanelContainer {
         };
         style.SetCornerRadiusAll(4);
         style.SetBorderWidthAll(1);
-        style.BorderColor = picked ? new Color("#8ab4f8") : new Color(1, 1, 1, 0f);
+        style.BorderColor = picked ? new Color("#8ab4f8") : LiveStatus is { } status ? ColorOf(status) : new Color(1, 1, 1, 0f);
         AddThemeStyleboxOverride("panel", style);
     }
 

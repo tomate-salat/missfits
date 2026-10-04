@@ -150,10 +150,10 @@ public partial class FsmStateBox : GraphNode {
         QueueRedraw();
     }
 
-    static StyleBoxFlat Outline(bool selected) {
+    static StyleBoxFlat Outline(bool selected, bool current = false) {
         var style = new StyleBoxFlat {
             BgColor = selected ? new Color("#31353c") : new Color("#2a2d32"),
-            BorderColor = selected ? SelectedEdge : Edge,
+            BorderColor = current ? FsmRow.Running : selected ? SelectedEdge : Edge,
             ContentMarginLeft = 12,
             ContentMarginRight = 12,
             ContentMarginTop = 6,
@@ -162,6 +162,40 @@ public partial class FsmStateBox : GraphNode {
         style.SetBorderWidthAll(2);
         style.SetCornerRadiusAll(6);
         return style;
+    }
+
+    /// <summary>Opacity of a state the running machine is not in.</summary>
+    public const float DimmedAlpha = 0.45f;
+
+    /// <summary>Whether a running game last reported the machine to be in this state.</summary>
+    public bool IsCurrent { get; private set; }
+
+    /// <summary>
+    /// Shows where a running machine is: the state it is in gets an outline in the colour of
+    /// "running" and its actions the colour of what they last returned; every other state fades.
+    /// </summary>
+    /// <param name="statuses">What each action returned on the last tick, in order; 0xFF for not ticked.</param>
+    public void ShowLive(bool current, byte[] statuses) {
+        IsCurrent = current;
+        Modulate = new Color(1, 1, 1, current ? 1f : DimmedAlpha);
+        AddThemeStyleboxOverride("panel", Outline(selected: false, current));
+        AddThemeStyleboxOverride("panel_selected", Outline(selected: true, current));
+
+        var index = 0;
+        foreach (var row in Rows(FsmRow.Action)) {
+            var ticked = current && statuses != null && index < statuses.Length && statuses[index] != MissStatusExtensions.NotTicked;
+            row.ShowStatus(ticked ? (MissStatus) statuses[index] : null);
+            index++;
+        }
+    }
+
+    /// <summary>Back to how the box looks while no game is running.</summary>
+    public void ClearLive() {
+        IsCurrent = false;
+        Modulate = Colors.White;
+        AddThemeStyleboxOverride("panel", Outline(selected: false));
+        AddThemeStyleboxOverride("panel_selected", Outline(selected: true));
+        foreach (var row in Rows(FsmRow.Action)) row.ShowStatus(null);
     }
 
     void AddRow(string kind, string id) {
@@ -262,7 +296,9 @@ public static class FsmLabels {
     public static string Mode(FsmState state) {
         if (!state.Actions.Any(a => a != null)) return "waits";
         var mode = state.Mode == ListMode.Sequence ? "sequence" : "selector";
-        return state.Parallel ? $"{mode} · parallel" : mode;
+        if (state.Parallel) mode += " · parallel";
+        if (state.Repeat) mode += " · repeat";
+        return mode;
     }
 
     public static string Runs(MissNode node) {

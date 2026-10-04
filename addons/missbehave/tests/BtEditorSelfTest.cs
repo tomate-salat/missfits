@@ -1295,10 +1295,13 @@ public partial class BtEditorSelfTest : Node {
         Check("sub-groups start folded, their categories open",
             item?.GetParent() is { Collapsed: true } && item.GetParent().GetParent() is { Collapsed: true } folded
             && folded.GetParent() is { Collapsed: false });
+        // A folder carries no type. Being unselectable does not make an entry one: a node class
+        // without [Tool] is listed among the types but cannot be picked either.
+        static bool IsFolder(TreeItem entry) => string.IsNullOrEmpty(entry.GetMetadata(0).AsString());
         Check("sub-groups are listed before the nodes of their category",
             item?.GetParent()?.GetParent()?.GetParent() is { } category
-            && category.GetChildren().SkipWhile(child => !child.IsSelectable(0)).All(child => child.IsSelectable(0))
-            && !category.GetFirstChild().IsSelectable(0));
+            && category.GetChildren().SkipWhile(IsFolder).All(child => !IsFolder(child))
+            && IsFolder(category.GetFirstChild()));
 
         filter.Text = "nested";
         filter.EmitSignal(LineEdit.SignalName.TextChanged, filter.Text);

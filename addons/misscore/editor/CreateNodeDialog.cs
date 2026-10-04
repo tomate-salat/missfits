@@ -158,7 +158,14 @@ public partial class CreateNodeDialog : ConfirmationDialog {
                 if (icon != null) item.SetIcon(0, icon);
             }
 
-            if (!type.IsGlobalClass) {
+            if (!type.IsTool) {
+                // Not offered at all: added now, it would break the file the next time the editor loads it.
+                item.SetCustomColor(0, new Color("#e0b400"));
+                item.SetSelectable(0, false);
+                item.SetTooltipText(0,
+                    $"{type.Description}\n\nMissing [Tool] — the editor cannot work with this node. Write [GlobalClass, Tool] above the class.");
+            }
+            else if (!type.IsGlobalClass) {
                 item.SetCustomColor(0, new Color("#e0b400"));
                 item.SetTooltipText(0,
                     $"{type.Description}\n\nMissing [GlobalClass] — this node cannot be saved into a resource.");

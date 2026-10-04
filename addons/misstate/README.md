@@ -40,10 +40,10 @@ Then *Project → Project Settings → Plugins → Misstate → Enable*.
 - **`FsmTransition`** — where to go, on which trigger, under which conditions.
 - **`FsmRunner`** — the scene node that drives a machine for one actor.
 
-A state's actions run the way a behavior tree's root does: a run is started when the state is entered,
-ticked while the state lasts, and interrupted if the state is left while it is still running. When
-it finishes and no transition fires, it starts over on the next tick. A state without a node just
-waits for a transition.
+A state's actions are started when the state is entered, ticked while they are running, and
+interrupted if the state is left before they are through. Once they have finished — with Success or
+with Failure — the state is through: nothing runs again until the machine enters it anew. A state
+without actions just waits for a transition.
 
 After each tick of the state, its transitions are considered top to bottom, and the first one that
 fires wins. A transition fires when its trigger is met **and** its condition holds:
@@ -51,14 +51,41 @@ fires wins. A transition fires when its trigger is met **and** its condition hol
 | Trigger | Met when |
 |---|---|
 | `Always` | on every tick |
-| `Finished` | the state's node finished on this tick |
-| `Succeeded` | it finished with Success |
-| `Failed` | it finished with Failure |
+| `Finished` | the state's actions have finished |
+| `Succeeded` | they finished with Success |
+| `Failed` | they finished with Failure |
 
-The condition is any node — usually a `ConditionNode` — and holds when it returns Success. Without
-one, the trigger alone decides.
+A finished state stays finished, so `Finished`, `Succeeded` and `Failed` are met on every tick
+from then on: a transition that also has conditions fires as soon as those hold. In a state that
+repeats they are met only on the tick a run ended.
+
+A condition is any node — usually a `ConditionNode` — and holds when it returns Success. Without
+conditions, the trigger alone decides.
 
 The state arrived at starts on the next tick, so one tick never takes more than one transition.
+
+## Writing actions and conditions
+
+Subclass `ActionNode` or `ConditionNode` from `Misscore` — the very classes a Missbehave behavior
+tree uses, so one written for either works in both:
+
+```csharp
+using Godot;
+using Misscore;
+
+[GlobalClass, Tool]
+public partial class OpenDoor : ActionNode {
+    protected override MissStatus Run(MissContext ctx) {
+        ctx.GetActor<Node3D>()?.Call("open");
+        return MissStatus.Success;
+    }
+}
+```
+
+Both attributes are needed. Without `[GlobalClass]` Godot cannot write the node into the machine's
+file. Without `[Tool]` the editor cannot work with it: it only runs tool scripts, so the node turns
+into a placeholder the next time the file is loaded. The picker does not offer such a class, and a
+machine that already uses one is refused with a message naming it.
 
 ## What a state runs
 
@@ -71,6 +98,9 @@ settings on the state decide how:
 - **Parallel** — off (the default), the actions run one after the other, each waiting for the one
   before it. On, all of them are ticked on every tick, and the action that decides the run
   interrupts the others.
+- **Repeat** — off (the default), the actions run once per visit: when the run has ended with
+  Success or Failure the state is through and just waits for a transition, until the machine enters
+  it again. On, a finished run starts over on the next tick for as long as the machine stays.
 
 A transition's conditions work the same way: by its *Mode*, all of them have to hold, or one is
 enough.
@@ -102,8 +132,19 @@ Deleting a state keeps the transitions that led to it, flagged as leading nowher
 conditions are not lost. Every edit in the graph is one undo step. *Save* writes the machine; the
 dock title carries a `*` while it has unsaved edits, and *Revert* goes back to the file.
 
-There is no live view of a running game yet.
+## Live debugging
 
+Open a machine, run the game, and the graph shows where the machine is: the state it is in gets an
+amber outline, the others fade, and the actions of the current state take the colour of what they
+last returned — green Success, red Failure, amber Running. An action that is through keeps its
+colour until the state's next run starts.
+
+Only the machine open in the dock sends anything, and only when something changed. When several
+actors run the same machine, pick which one to watch from the toolbar dropdown; if the watched actor
+is freed, the next one running the machine takes over. With nothing open, the dock opens the machine
+the game is running. Stopping the game puts the graph back to how it looks while editing.
+
+The editor brings its *Output* panel forward when a game starts — click the *Misstate* tab to watch.
 ## Building one in code
 
 ```csharp

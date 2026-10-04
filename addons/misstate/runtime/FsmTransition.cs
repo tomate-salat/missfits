@@ -3,18 +3,22 @@ using Misscore;
 
 namespace Misstate;
 
-/// <summary>What has to have happened in a state for a transition out of it to be considered.</summary>
+/// <summary>
+/// What has to have happened in a state for a transition out of it to be considered. A finished
+/// state stays finished, so these hold on every tick from then on — a transition that also has
+/// conditions can still fire later. In a state that repeats, they hold only on the tick a run ended.
+/// </summary>
 public enum FsmTrigger {
     /// <summary>Nothing: the transition is considered on every tick.</summary>
     Always,
 
-    /// <summary>The state's actions finished on this tick, with whatever result.</summary>
+    /// <summary>The state's actions have finished, with whatever result.</summary>
     Finished,
 
-    /// <summary>The state's actions finished on this tick with Success.</summary>
+    /// <summary>The state's actions have finished with Success.</summary>
     Succeeded,
 
-    /// <summary>The state's actions finished on this tick with Failure.</summary>
+    /// <summary>The state's actions have finished with Failure.</summary>
     Failed,
 }
 

@@ -24,6 +24,8 @@ public partial class FsmSelfTest : Node {
         TheInitialStateIsEnteredOnTheFirstTick();
         AStateRunsItsNodeLikeARoot();
         AStateWithoutANodeJustWaits();
+        AFinishedStateStaysFinished();
+        ARepeatingStateStartsOver();
         ActionsRunOneAfterTheOther();
         ASelectorStopsAtTheFirstSuccess();
         ParallelActionsRunAllAtOnce();
@@ -44,6 +46,9 @@ public partial class FsmSelfTest : Node {
         ANodeCanStopItsRunner();
         ANodeCanSendTheMachineElsewhere();
         RestartGoesBackToTheInitialState();
+
+        // live debugging
+        TheDebugStreamSendsWhereAMachineIs();
         TheRunnerOffersTheMachinesBlackboardInTheInspector();
 
         // instance isolation and serialisation
@@ -89,7 +94,64 @@ public partial class FsmSelfTest : Node {
         run.Tick();
         Check("a finished node gets its AfterRun", clone.AfterRuns == 1);
         run.Tick();
-        Check("and starts over while the state lasts", clone.BeforeRuns == 2 && clone.Ticks == 1);
+        run.Tick();
+        Check("and is not run again while the machine stays in the state", clone.BeforeRuns == 1 && clone.TotalTicks == 3);
+    }
+
+    /// <summary>
+    /// A state whose actions are through has done its job: it waits for a transition, and a
+    /// transition that needs the run to have ended can fire at any later tick.
+    /// </summary>
+    void AFinishedStateStaysFinished() {
+        var go = Entry("go", Variant.Type.Int, 0);
+        var gate = new FsmProbeCondition { AtLeast = 1 };
+        Bind(gate.Value, go);
+        var work = State("Work", new FsmProbeAction());
+        var next = State("Next");
+        Link(work, next, FsmTrigger.Succeeded, gate);
+        var machine = Machine(work, next);
+        machine.Blackboard.Add(go);
+
+        var run = new MachineRun(machine);
+        run.Tick();
+        run.Tick();
+        run.Tick();
+        var action = run.NodeOf(work);
+        Check("a finished state does not run its actions again", action.TotalTicks == 1 && action.AfterRuns == 1 && run.Instance.Current == work);
+        Check("and keeps showing how they ended", run.Instance.ActionStatuses.SequenceEqual(new[] { (byte) MissStatus.Success }));
+
+        run.Board.Set("go", 1);
+        run.Tick();
+        Check("a transition waiting for the run to end can still fire later", run.Instance.Current == next);
+
+        run.GoTo(work);
+        run.Tick();
+        Check("entering the state again runs its actions again", action.TotalTicks == 2 && action.BeforeRuns == 2);
+
+        var failing = State("Failing", new FsmProbeAction { Result = MissStatus.Failure });
+        var never = State("Never");
+        Link(failing, never, FsmTrigger.Succeeded);
+        run = new MachineRun(Machine(failing, never));
+        for (var i = 0; i < 4; i++) run.Tick();
+        Check("a state that failed is through as well, and stays where it is",
+            run.Instance.Current == failing && run.NodeOf(failing).TotalTicks == 1);
+    }
+
+    void ARepeatingStateStartsOver() {
+        var loop = State("Loop", new FsmProbeAction { RunningTicks = 1 });
+        loop.Repeat = true;
+        var run = new MachineRun(Machine(loop));
+        for (var i = 0; i < 6; i++) run.Tick();
+        var action = run.NodeOf(loop);
+        Check("with repeat, a finished run starts over on the next tick", action.TotalTicks == 6 && action.BeforeRuns == 3 && action.AfterRuns == 3);
+
+        var once = State("Once", new FsmProbeAction());
+        once.Repeat = true;
+        var done = State("Done");
+        Link(once, done, FsmTrigger.Finished);
+        run = new MachineRun(Machine(once, done));
+        run.Tick();
+        Check("a repeating state can still be left when a run ends", run.Instance.Current == done);
     }
 
     void AStateWithoutANodeJustWaits() {
@@ -121,6 +183,8 @@ public partial class FsmSelfTest : Node {
         Check("a state waits on its running action", actions[0].TotalTicks == 1 && actions[1].TotalTicks == 0 && run.Instance.Current == work);
         run.Tick();
         Check("and carries on with the next one", actions[0].TotalTicks == 2 && actions[0].BeforeRuns == 1 && actions[1].TotalTicks == 1);
+        Check("the statuses tell how far the run got", run.Instance.ActionsOf(work).Count == 3
+            && ((FsmProbeAction) run.Instance.ActionsOf(work)[2]).TotalTicks == 0);
         Check("a sequence ends with the first action that fails", actions[2].TotalTicks == 0 && run.Instance.Current == failed);
 
         var all = State("All", new FsmProbeAction(), new FsmProbeAction());
@@ -167,6 +231,8 @@ public partial class FsmSelfTest : Node {
         Check("parallel actions are all ticked on the same tick", actions[0].TotalTicks == 1 && actions[1].TotalTicks == 1);
         run.Tick();
         Check("one that is through is not ticked again while the others run", actions[0].TotalTicks == 2 && actions[1].TotalTicks == 1);
+        Check("but keeps showing its result for as long as the run lasts",
+            run.Instance.ActionStatuses.SequenceEqual(new[] { (byte) MissStatus.Running, (byte) MissStatus.Success }));
         Check("the run is not over until every action is", run.Instance.Current == work);
         run.Tick();
         Check("a parallel sequence succeeds once all have succeeded", run.Instance.Current == done && actions[0].AfterRuns == 1);
@@ -197,6 +263,7 @@ public partial class FsmSelfTest : Node {
 
         var loop = State("Loop", new FsmProbeAction(), new FsmProbeAction());
         loop.Parallel = true;
+        loop.Repeat = true;
         run = new MachineRun(Machine(loop));
         run.Tick();
         run.Tick();
@@ -429,6 +496,72 @@ public partial class FsmSelfTest : Node {
         Check("and is what the machine starts with", runner.Blackboard.Get<int>("count") == 41);
         runner.QueueFree();
     }
+    // ---- live debugging ----------------------------------------------------------------------
+
+    /// <summary>
+    /// The game-side half of the debug channel, with a recorder in place of the real debugger: a
+    /// runner announces itself, and where its machine is goes out only while the editor watches that
+    /// machine, and only when something changed.
+    /// </summary>
+    void TheDebugStreamSendsWhereAMachineIs() {
+        var sent = new List<(string Message, Godot.Collections.Array Data)>();
+        ulong now = 1000;
+        var stream = new FsmDebugStream((message, data) => sent.Add((message, data)), () => now);
+
+        const string path = "user://misstate_debug_machine.tres";
+        var work = State("Work", new FsmProbeAction { RunningTicks = 1 });
+        var rest = State("Rest");
+        Link(work, rest, FsmTrigger.Finished);
+        var machine = Machine(work, rest);
+        machine.TakeOverPath(path);
+        var runner = Runner(machine);
+        var id = (long) runner.GetInstanceId();
+
+        stream.Register(runner);
+        Check("a runner announces itself with its machine and its actor",
+            sent.Count == 1 && sent[0].Message == "register" && sent[0].Data[0].AsInt64() == id
+            && sent[0].Data[1].AsString() == path && sent[0].Data[2].AsString() == Name);
+
+        runner.Tick(Step);
+        stream.SendState(runner);
+        Check("nothing is streamed while the editor watches no machine", sent.Count == 1);
+
+        stream.OnEditorMessage("watch_path", [path]);
+        var state = sent.LastOrDefault(m => m.Message == "state");
+        Check("watching a machine brings where its runners are, right away",
+            state.Data != null && state.Data[0].AsInt64() == id && state.Data[1].AsString() == work.Id);
+        Check("along with what the state's actions last returned",
+            state.Data != null && state.Data[2].AsByteArray().SequenceEqual(new[] { (byte) MissStatus.Running }));
+
+        var before = sent.Count;
+        now += 100;
+        stream.SendState(runner);
+        Check("an unchanged picture is not sent again", sent.Count == before);
+
+        now += 100;
+        runner.Tick(Step);
+        stream.SendState(runner);
+        Check("a change of state is sent", sent.Count == before + 1 && sent[^1].Message == "state" && sent[^1].Data[1].AsString() == rest.Id);
+
+        before = sent.Count;
+        stream.OnEditorMessage("watch_instance", [id + 1]);
+        now += 100;
+        runner.GoTo("Work");
+        stream.SendState(runner);
+        Check("a runner the editor does not watch stays silent", sent.Count == before);
+        stream.OnEditorMessage("watch_instance", [id]);
+        Check("until it is the watched one", sent.Count == before + 1 && sent[^1].Data[1].AsString() == work.Id);
+
+        before = sent.Count;
+        stream.OnEditorMessage("announce", []);
+        Check("asked to, runners announce themselves again, with where they are",
+            sent.Skip(before).Select(m => m.Message).SequenceEqual(["register", "state"]));
+
+        stream.Unregister(runner);
+        Check("a runner that goes says so", sent[^1].Message == "unregister" && sent[^1].Data[0].AsInt64() == id);
+        runner.QueueFree();
+    }
+
     // ---- instance isolation and serialisation ------------------------------------------------
 
     void TwoRunnersOfOneMachineAreIndependent() {
@@ -513,6 +646,8 @@ public partial class FsmSelfTest : Node {
         public FsmProbeAction NodeOf(FsmState state) => Instance.ActionsOf(state).FirstOrDefault() as FsmProbeAction;
 
         public FsmProbeAction Current => NodeOf(Instance.Current);
+
+        public void GoTo(FsmState state) => Instance.GoTo(state.Id, new MissContext { Blackboard = Board, Delta = Step });
     }
 
     FsmRunner Runner(Fsm machine) {

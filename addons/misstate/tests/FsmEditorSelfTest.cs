@@ -64,6 +64,8 @@ public partial class FsmEditorSelfTest : Node {
         await NodesLinkToTheBlackboardBesideTheGraph();
         await OnlyOnePanelClaimsAParameter();
         await SavingAndRevertingFollowTheFile();
+        await TheGraphShowsWhereARunningMachineIs();
+        await ANodeClassWithoutToolIsKeptOut();
 
         foreach (var failure in _failures) GD.PrintErr($"FAIL  {failure}");
         GD.Print($"misstate editor self test: {_checks - _failures.Count}/{_checks} checks passed");
@@ -187,11 +189,13 @@ public partial class FsmEditorSelfTest : Node {
 
         _work.Mode = ListMode.Selector;
         _work.Parallel = true;
+        _work.Repeat = true;
         _panel.OnInspectorEdited();
         await Settle();
-        Check("mode and parallel show on the box", Text(_work, "Mode") == "selector · parallel");
+        Check("mode, parallel and repeat show on the box", Text(_work, "Mode") == "selector · parallel · repeat");
         _work.Mode = ListMode.Sequence;
         _work.Parallel = false;
+        _work.Repeat = false;
 
         _graph.DeleteRow(_work.Id, FsmRow.Action, second.Id);
         await Settle();
@@ -470,6 +474,102 @@ public partial class FsmEditorSelfTest : Node {
         Check("and leaves nothing unsaved", !_panel.HasUnsavedChanges(_machine));
     }
 
+    // ---- live debugging ----------------------------------------------------------------------
+
+    /// <summary>
+    /// The editor half of the debug channel, fed the messages a running game sends: the state the
+    /// watched runner is in stands out, its actions take the colour of what they returned.
+    /// </summary>
+    async System.Threading.Tasks.Task TheGraphShowsWhereARunningMachineIs() {
+        var router = new FsmDebugRouter();
+        var path = _machine.ResourcePath;
+        var idle = _machine.FindStateByName("Idle");
+        var work = _machine.FindStateByName("Work");
+        var picker = _panel.FindChildren("*", nameof(OptionButton), true, false).OfType<OptionButton>().First();
+
+        Check("a runner announcing itself is accepted, in the form the editor is handed",
+            router.Handle("misstate:register", [42L, path, "Enemy"], _panel) && router.Selected == 42);
+        Check("and offered in the instance picker", picker.Visible && picker.ItemCount == 1 && picker.GetItemText(0) == "Enemy");
+
+        router.Handle("misstate:state", [42L, work.Id, new[] { (byte) MissStatus.Running }, 1], _panel);
+        var workBox = _graph.BoxFor(work.Id);
+        var idleBox = _graph.BoxFor(idle.Id);
+        Check("the state the machine is in stands out", workBox.IsCurrent && workBox.Modulate.A == 1f
+                                                      && workBox.GetThemeStylebox("panel") is StyleBoxFlat outline && outline.BorderColor == FsmRow.Running);
+        Check("the others fade", !idleBox.IsCurrent && idleBox.Modulate.A == FsmStateBox.DimmedAlpha);
+        Check("its action shows what it last returned", workBox.Rows(FsmRow.Action).First().LiveStatus == MissStatus.Running);
+
+        _graph.AddState(new Vector2(40, 400), "Later");
+        await Settle();
+        Check("an edit that rebuilds the graph keeps the live picture",
+            _graph.BoxFor(work.Id).IsCurrent && _graph.BoxFor(work.Id).Rows(FsmRow.Action).First().LiveStatus == MissStatus.Running);
+
+        router.Handle("state", [42L, idle.Id, System.Array.Empty<byte>(), 2], _panel);
+        Check("a change of state moves the highlight, in the bare form too", _graph.BoxFor(idle.Id).IsCurrent && !_graph.BoxFor(work.Id).IsCurrent);
+        Check("and takes the colours off the actions of the state that was left", _graph.BoxFor(work.Id).Rows(FsmRow.Action).First().LiveStatus == null);
+
+        router.Handle("misstate:state", [7L, work.Id, System.Array.Empty<byte>(), 1], _panel);
+        Check("a runner the router was never told about makes it ask again", router.MissesRunners && _graph.BoxFor(idle.Id).IsCurrent);
+
+        router.Handle("misstate:register", [43L, path, "Other enemy"], _panel);
+        router.Handle("misstate:register", [44L, "user://another_machine.tres", "Stranger"], _panel);
+        Check("further runners of the machine join the picker, runners of another one do not", picker.ItemCount == 2 && router.Selected == 42);
+        router.Handle("misstate:state", [43L, work.Id, System.Array.Empty<byte>(), 1], _panel);
+        router.Handle("misstate:state", [44L, work.Id, System.Array.Empty<byte>(), 1], _panel);
+        Check("only the watched runner is shown", _graph.BoxFor(idle.Id).IsCurrent);
+
+        router.Handle("misstate:unregister", [42L], _panel);
+        Check("when the watched runner goes, the next one of the machine takes over", router.Selected == 43);
+        Check("and the picture is cleared until it reports", !_graph.BoxFor(idle.Id).IsCurrent && _graph.BoxFor(idle.Id).Modulate.A == 1f);
+
+        router.Handle("misstate:state", [43L, work.Id, new[] { (byte) MissStatus.Success }, 3], _panel);
+        Check("which it then does", _graph.BoxFor(work.Id).IsCurrent && _graph.BoxFor(work.Id).Rows(FsmRow.Action).First().LiveStatus == MissStatus.Success);
+
+        router.Reset(_panel);
+        Check("when the game stops, the graph looks as it does while editing",
+            !_graph.BoxFor(work.Id).IsCurrent && _graph.BoxFor(idle.Id).Modulate.A == 1f && !picker.Visible
+            && _graph.BoxFor(work.Id).GetThemeStylebox("panel") is StyleBoxFlat plain && plain.BorderColor != FsmRow.Running);
+    }
+
+    // ---- node classes the editor cannot work with --------------------------------------------
+
+    /// <summary>
+    /// The editor only runs tool scripts: a node whose class lacks <c>[Tool]</c> is a mere
+    /// placeholder there once its file is loaded again. It is not offered, and a file using it is
+    /// not opened — with a message naming the class, instead of an exception.
+    /// </summary>
+    async System.Threading.Tasks.Task ANodeClassWithoutToolIsKeptOut() {
+        var info = NodeTypeRegistry.Find(typeof(FsmProbeNoToolAction));
+        Check("the registry knows which node classes are tool scripts",
+            info is { IsTool: false } && NodeTypeRegistry.Find(typeof(FsmProbeAction)) is { IsTool: true });
+
+        var picker = _graph.Picker;
+        _graph.BoxFor(_machine.States[0].Id).GetNode<Button>("AddAction").EmitSignal(BaseButton.SignalName.Pressed);
+        await Settle();
+        var entry = Items(Listing(picker).GetRoot()).FirstOrDefault(i => i.GetMetadata(0).AsString() == typeof(FsmProbeNoToolAction).FullName);
+        Check("the picker lists such a class but does not let it be picked",
+            entry != null && !entry.IsSelectable(0) && entry.GetTooltipText(0).Contains("[Tool]"));
+        picker.Hide();
+
+        const string path = "user://misstate_no_tool.tres";
+        var state = new FsmState { Name = "Broken" };
+        state.Actions.Add(new FsmProbeNoToolAction());
+        var broken = new Fsm();
+        broken.States.Add(state);
+        ResourceSaver.Save(broken, path);
+        broken.TakeOverPath(path);
+
+        Check("a file using such a class is recognised", ToolScripts.MissingIn(path).SequenceEqual([nameof(FsmProbeNoToolAction)]));
+        Check("a file using only tool scripts is not", ToolScripts.MissingIn(_machine.ResourcePath).Count == 0);
+
+        var open = _panel.Machine;
+        _panel.OpenMachine(broken);
+        await Settle();
+        Check("the panel does not open it", ReferenceEquals(_panel.Machine, open));
+        Check("and says which class is missing [Tool]",
+            _panel.GetChildren().OfType<Label>().Last().Text.Contains(nameof(FsmProbeNoToolAction)));
+    }
+
     // ---- source rules ------------------------------------------------------------------------
 
     /// <summary>
@@ -480,12 +580,13 @@ public partial class FsmEditorSelfTest : Node {
     /// </summary>
     void EditorSourcesDoNotWireDelegates() {
         const string editor = "res://addons/misstate/editor";
-        string[] plugins = [$"{editor}/MisstateEditorPlugin.cs", $"{editor}/FsmInspectorPlugin.cs"];
+        string[] plugins = [$"{editor}/MisstateEditorPlugin.cs", $"{editor}/FsmInspectorPlugin.cs", $"{editor}/debug/MisstateDebuggerPlugin.cs"];
 
         var offenders = new List<string>();
         var scanned = 0;
-        foreach (var file in DirAccess.GetFilesAt(editor).Where(f => f.EndsWith(".cs"))) {
-            var path = $"{editor}/{file}";
+        var files = DirAccess.GetFilesAt(editor).Select(f => $"{editor}/{f}")
+            .Concat(DirAccess.GetFilesAt($"{editor}/debug").Select(f => $"{editor}/debug/{f}"));
+        foreach (var path in files.Where(f => f.EndsWith(".cs"))) {
             using var source = FileAccess.Open(path, FileAccess.ModeFlags.Read);
             if (source == null) continue;
             scanned++;

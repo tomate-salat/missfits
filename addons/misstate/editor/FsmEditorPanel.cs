@@ -21,9 +21,13 @@ public partial class FsmEditorPanel : VBoxContainer {
     [Signal]
     public delegate void DirtyStateChangedEventHandler(bool dirty);
 
-    /// <summary>A machine was opened.</summary>
+    /// <summary>A machine was opened, so the debugger can follow it.</summary>
     [Signal]
     public delegate void MachineOpenedEventHandler(string resourcePath);
+
+    /// <summary>The user picked a different running instance to watch.</summary>
+    [Signal]
+    public delegate void InstanceRequestedEventHandler(long runnerId);
 
     // Untyped so an assembly reload can restore them — see ReloadSafe.
     GodotObject _machine;
@@ -46,6 +50,8 @@ public partial class FsmEditorPanel : VBoxContainer {
     Button _revertButton;
     ConfirmationDialog _revertDialog;
     Button _blackboardToggle;
+    OptionButton _instances;
+    string _pendingAutoOpen;
 
     /// <summary>
     /// Machines edited since they were last saved. Holding them here also keeps an unsaved machine
@@ -55,6 +61,13 @@ public partial class FsmEditorPanel : VBoxContainer {
 
     bool _syncingSelection;
     bool _syncQueued;
+
+    /// <summary>Where each undo history stood when last looked at, by history id. A Godot dictionary so a reload keeps it.</summary>
+    Godot.Collections.Dictionary _historyVersions = [];
+
+    /// <summary>What the object in the Inspector held when last looked at, and which object that was.</summary>
+    ulong _stampedObject;
+    string _stamp = "";
 
     public override void _Ready() {
         Name = "Misstate";
@@ -104,6 +117,14 @@ public partial class FsmEditorPanel : VBoxContainer {
 
         _title = new Label { Text = "—", SizeFlagsHorizontal = SizeFlags.ExpandFill };
         bar.AddChild(_title);
+
+        _instances = new OptionButton {
+            TooltipText = "Which running instance of this machine to show live",
+            Visible = false,
+            Flat = true,
+        };
+        _instances.Connect(OptionButton.SignalName.ItemSelected, new Callable(this, MethodName.OnInstanceSelected));
+        bar.AddChild(_instances);
 
         bar.AddChild(Tool("Add state", "Add a state to the machine", MethodName.AddStatePressed));
 
@@ -158,11 +179,21 @@ public partial class FsmEditorPanel : VBoxContainer {
     public void OpenMachine(Fsm machine) {
         if (machine == null || ReferenceEquals(machine, Machine)) return;
 
+        // An action or condition that is no tool script is only a placeholder in the editor.
+        if (ToolScripts.Explain(machine.ResourcePath) is { } problem) {
+            GD.PushWarning($"misstate: {problem}");
+            SetStatus(problem, warning: true);
+            return;
+        }
+
         // No saving on the way out: the machine left behind keeps its unsaved edits in memory.
+        // What was shown live belongs to the previous machine; the debugger resends for this one.
+        ClearLive();
         _machine = machine;
         Graph.LoadMachine(machine);
         Blackboard.ShowSource(machine);
 
+        RememberHistoryOf(machine);
         _title.Text = string.IsNullOrEmpty(machine.ResourcePath) ? "(unsaved machine)" : machine.ResourcePath;
         ShowDirtyState();
         SetStatus(Describe());
@@ -171,6 +202,51 @@ public partial class FsmEditorPanel : VBoxContainer {
 
     /// <summary>Undo or redo went back to an edit of a machine that is not open.</summary>
     void OnMachineRequested(Resource machine) => OpenMachine(machine as Fsm);
+
+    // ---- live debugging ----------------------------------------------------------------------
+
+    /// <summary>Shows where the watched runner's machine is. 0xFF in the statuses means the action was not ticked.</summary>
+    public void ShowLive(string stateId, byte[] statuses) => Graph?.ShowLive(stateId, statuses);
+
+    public void ClearLive() => Graph?.ClearLive();
+
+    void OnInstanceSelected(long index) => EmitSignal(SignalName.InstanceRequested, _instances.GetItemMetadata((int) index).AsInt64());
+
+    /// <summary>Refreshes the instance picker from the runners the debugger knows about.</summary>
+    public void OnRunnersChanged(IReadOnlyList<FsmRunnerInfo> runners, long selected) {
+        if (_instances == null) return;
+
+        _instances.Clear();
+        var matching = 0;
+        foreach (var runner in runners) {
+            if (Machine != null && runner.MachinePath != Machine.ResourcePath) continue;
+
+            _instances.AddItem(runner.ActorName);
+            _instances.SetItemMetadata(_instances.ItemCount - 1, runner.Id);
+            if (runner.Id == selected) _instances.Selected = _instances.ItemCount - 1;
+            matching++;
+        }
+        _instances.Visible = matching > 0;
+
+        // Nothing open but something is running: pick the running machine up instead of showing an
+        // instance list over an empty canvas.
+        if (Machine == null && runners.Count > 0) {
+            _pendingAutoOpen = runners[0].MachinePath;
+            CallDeferred(MethodName.OpenPendingMachine);
+            return;
+        }
+
+        if (matching == 0 && runners.Count > 0) SetStatus("The running game is not using this machine.", warning: true);
+        else if (matching > 1) SetStatus($"{matching} running instances — showing the selected one.");
+    }
+
+    public void OpenPendingMachine() {
+        var path = _pendingAutoOpen;
+        _pendingAutoOpen = null;
+        if (string.IsNullOrEmpty(path) || Machine != null || !ResourceLoader.Exists(path)) return;
+
+        if (ResourceLoader.Load<Fsm>(path) is { } machine) OpenMachine(machine);
+    }
 
     void ShowEmptyState() {
         _title.Text = "—";
@@ -181,7 +257,73 @@ public partial class FsmEditorPanel : VBoxContainer {
 
     void OnEditorHistoryChanged() {
         if (Machine == null || !Engine.IsEditorHint()) return;
-        if (Owns(EditorInterface.Singleton.GetInspector()?.GetEditedObject())) OnInspectorEdited();
+
+        var edited = EditorInterface.Singleton.GetInspector()?.GetEditedObject();
+        if (!Owns(edited)) return;
+
+        // The graph is brought up to date either way: re-reading costs little, and typing into a
+        // field merges every keystroke into one undo step, so the history does not move again
+        // after the first letter.
+        var moved = HistoryMoved(edited);
+        var changed = ContentChanged(edited);
+        Graph.SyncWithMachine();
+        if (moved || changed) MarkDirty();
+    }
+
+    /// <summary>
+    /// Whether what the Inspector shows holds other values than when it was last looked at. This is
+    /// what catches the keystrokes merged into an undo step that already existed — including one
+    /// that was there before the machine was last saved.
+    /// </summary>
+    bool ContentChanged(GodotObject edited) {
+        var stamp = StampOf(edited);
+        var same = _stampedObject == edited.GetInstanceId() && _stamp == stamp;
+        var known = _stampedObject == edited.GetInstanceId();
+        _stampedObject = edited.GetInstanceId();
+        _stamp = stamp;
+        return known && !same;
+    }
+
+    /// <summary>The stored values of an object in one string; other objects in them count by identity.</summary>
+    static string StampOf(GodotObject target) {
+        var parts = new System.Text.StringBuilder();
+        foreach (var property in target.GetPropertyList()) {
+            if (((PropertyUsageFlags) property["usage"].AsInt64() & PropertyUsageFlags.Storage) == 0) continue;
+            var name = property["name"].AsStringName();
+            parts.Append(name).Append('=').Append(StampOf(target.Get(name))).Append(';');
+        }
+        return parts.ToString();
+    }
+
+    static string StampOf(Variant value) => value.VariantType switch {
+        Variant.Type.Object => value.AsGodotObject() is { } obj ? $"#{obj.GetInstanceId()}" : "null",
+        Variant.Type.Array => $"[{string.Join(",", value.AsGodotArray().Select(StampOf))}]",
+        _ => GD.VarToStr(value),
+    };
+
+    /// <summary>
+    /// Whether the undo history an object belongs to has gained or lost a step since it was last
+    /// looked at. The editor announces a change of history for more than edits — saving, or running
+    /// the project, does it too — and none of those may mark the machine unsaved.
+    /// </summary>
+    bool HistoryMoved(GodotObject edited) {
+        var manager = EditorInterface.Singleton.GetEditorUndoRedo();
+        var history = manager.GetObjectHistoryId(edited);
+        var version = (long) manager.GetHistoryUndoRedo(history).GetVersion();
+
+        var known = _historyVersions.TryGetValue(history, out var seen);
+        _historyVersions[history] = version;
+        return !known || seen.AsInt64() != version;
+    }
+
+    /// <summary>Takes note of where an object's undo history stands, so only later steps count as edits.</summary>
+    void RememberHistoryOf(GodotObject edited) {
+        if (edited == null || !Engine.IsEditorHint()) return;
+        var manager = EditorInterface.Singleton.GetEditorUndoRedo();
+        var history = manager.GetObjectHistoryId(edited);
+        _historyVersions[history] = (long) manager.GetHistoryUndoRedo(history).GetVersion();
+        _stampedObject = edited.GetInstanceId();
+        _stamp = StampOf(edited);
     }
 
     /// <summary>Whether an object is the open machine or a part of it.</summary>
@@ -214,6 +356,7 @@ public partial class FsmEditorPanel : VBoxContainer {
     public void Highlight(Resource resource) {
         if (Machine == null || _syncingSelection || ReferenceEquals(Graph.SelectedResource(), resource)) return;
         if (!Locate(resource, out var state, out var kind, out var id) || Graph.BoxFor(state.Id) is not { } box) return;
+        RememberHistoryOf(resource);
 
         if (box.Selected && box.PickedKind == kind && box.PickedId == id) return;
 
@@ -265,6 +408,7 @@ public partial class FsmEditorPanel : VBoxContainer {
         if (Machine == null || _syncingSelection) return;
 
         var target = Graph.SelectedResource() ?? Machine;
+        RememberHistoryOf(target);
         _syncingSelection = true;
         if (EditInInspector != null) EditInInspector(target);
         else if (Engine.IsEditorHint()) EditorInterface.Singleton.EditResource(target);

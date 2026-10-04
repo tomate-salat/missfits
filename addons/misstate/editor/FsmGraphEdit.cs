@@ -74,6 +74,11 @@ public partial class FsmGraphEdit : GraphEdit {
     /// <summary>What the graph was last built from, so an edit made elsewhere is noticed.</summary>
     string _builtFrom = "";
 
+    /// <summary>Where a running game last reported the machine to be, kept so a rebuild can show it again.</summary>
+    bool _live;
+    string _liveState = "";
+    byte[] _liveStatuses = [];
+
     public override void _Ready() {
         RightDisconnects = false;
         ShowArrangeButton = false;
@@ -184,6 +189,9 @@ public partial class FsmGraphEdit : GraphEdit {
             again.Selected = true;
             again.ShowPicked(pickedKind, pickedId);
         }
+
+        // A paused game sends nothing further, so an edit that rebuilds the graph has to repaint it.
+        if (_live) PaintLive();
     }
 
     void QueueRebuild() {
@@ -216,6 +224,26 @@ public partial class FsmGraphEdit : GraphEdit {
             $"{s.Id}:{string.Join(",", s.Actions.Where(a => a != null).Select(a => a.Id))}"
             + $":{string.Join(",", s.Transitions.Where(t => t != null).Select(t =>
                 $"{t.Id}>{t.TargetStateId}[{string.Join(" ", t.Conditions.Where(c => c != null).Select(c => c.Id))}]"))}"));
+    }
+
+    // ---- live debugging ----------------------------------------------------------------------
+
+    /// <summary>Shows where a running machine is: its current state and what that state's actions last returned.</summary>
+    public void ShowLive(string stateId, byte[] statuses) {
+        _live = true;
+        _liveState = stateId ?? "";
+        _liveStatuses = statuses ?? [];
+        PaintLive();
+    }
+
+    void PaintLive() {
+        foreach (var box in Boxes()) box.ShowLive(box.Name == _liveState, _liveStatuses);
+    }
+
+    public void ClearLive() {
+        if (!_live) return;
+        _live = false;
+        foreach (var box in Boxes()) box.ClearLive();
     }
 
     // ---- selection ---------------------------------------------------------------------------

@@ -27,6 +27,12 @@ public sealed class NodeTypeInfo {
     /// </summary>
     public bool IsGlobalClass { get; init; }
 
+    /// <summary>
+    /// False when the class is missing <c>[Tool]</c>. The editor cannot work with such a node once
+    /// its file is loaded again — see <see cref="ToolScripts"/> — so the dialog does not offer it.
+    /// </summary>
+    public bool IsTool { get; init; }
+
     public string Description { get; init; }
 
     public MissNode Create() {
@@ -78,6 +84,7 @@ public static class NodeTypeRegistry {
                 SubGroup = NodeAttributes.GroupPathOf(type),
                 IconPath = ResolveIcon(type, icons),
                 IsGlobalClass = globalClassNames.Contains(type.Name),
+                IsTool = ToolScripts.IsTool(type),
                 Description = DescriptionOf(type),
             })
             .OrderBy(t => Array.IndexOf(Groups, t.Group))
