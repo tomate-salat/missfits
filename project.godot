@@ -12,6 +12,7 @@ config_version=5
 
 config/name="Missfits"
 config/features=PackedStringArray("4.7", "C#", "Forward Plus")
+config/icon="res://icon.svg"
 
 [display]
 

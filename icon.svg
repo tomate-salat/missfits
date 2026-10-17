@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#363b5c"/>
+      <stop offset="1" stop-color="#1c1f33"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.35"/>
+      <stop offset="0.5" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- background -->
+  <rect x="4" y="4" width="120" height="120" rx="26" fill="url(#bg)"/>
+  <rect x="4.5" y="4.5" width="119" height="119" rx="25.5" fill="none" stroke="#fff" stroke-opacity="0.08"/>
+
+  <!-- wires between the tiles that fit -->
+  <g stroke="#e8ecff" stroke-opacity="0.55" stroke-width="3" stroke-linecap="round" fill="none">
+    <path d="M58 39 H70"/>
+    <path d="M39 58 V70"/>
+    <!-- the wire to the misfit, snapped -->
+    <path d="M89 58 V63" stroke-dasharray="0.1 5"/>
+  </g>
+
+  <!-- tiles that fit -->
+  <g>
+    <rect x="18" y="18" width="40" height="40" rx="10" fill="#81ecec"/>
+    <rect x="18" y="18" width="40" height="40" rx="10" fill="url(#shine)"/>
+    <rect x="70" y="18" width="40" height="40" rx="10" fill="#a29bfe"/>
+    <rect x="70" y="18" width="40" height="40" rx="10" fill="url(#shine)"/>
+    <rect x="18" y="70" width="40" height="40" rx="10" fill="#fab1a0"/>
+    <rect x="18" y="70" width="40" height="40" rx="10" fill="url(#shine)"/>
+  </g>
+
+  <!-- ports -->
+  <g fill="#1c1f33">
+    <circle cx="58" cy="39" r="3"/>
+    <circle cx="70" cy="39" r="3"/>
+    <circle cx="39" cy="58" r="3"/>
+    <circle cx="39" cy="70" r="3"/>
+    <circle cx="89" cy="58" r="3"/>
+  </g>
+
+  <!-- the misfit: tilted, popped out, and not bothered -->
+  <g transform="translate(93 92) rotate(17)">
+    <rect x="-20" y="-17" width="40" height="40" rx="10" fill="#000" opacity="0.35"/>
+    <rect x="-20" y="-20" width="40" height="40" rx="10" fill="#fd79a8"/>
+    <rect x="-20" y="-20" width="40" height="40" rx="10" fill="url(#shine)"/>
+    <!-- googly eyes -->
+    <circle cx="-8" cy="-4" r="7" fill="#fff"/>
+    <circle cx="8.5" cy="-5" r="5.5" fill="#fff"/>
+    <circle cx="-10" cy="-6.5" r="3.2" fill="#1c1f33"/>
+    <circle cx="6.5" cy="-7.5" r="2.6" fill="#1c1f33"/>
+    <!-- grin -->
+    <path d="M-7 9 Q1 15 9 7" stroke="#1c1f33" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+  </g>
+</svg>
