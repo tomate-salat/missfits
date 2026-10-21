@@ -38,6 +38,11 @@ public partial class SpeakSelfTest : Node {
         AnActionCanCancelTheDialogue();
         StartingAnotherDialogueReplacesTheOneRunning();
 
+        // showing
+        EveryRunnerIsHeardInOnePlace();
+        TheHudHidesDuringADialogue();
+        OneBoxShowsEveryRunner();
+
         // translation
         TextsAreTranslated();
 
@@ -411,6 +416,98 @@ public partial class SpeakSelfTest : Node {
         Check("which closes that action exactly once", quitting.Interrupts == 1 && quitting.AfterRuns == 0);
         Check("and runs nothing that came after it", (talk.Runner.Instance.ActionsOf(line)[1] as SpeakProbeAction)?.Ticks == 0);
         talk.Free();
+    }
+
+    // ---- showing -----------------------------------------------------------------------------
+
+    void EveryRunnerIsHeardInOnePlace() {
+        var events = DialogueEvents.Of(this);
+        var log = new List<string>();
+        void Started(DialogueRunner runner) => log.Add($"started {runner.GetParent().Name}");
+        void Said(DialogueRunner runner, string speaker, string text) => log.Add($"{runner.GetParent().Name}: {text}");
+        void Finished(DialogueRunner runner) => log.Add($"finished {runner.GetParent().Name}");
+        void Any(bool active) => log.Add(active ? "busy" : "free");
+        events.DialogueStarted += Started;
+        events.LineShown += Said;
+        events.DialogueFinished += Finished;
+        events.AnyActiveChanged += Any;
+
+        var smith = new Talk(this, Dialogue(Section("Forge", Line("Smith", "Hot in here.")))) { Actor = { Name = "Smith" } };
+        var guard = new Talk(this, Dialogue(Section("Gate", Line("Guard", "Halt.")))) { Actor = { Name = "Guard" } };
+        smith.Runner.Start();
+        guard.Runner.Start();
+        Check("every runner tells the hub, which tells when the first dialogue started",
+            log.SequenceEqual(["started Smith", "busy", "Smith: Hot in here.", "started Guard", "Guard: Halt."]));
+        Check("and knows which run, the latest last", events.ActiveRunners.SequenceEqual([smith.Runner, guard.Runner]) && events.IsAnyActive);
+
+        log.Clear();
+        smith.Runner.Advance();
+        Check("one ending while another runs leaves the hub busy", log.SequenceEqual(["finished Smith"]) && events.IsAnyActive);
+        guard.Free();
+        Check("a runner that leaves with its dialogue under way counts as finished", log.SequenceEqual(["finished Smith", "finished Guard", "free"]) && !events.IsAnyActive);
+
+        events.DialogueStarted -= Started;
+        events.LineShown -= Said;
+        events.DialogueFinished -= Finished;
+        events.AnyActiveChanged -= Any;
+        smith.Free();
+    }
+
+    void TheHudHidesDuringADialogue() {
+        var hud = new Control();
+        var health = new Control();
+        var compass = new Control { Visible = false };
+        health.AddChild(new HideDuringDialogue());
+        compass.AddChild(new HideDuringDialogue());
+        hud.AddChild(health);
+        hud.AddChild(compass);
+        AddChild(hud);
+
+        var talk = new Talk(this, Dialogue(Section("Gate", Line("Guard", "Halt."))));
+        talk.Runner.Start();
+        Check("what is to hide during a dialogue hides", !health.Visible && !compass.Visible);
+        talk.Runner.Advance();
+        Check("and comes back after it, unless it was hidden before", health.Visible && !compass.Visible);
+
+        talk.Free();
+        hud.Free();
+    }
+
+    void OneBoxShowsEveryRunner() {
+        var box = GD.Load<PackedScene>("res://addons/misspeak/ui/dialogue_box.tscn").Instantiate<DialogueBox>();
+        AddChild(box);
+        var text = box.GetNode<DialogueTextLabel>("Panel/Margin/Rows/Text");
+        var speaker = box.GetNode<DialogueSpeakerLabel>("Panel/Margin/Rows/Speaker");
+        var choices = box.GetNode<DialogueChoiceList>("Panel/Margin/Rows/Choices");
+        Check("the box is a scene of parts, and hidden while nothing is said", !box.Visible && text != null && speaker != null && choices != null);
+
+        // Runners that come after the box find it all the same.
+        var ask = Section("Ask", Line("Smith", "Need anything?"));
+        Choice(ask, "A sword.", null);
+        Choice(ask, "Nothing.", null);
+        var smith = new Talk(this, Dialogue(ask));
+        smith.Runner.Start();
+        Check("a runner that came later is shown", box.Visible && box.Showing == smith.Runner && speaker.Text == "Smith" && text.Text == "Need anything?");
+        Check("its choices wait for the line to be written out", choices.GetChildCount() == 0 || !box.Writing);
+        // Written out by itself, as frames go by — not cut short by a press.
+        text._Process(10);
+        Check("and then come, one button each", !box.Writing && choices.GetChildCount() == 2 && (choices.GetChild(0) as Button)?.Text == "A sword.");
+
+        var guard = new Talk(this, Dialogue(Section("Gate", Line("Guard", "Halt."), Line("Guard", "Who goes there?"))));
+        guard.Runner.Start();
+        Check("a dialogue started meanwhile takes the box over", box.Showing == guard.Runner && speaker.Text == "Guard" && text.Text == "Halt." && choices.GetChildCount() == 0);
+        Check("carrying on goes to that one", (box.Writing ? box.Proceed() : true) && box.Proceed() && text.Text == "Who goes there?" && smith.Runner.IsActive);
+        while (box.Writing) box.Proceed();
+        box.Proceed();
+        Check("when it ends, the box goes back to the one before, as it stood",
+            box.Showing == smith.Runner && text.Text == "Need anything?" && speaker.Text == "Smith" && box.Visible);
+        while (box.Writing) box.Proceed();
+        (choices.GetChild(0) as Button)?.EmitSignal(BaseButton.SignalName.Pressed);
+        Check("a button picks its choice", !smith.Runner.IsActive && !box.Visible && box.Showing == null);
+
+        smith.Free();
+        guard.Free();
+        box.Free();
     }
 
     void StartingAnotherDialogueReplacesTheOneRunning() {

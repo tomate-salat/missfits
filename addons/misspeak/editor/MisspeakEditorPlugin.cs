@@ -36,7 +36,25 @@ public partial class MisspeakEditorPlugin : EditorPlugin {
     /// <summary>The open dialogue, if that line is one of its lines; else null.</summary>
     internal Dialogue OpenDialogueOf(GodotObject line) => line is DialogueLine && Panel?.Owns(line) == true ? Panel.Dialogue : null;
 
+    const string EventsPath = "res://addons/misspeak/runtime/DialogueEvents.cs";
+
+    /// <summary>
+    /// Makes <see cref="DialogueEvents"/> an autoload, so GDScript can reach it by name too. Also on
+    /// every start of the editor, for projects that enabled the plugin before the autoload existed.
+    /// </summary>
+    public override void _EnablePlugin() => AddEventsAutoload();
+
+    public override void _DisablePlugin() {
+        if (ProjectSettings.HasSetting($"autoload/{DialogueEvents.AutoloadName}")) RemoveAutoloadSingleton(DialogueEvents.AutoloadName);
+    }
+
+    void AddEventsAutoload() {
+        if (!ProjectSettings.HasSetting($"autoload/{DialogueEvents.AutoloadName}")) AddAutoloadSingleton(DialogueEvents.AutoloadName, EventsPath);
+    }
+
     public override void _EnterTree() {
+        AddEventsAutoload();
+
         var parser = new DialogueTranslationParser();
         _parser = parser;
         AddTranslationParserPlugin(parser);

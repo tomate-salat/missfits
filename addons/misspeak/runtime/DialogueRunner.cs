@@ -72,6 +72,9 @@ public partial class DialogueRunner : MissRunner {
     public override void _ExitTree() {
         if (Engine.IsEditorHint()) return;
         MisspeakDebug.Unregister(this);
+
+        // A runner that leaves with a dialogue under way must not keep the HUD hidden.
+        if (DialogueEvents.Instance is { } events && IsInstanceValid(events)) events.ReportFinished(this);
     }
 
     protected override void BuildInstance() {
@@ -85,12 +88,27 @@ public partial class DialogueRunner : MissRunner {
         }
         MisspeakDebug.Register(this);
 
+        // Each is told to the runner's own listeners first, then to everyone's, through DialogueEvents.
         Instance.Translate = (text, context) => Tr(text, context);
-        Instance.Started += () => EmitSignalDialogueStarted();
-        Instance.LineShown += _ => EmitSignalLineShown(Instance.Speaker, Instance.Text);
-        Instance.ChoicesOffered += choices => EmitSignalChoicesOffered([.. choices]);
-        Instance.Finished += () => EmitSignalDialogueFinished();
+        Instance.Started += () => {
+            EmitSignalDialogueStarted();
+            Events?.ReportStarted(this);
+        };
+        Instance.LineShown += _ => {
+            EmitSignalLineShown(Instance.Speaker, Instance.Text);
+            Events?.ReportLine(this, Instance.Speaker, Instance.Text);
+        };
+        Instance.ChoicesOffered += choices => {
+            EmitSignalChoicesOffered([.. choices]);
+            Events?.ReportChoices(this, [.. choices]);
+        };
+        Instance.Finished += () => {
+            EmitSignalDialogueFinished();
+            Events?.ReportFinished(this);
+        };
     }
+
+    DialogueEvents Events => Engine.IsEditorHint() ? null : DialogueEvents.Of(this);
 
     /// <summary>Running while a dialogue is under way, Success once there is nothing left to say.</summary>
     protected override MissStatus TickInstance(MissContext ctx) {

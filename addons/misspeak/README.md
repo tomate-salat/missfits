@@ -24,8 +24,8 @@ without it.
    the Inspector. *+ line* adds the next one.
 3. Drag from the port beside *new option* onto another section — or onto empty canvas, which makes
    one. Click the new row and give it a text to turn it into a choice for the player.
-4. Add a `DialogueRunner` to your scene, assign the dialogue, tick *Autostart*, and instance
-   `addons/misspeak/ui/dialogue_box.tscn` next to it.
+4. Add a `DialogueRunner` to your scene, assign the dialogue and tick *Autostart*. Instance
+   `addons/misspeak/ui/dialogue_box.tscn` once in the level: it shows every runner's dialogue.
 
 ## How a dialogue works
 
@@ -146,28 +146,41 @@ translations — a CSV translation carries no contexts — and is off by default
 A `DialogueRunner` node plays the dialogue and tells whoever shows it what to show. It draws
 nothing itself.
 
-**The quick way:** instance `addons/misspeak/ui/dialogue_box.tscn` in your scene. It shows the
-first runner it finds — or the one you assign — along the bottom of the screen, writes lines out
-letter by letter, offers choices as buttons, and carries on with `ui_accept` or a click. It is one
-script, `DialogueBox.cs`, meant to be copied and made yours.
-
-**Your own:** connect to the runner's signals.
+**Everyone's dialogues in one place.** Every runner reports to `DialogueEvents`, which the plugin
+adds as an autoload. Its signals carry the runner they are about: `DialogueStarted(runner)`,
+`LineShown(runner, speaker, text)`, `ChoicesOffered(runner, choices)`, `DialogueFinished(runner)`.
+`AnyActiveChanged(active)` and `IsAnyActive` count dialogues that run at once as one — what a HUD
+wants to know.
 
 ```csharp
-public partial class MyDialogueBox : Control {
-    [Export] public DialogueRunner Runner { get; set; }
-
-    public override void _Ready() {
-        Runner.LineShown += (speaker, text) => { /* show them */ };
-        Runner.ChoicesOffered += choices => { /* one button each; on press: Runner.Choose(index) */ };
-        Runner.DialogueFinished += Hide;
-    }
-
-    public override void _UnhandledInput(InputEvent @event) {
-        if (@event.IsActionPressed("ui_accept")) Runner.Advance();
-    }
-}
+DialogueEvents.Of(this).AnyActiveChanged += active => Hud.Visible = !active;
 ```
+
+Without code: put a **`HideDuringDialogue`** node under a HUD element. It hides the element while
+any dialogue runs and puts it back as it was afterwards.
+
+**The dialogue box:** instance `addons/misspeak/ui/dialogue_box.tscn` once in the level. It shows
+the dialogue of every runner — runners spawned later included — along the bottom of the screen,
+writes lines out letter by letter, offers choices as buttons, and carries on with `ui_accept` or a
+click. A dialogue started while another is on show takes it over; when that one ends, the box goes
+back to the other.
+
+The box draws nothing itself: `DialogueBox` only decides what to show and when. The parts below it
+in the scene show it, and are found by their interfaces — any Control can be one:
+
+| Interface | Shows | In the scene |
+|---|---|---|
+| `IDialogueSpeakerView` | who speaks | `DialogueSpeakerLabel` |
+| `IDialogueTextView` | the line, and whether it is still being written out | `DialogueTextLabel` (`CharactersPerSecond`) |
+| `IDialogueChoiceView` | the choices, and which was picked | `DialogueChoiceList` (`ButtonScene` for your own button) |
+| `IDialogueContinueHint` | that a press carries on | `DialogueContinueHint` |
+
+To make it yours, create an inherited scene from `dialogue_box.tscn`: restyle it with a theme,
+rearrange it, leave a part out, or replace one with a node of your own that implements the
+interface. `ClickArea` is the Control a click carries on in.
+
+**Entirely your own:** connect to `DialogueEvents` — or to one runner's signals of the same names,
+which leave out the runner — and call the runner's `Advance()` and `Choose(index)`.
 
 | Member | |
 |---|---|
