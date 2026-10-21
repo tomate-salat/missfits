@@ -348,12 +348,12 @@ public partial class SpeakSelfTest : Node {
         talk.Runner.Tick(Step);
         Check("leading back skips the sections passed through without a choice", talk.Runner.Advance() && talk.Runner.Instance.Current == hub && talk.Runner.Text == "What now?");
 
-        talk.Runner.Start(section: "Weigh");
+        talk.Runner.StartAt("Weigh");
         talk.Runner.Tick(Step);
         Check("with no choice made on the way, it goes back to where the talk was started", talk.Runner.Instance.BackTarget == weigh
             && talk.Runner.Advance() && talk.Runner.Instance.Trail.SequenceEqual([back, weigh.Options[0]]));
 
-        talk.Runner.Start(section: "Lore");
+        talk.Runner.StartAt("Lore");
         Check("and when it is still there, there is nowhere to go back to, and the talk ends",
             talk.Runner.Instance.BackTarget == null && talk.Runner.Advance() && !talk.Runner.IsActive);
         Check("leading back is no problem to report", Dialogue(hub, weigh, lore, deeper, plain).Validate().Length == 0);
@@ -421,14 +421,14 @@ public partial class SpeakSelfTest : Node {
         var talk = new Talk(this, first);
 
         talk.Runner.Start();
-        Check("a runner can be handed another dialogue to play", talk.Runner.Start(second) && talk.Runner.Dialogue == second);
+        Check("a runner can be handed another dialogue to play", talk.Runner.StartDialogue(second) && talk.Runner.Dialogue == second);
         Check("which ends the one that was running", talk.Log.SequenceEqual(["started", "First.", "finished", "started", "12 coins."]));
 
         talk.Runner.Start();
         Check("starting again while a dialogue runs begins it anew", talk.Log.Skip(5).SequenceEqual(["finished", "started", "12 coins."]));
 
-        Check("a dialogue can be started at a section, by its name", talk.Runner.Start(section: "Aside") && talk.Runner.Text == "Psst.");
-        Check("but not at one it does not have", !talk.Runner.Start(section: "Nowhere") && talk.Runner.Text == "Psst.");
+        Check("a dialogue can be started at a section, by its name", talk.Runner.StartAt("Aside") && talk.Runner.Text == "Psst.");
+        Check("but not at one it does not have", !talk.Runner.StartAt("Nowhere") && talk.Runner.Text == "Psst.");
         talk.Free();
     }
 

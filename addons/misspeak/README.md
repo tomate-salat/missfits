@@ -171,7 +171,9 @@ public partial class MyDialogueBox : Control {
 
 | Member | |
 |---|---|
-| `Start(dialogue = null, section = "")` | plays the given dialogue, or the runner's own, from its start or from the section of that name; one under way is cancelled first |
+| `Start()` | plays the runner's dialogue from its start; one under way is cancelled first. Takes no arguments, so a signal can call it |
+| `StartAt(section)` | the same, from the section of that name — bind the name when connecting a signal |
+| `StartDialogue(dialogue, section = "")` | plays the given dialogue, which becomes the runner's, from its start or from the named section |
 | `Advance()` | carries on after a line without choices |
 | `Choose(index)` | picks one of the choices offered |
 | `Cancel()` | ends the dialogue where it is |
@@ -215,7 +217,7 @@ ask.Options.Add(new DialogueOption { Text = "Nothing." });
 var dialogue = new Dialogue();
 dialogue.Sections.Add(ask);
 dialogue.Sections.Add(sword);
-runner.Start(dialogue);
+runner.StartDialogue(dialogue);
 ```
 
 ## Tests

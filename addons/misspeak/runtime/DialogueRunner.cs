@@ -102,13 +102,25 @@ public partial class DialogueRunner : MissRunner {
 
     protected override void AfterTick() => MisspeakDebug.SendState(this);
 
+    // Godot does not see C#'s default arguments: a method a signal is to call takes exactly what the
+    // signal gives, plus what the connection binds. Hence a Start without any, and StartAt.
+
+    /// <summary>
+    /// Starts the runner's <see cref="Dialogue"/> from its start section. One that is under way is
+    /// cancelled first. False when there is nothing to start.
+    /// </summary>
+    public bool Start() => StartDialogue(null);
+
+    /// <summary>As <see cref="Start"/>, from the section of that name. False when there is none.</summary>
+    public bool StartAt(string section) => StartDialogue(null, section);
+
     /// <summary>
     /// Starts a dialogue: the given one, which then becomes <see cref="Dialogue"/>, or the one the
     /// runner already has. One that is under way is cancelled first. False when there is nothing to
     /// start.
     /// </summary>
     /// <param name="section">Name of the section to start at, instead of the dialogue's start section.</param>
-    public bool Start(Dialogue dialogue = null, string section = "") {
+    public bool StartDialogue(Dialogue dialogue, string section = "") {
         if (dialogue != null && !ReferenceEquals(dialogue, Dialogue)) {
             Dialogue = dialogue;
             Blackboard.Declare(dialogue.Blackboard);

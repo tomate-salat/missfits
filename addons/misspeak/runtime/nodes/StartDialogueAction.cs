@@ -36,7 +36,7 @@ public partial class StartDialogueAction : ActionNode {
 
     public override void BeforeRun(MissContext ctx) {
         _runner = DialogueRunner.Find(ctx.Actor, Runner);
-        _started = _runner != null && _runner.Start(Dialogue, Section);
+        _started = _runner != null && _runner.StartDialogue(Dialogue, Section);
     }
 
     protected override MissStatus Run(MissContext ctx) {
