@@ -348,8 +348,14 @@ public partial class SpeakSelfTest : Node {
         talk.Runner.Tick(Step);
         Check("leading back skips the sections passed through without a choice", talk.Runner.Advance() && talk.Runner.Instance.Current == hub && talk.Runner.Text == "What now?");
 
+        talk.Runner.Start(section: "Weigh");
+        talk.Runner.Tick(Step);
+        Check("with no choice made on the way, it goes back to where the talk was started", talk.Runner.Instance.BackTarget == weigh
+            && talk.Runner.Advance() && talk.Runner.Instance.Trail.SequenceEqual([back, weigh.Options[0]]));
+
         talk.Runner.Start(section: "Lore");
-        Check("with no choice made on the way there is nowhere to go back to, and the talk ends", talk.Runner.Advance() && !talk.Runner.IsActive);
+        Check("and when it is still there, there is nowhere to go back to, and the talk ends",
+            talk.Runner.Instance.BackTarget == null && talk.Runner.Advance() && !talk.Runner.IsActive);
         Check("leading back is no problem to report", Dialogue(hub, weigh, lore, deeper, plain).Validate().Length == 0);
         talk.Free();
     }

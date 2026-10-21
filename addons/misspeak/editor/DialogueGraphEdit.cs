@@ -63,6 +63,7 @@ public partial class DialogueGraphEdit : MissGraphEdit {
     internal const int MenuAddCondition = 13;
     internal const int MenuAddAction = 14;
     internal const int MenuToggleBack = 15;
+    internal const int MenuCutWire = 16;
 
     PopupMenu _menu;
     bool _rebuilding;
@@ -115,6 +116,9 @@ public partial class DialogueGraphEdit : MissGraphEdit {
     public void LoadDialogue(Dialogue dialogue) {
         _dialogue = dialogue;
         dialogue?.EnsureNodeIds();
+        // Godot switches processing on in _Ready only, which a reloaded assembly does not run again:
+        // a graph from before _Process was written would never look at the translation preview.
+        SetProcess(true);
         RebuildGraph();
     }
 
@@ -336,6 +340,18 @@ public partial class DialogueGraphEdit : MissGraphEdit {
 
     // ---- keeping up with the dialogue --------------------------------------------------------
 
+    /// <summary>The locale the rows were last read in, as the editor's translation preview had it.</summary>
+    string _previewLocale = "";
+
+    public override void _Process(double delta) {
+        // Choosing a language to preview in the 2D or 3D viewport tells the editor's own controls
+        // nothing, so the graph looks for itself.
+        var locale = SpeakLabels.PreviewLocale();
+        if (locale == _previewLocale) return;
+        _previewLocale = locale;
+        RefreshBoxes();
+    }
+
     void QueueRebuild() {
         if (_rebuildQueued) return;
         _rebuildQueued = true;
@@ -429,6 +445,10 @@ public partial class DialogueGraphEdit : MissGraphEdit {
         _menu.AddItem("Add section", MenuAddSection);
         _menu.AddItem(_menuWireFrom != null ? "Add reroute to this wire" : "Add reroute", MenuAddReroute);
         _menu.AddItem(_menuWireFrom != null ? "Add port to this wire" : "Add port", MenuAddPort);
+        if (_menuWireFrom != null) {
+            _menu.AddSeparator();
+            _menu.AddItem("Delete wire", MenuCutWire);
+        }
         PopupAt(_menu, GetScreenPosition() + atPosition);
     }
 
@@ -485,7 +505,7 @@ public partial class DialogueGraphEdit : MissGraphEdit {
             if (kind == SpeakRow.Option) {
                 _menu.AddCheckItem("Lead back", MenuToggleBack);
                 _menu.SetItemChecked(_menu.ItemCount - 1, section.Options[index]?.Back == true);
-                _menu.SetItemTooltip(_menu.ItemCount - 1, "Back to the section in which the player last made a choice");
+                _menu.SetItemTooltip(_menu.ItemCount - 1, "Back to the section in which the player last made a choice, else to where the dialogue started");
             }
         }
 
@@ -510,6 +530,7 @@ public partial class DialogueGraphEdit : MissGraphEdit {
             case MenuDeleteReroute: DeleteBoxes([_menuBox]); break;
             case MenuAddReroute: AddReroute(_menuPosition, _menuWireFrom, _menuWirePort); break;
             case MenuAddPort: AddReroute(_menuPosition, _menuWireFrom, _menuWirePort, port: true); break;
+            case MenuCutWire: CutWire(_menuWireFrom, _menuWirePort); break;
             case MenuTogglePort: SetPort(_menuBox, RerouteBoxFor(_menuBox)?.IsPort != true); break;
             case MenuRowUp: MoveRow(_menuBox, _menuKind, _menuRow, -1); break;
             case MenuRowDown: MoveRow(_menuBox, _menuKind, _menuRow, 1); break;
@@ -742,6 +763,21 @@ public partial class DialogueGraphEdit : MissGraphEdit {
         var option = BoxFor(boxName)?.Section?.Options.FirstOrDefault(o => o != null && o.Id == optionId);
         if (option == null || option.Back == back) return;
         Commit(back ? "Misspeak: lead option back" : "Misspeak: stop leading option back", () => option.Back = back);
+    }
+
+    /// <summary>
+    /// Deletes the wire leaving a box's port. An option keeps its row and then leads nowhere, which
+    /// ends the dialogue; a reroute stays where it is, leading nowhere until it is wired again.
+    /// </summary>
+    public void CutWire(StringName fromNode, int fromPort) {
+        if (BoxFor(fromNode)?.Section is { } section) {
+            var option = OptionAt(section, fromPort);
+            if (option == null || string.IsNullOrEmpty(option.TargetSectionId)) return;
+            Commit("Misspeak: delete wire", () => option.TargetSectionId = "");
+        }
+        else if (RerouteBoxFor(fromNode)?.Reroute is { } reroute && !string.IsNullOrEmpty(reroute.TargetId)) {
+            Commit("Misspeak: delete wire", () => reroute.TargetId = "");
+        }
     }
 
     /// <summary>The option behind an output port, or null for the spare port after the last one.</summary>

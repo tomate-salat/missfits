@@ -94,7 +94,7 @@ public sealed partial class DialogueInstance {
     readonly List<DialogueOption> _trail = [];
 
     /// <summary>The section an option that leads back would go to right now, or null when there is none.</summary>
-    public DialogueSection BackTarget => _choiceMadeIn.Count > 0 ? _choiceMadeIn[^1].Definition : null;
+    public DialogueSection BackTarget => BackSection()?.Definition;
 
     public DialogueWait Waiting { get; private set; }
 
@@ -169,6 +169,7 @@ public sealed partial class DialogueInstance {
         if (start == null || !_sections.TryGetValue(start.Id, out var section)) return false;
 
         Cancel(ctx);
+        _startedIn = section;
         Enter(section);
         Started?.Invoke();
         if (ReferenceEquals(_current, section)) Work(ctx);
@@ -357,13 +358,21 @@ public sealed partial class DialogueInstance {
     /// </summary>
     readonly List<RuntimeSection> _choiceMadeIn = [];
 
+    /// <summary>The section the dialogue was started in: where leading back goes while no choice was made.</summary>
+    RuntimeSection _startedIn;
+
+    /// <summary>
+    /// Where an option that leads back would go: the section of the latest choice, else the one the
+    /// dialogue was started in — unless it is still there. Null when there is nowhere to go.
+    /// </summary>
+    RuntimeSection BackSection()
+        => _choiceMadeIn.Count > 0 ? _choiceMadeIn[^1] : ReferenceEquals(_startedIn, _current) ? null : _startedIn;
+
     void Follow(RuntimeOption option, MissContext ctx, bool atOnce) {
         RuntimeSection target = null;
         if (option?.Definition.Back == true) {
-            if (_choiceMadeIn.Count > 0) {
-                target = _choiceMadeIn[^1];
-                _choiceMadeIn.RemoveAt(_choiceMadeIn.Count - 1);
-            }
+            target = BackSection();
+            if (_choiceMadeIn.Count > 0) _choiceMadeIn.RemoveAt(_choiceMadeIn.Count - 1);
         }
         else {
             // Through any reroutes, which are only there for the graph.
@@ -388,6 +397,7 @@ public sealed partial class DialogueInstance {
     void End() {
         _current = null;
         _choiceMadeIn.Clear();
+        _startedIn = null;
         _trail.Clear();
         EnteredBy = null;
         _actionRunning = false;

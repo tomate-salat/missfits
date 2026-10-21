@@ -249,7 +249,7 @@ public partial class SectionBox : MissGraphBox {
             switch (GetChild(slot)) {
                 case GraphRow { Kind: SpeakRow.Line } row:
                     var line = section.Lines.FirstOrDefault(l => l != null && l.Id == row.Id);
-                    row.Show(SpeakLabels.Says(line), SpeakLabels.Problem(line, dialogue), IsPicked(row));
+                    row.Show(SpeakLabels.Says(line, dialogue),SpeakLabels.Problem(line, dialogue), IsPicked(row));
                     break;
                 case GraphRow { Kind: SpeakRow.Action } row:
                     var action = section.Lines.Where(l => l != null).SelectMany(l => l.Actions).FirstOrDefault(a => a != null && a.Id == row.Id);
@@ -326,11 +326,49 @@ public static class SpeakLabels {
         return flat.Length <= MaxLength ? flat : flat[..(MaxLength - 1)].TrimEnd() + "…";
     }
 
+    /// <summary>
+    /// A text as the project's translations have it: in the locale the editor previews, else the
+    /// project's test locale, else the editor's own, else the project's fallback. As written when
+    /// none of them knows it.
+    /// </summary>
+    public static string Translated(string text, string context = "") {
+        if (string.IsNullOrEmpty(text)) return text;
+
+        // The editor loads the project's translations, but switches their domain off unless a
+        // translation is previewed — so Translate hands back the text unchanged. The translations
+        // are asked directly.
+        string[] locales = [
+            PreviewLocale(),
+            ProjectSettings.GetSetting("internationalization/locale/test", "").AsString(),
+            TranslationServer.GetLocale(),
+            ProjectSettings.GetSetting("internationalization/locale/fallback", "en").AsString(),
+        ];
+        foreach (var locale in locales.Where(l => !string.IsNullOrEmpty(l))) {
+            // All that fit the locale, as a project may keep its texts in several files.
+            foreach (var translation in TranslationServer.FindTranslations(locale, false)) {
+                var message = translation.GetMessage(text, context ?? "").ToString();
+                if (!string.IsNullOrEmpty(message)) return message;
+            }
+        }
+        return text;
+    }
+
+    /// <summary>
+    /// The locale chosen under Preview Translation in the 2D or 3D viewport, or empty while none is.
+    /// The editor switches the project's translation domain on for it and sets the locale as the
+    /// domain's override; while the domain is off, the override says nothing.
+    /// </summary>
+    public static string PreviewLocale() {
+        var main = TranslationServer.GetOrAddDomain("");
+        return main.Enabled ? main.GetLocaleOverride() : "";
+    }
+
     /// <summary>E.g. "Smith: Welcome to my forge." — or that the line is silent.</summary>
-    public static string Says(DialogueLine line) {
+    public static string Says(DialogueLine line, Dialogue dialogue = null) {
         if (line == null) return "";
         if (string.IsNullOrEmpty(line.Text)) return "(silent)";
-        return string.IsNullOrEmpty(line.Speaker) ? Short(line.Text) : Short($"{line.Speaker}: {line.Text}");
+        var text = Translated(line.Text, dialogue?.ContextOf(line) ?? "");
+        return string.IsNullOrEmpty(line.Speaker) ? Short(text) : Short($"{Translated(line.Speaker)}: {text}");
     }
 
     public static string Does(MissNode action) => action == null ? "" : $"▸ {Runs(action)}";
@@ -354,13 +392,13 @@ public static class SpeakLabels {
     public static string Describe(DialogueOption option, Dialogue dialogue) {
         if (option == null) return "";
 
-        if (option.Back) return option.IsChoice ? $"“{Short(option.Text)}” ↩ back" : "↩ back";
+        if (option.Back) return option.IsChoice ? $"“{Short(Translated(option.Text))}” ↩ back" : "↩ back";
 
         var target = dialogue?.Destination(option.TargetSectionId);
         var where = string.IsNullOrEmpty(option.TargetSectionId) ? "end"
             : target == null ? "?"
             : string.IsNullOrEmpty(target.Name) ? "(unnamed)" : target.Name;
-        return option.IsChoice ? $"“{Short(option.Text)}” → {where}" : $"→ {where}";
+        return option.IsChoice ? $"“{Short(Translated(option.Text))}” → {where}" : $"→ {where}";
     }
 
     public static string Problem(DialogueLine line, Dialogue dialogue) {

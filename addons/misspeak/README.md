@@ -59,7 +59,8 @@ What happens in a section:
 
 An option can also **lead back** (`Back`): to the section in which the player last made a choice,
 which starts over. Sections passed through without a choice are skipped on the way back. With no
-choice made yet, there is nowhere to go back to and the dialogue ends.
+choice made yet, it goes back to the section the dialogue was started in, and ends only when it is
+still there.
 
 A section in which nothing is said moves on by itself. That makes it a branch (the first option
 whose conditions hold is taken) or simply a place to run actions.
@@ -77,7 +78,8 @@ Texts may name blackboard entries in braces: `You have {gold} coins.`
   *“text” → Section* for a choice, *→ Section* for the way on by itself, *→ end* for one that ends
   the dialogue. Right-click one to move it, delete it, or add a condition.
 - **Wires.** Drag from the last, faint port to add an option; drag from an option's own port to
-  lead it somewhere else. Dropping a wire on empty canvas makes a new section there.
+  lead it somewhere else. Dropping a wire on empty canvas makes a new section there. Right-click
+  a wire and choose *Delete wire* to remove it; its option stays and then ends the dialogue.
 - **Reroutes** lead a wire around the boxes: double-click a wire, or right-click it. They work as
   in Misstate, turning round when they lead back to the left.
 - **Ports** are reroutes without the wire that leaves them, drawn as an arrow running into a bar.
@@ -89,7 +91,7 @@ Texts may name blackboard entries in braces: `You have {gold} coins.`
   around the section it leads to.
 - **Leading back.** Right-click an option and tick *Lead back*: instead of following a wire it
   returns to the section in which the player last made a choice — the menu this branch was picked
-  from — which then starts over. Its row reads *↩ back* and has no wire. This is what keeps a hub
+  from, or with none yet the section the dialogue started in — which then starts over. Its row reads *↩ back* and has no wire. This is what keeps a hub
   with many branches from growing a wire back for each. It is never assumed: an option without a
   target that does not lead back ends the dialogue.
 - **Selecting** a section or a row shows exactly that in the Inspector, which is where texts,

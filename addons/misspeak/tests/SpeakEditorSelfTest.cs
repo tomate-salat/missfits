@@ -61,6 +61,7 @@ public partial class SpeakEditorSelfTest : Node {
         await ReroutesLeadWiresAround();
         await PortsAndLeadingBackNeedNoWire();
         await NodesLinkToTheBlackboardBesideTheGraph();
+        await RowsShowTheProjectsTranslations();
         await SpeakersArePickedFromTheDialoguesList();
         await SavingAndRevertingFollowTheFile();
         await TheGraphShowsWhereARunningDialogueIs();
@@ -464,6 +465,61 @@ public partial class SpeakEditorSelfTest : Node {
         blackboard.UnlinkParam(condition, nameof(SpeakProbeCondition.Value));
         await Settle();
         Check("and the warning goes once the link is gone", Rows(_ask, SpeakRow.OptionCondition)[0].Warning == "");
+    }
+
+    // ---- translations ------------------------------------------------------------------------
+
+    async System.Threading.Tasks.Task RowsShowTheProjectsTranslations() {
+        // Two files for one locale, as a project may keep its texts apart.
+        var lines = new Translation { Locale = "de" };
+        lines.AddMessage("%smith/greet", "Willkommen.");
+        lines.AddMessage("Smith", "Schmiedin");
+        var options = new Translation { Locale = "de" };
+        options.AddMessage("%smith/leave", "Tschüss.");
+        TranslationServer.AddTranslation(lines);
+        TranslationServer.AddTranslation(options);
+
+        // As in the editor: the project's translations are loaded, their domain is off.
+        var main = TranslationServer.GetOrAddDomain("");
+        var enabled = main.Enabled;
+        main.Enabled = false;
+        const string testKey = "internationalization/locale/test";
+        var test = ProjectSettings.GetSetting(testKey, "");
+        ProjectSettings.SetSetting(testKey, "de_DE");
+
+        Check("a line reads in the project's translation, its speaker too",
+            SpeakLabels.Says(new DialogueLine { Speaker = "Smith", Text = "%smith/greet" }) == "Schmiedin: Willkommen.");
+        Check("and so does a choice", SpeakLabels.Describe(new DialogueOption { Text = "%smith/leave" }, _dialogue) == "“Tschüss.” → end");
+        Check("a text no translation knows reads as written", SpeakLabels.Translated("%nobody/knows") == "%nobody/knows");
+
+        // Previewing a language in the viewport switches the domain on, with that locale as its override.
+        var english = new Translation { Locale = "en" };
+        english.AddMessage("%smith/greet", "Welcome.");
+        TranslationServer.AddTranslation(english);
+        var line = _ask.Lines[0];
+        var said = line.Text;
+        line.Text = "%smith/greet";
+        _graph.RefreshBoxes();
+        Check("the graph's rows read translated", Rows(_ask, SpeakRow.Line)[0].Text.EndsWith("Willkommen."));
+        var overridden = main.GetLocaleOverride();
+        main.SetLocaleOverride("en");
+        main.Enabled = true;
+        await Settle();
+        Check("the previewed language goes before the test locale, and the graph follows it by itself",
+            SpeakLabels.PreviewLocale() == "en" && Rows(_ask, SpeakRow.Line)[0].Text.EndsWith("Welcome."));
+        main.Enabled = false;
+        await Settle();
+        Check("and goes back once the preview is off", Rows(_ask, SpeakRow.Line)[0].Text.EndsWith("Willkommen."));
+        main.SetLocaleOverride(overridden);
+        line.Text = said;
+        _graph.RefreshBoxes();
+
+        TranslationServer.RemoveTranslation(lines);
+        TranslationServer.RemoveTranslation(options);
+        TranslationServer.RemoveTranslation(english);
+        main.Enabled = enabled;
+        ProjectSettings.SetSetting(testKey, test);
+        Check("without translations, texts read as written", SpeakLabels.Translated("%smith/greet") == "%smith/greet");
     }
 
     // ---- speakers ----------------------------------------------------------------------------

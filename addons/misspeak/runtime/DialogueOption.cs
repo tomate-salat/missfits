@@ -28,8 +28,8 @@ public partial class DialogueOption : MissResource {
     /// <summary>
     /// On, the option leads back instead of to <see cref="TargetSectionId"/>: to the section in
     /// which the player last made a choice — the menu this branch of the talk was picked from. That
-    /// section starts over, so its lines are spoken again. With no choice made on the way, there is
-    /// nowhere to go back to and the dialogue ends.
+    /// section starts over, so its lines are spoken again. With no choice made on the way, it goes
+    /// back to the section the dialogue was started in — and ends the dialogue when it is still there.
     /// </summary>
     [Export]
     public bool Back { get; set; }
