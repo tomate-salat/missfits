@@ -1,0 +1,47 @@
+# Deliberately unfinished: the enemies are not translated yet, and the menu entry is a guess.
+msgid ""
+msgstr ""
+"Project-Id-Version: Misspell demo\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=6; plural=(n == 0 ? 0 : n == 1 ? 1 : n == 2 ? 2 : n%100 >= 3 && n%100 <= 10 ? 3 : n%100 >= 11 ? 4 : 5);\n"
+
+#: res://misspell demo/SpellDemo.cs
+msgid "Misspell demo — Up/Down: change the number · L: next language"
+msgstr ""
+
+#. {n} is the number of coins.
+#: res://misspell demo/SpellDemo.cs
+msgid "You have {n} coin."
+msgid_plural "You have {n} coins."
+msgstr[0] "ليس لديك أي عملة."
+msgstr[1] "لديك عملة واحدة."
+msgstr[2] "لديك عملتان."
+msgstr[3] "لديك {n} عملات."
+msgstr[4] "لديك {n} عملة."
+msgstr[5] "لديك {n} عملة."
+
+#: res://misspell demo/SpellDemo.cs
+msgid "{n} enemy remains."
+msgid_plural "{n} enemies remain."
+msgstr[0] ""
+msgstr[1] ""
+msgstr[2] ""
+msgstr[3] ""
+msgstr[4] ""
+msgstr[5] ""
+
+#. In the game menu.
+#: res://misspell demo/SpellDemo.cs
+#, fuzzy
+msgctxt "menu"
+msgid "Close"
+msgstr "إغلاق"
+
+#. What the player does to a door.
+#: res://misspell demo/SpellDemo.cs
+msgctxt "door"
+msgid "Close"
+msgstr ""

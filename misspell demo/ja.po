@@ -1,0 +1,35 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Misspell demo\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: res://misspell demo/SpellDemo.cs
+msgid "Misspell demo — Up/Down: change the number · L: next language"
+msgstr "Misspell デモ — 上/下: 数を変える · L: 次の言語"
+
+#. {n} is the number of coins.
+#: res://misspell demo/SpellDemo.cs
+msgid "You have {n} coin."
+msgid_plural "You have {n} coins."
+msgstr[0] "コインを{n}枚持っています。"
+
+#: res://misspell demo/SpellDemo.cs
+msgid "{n} enemy remains."
+msgid_plural "{n} enemies remain."
+msgstr[0] "敵が残り{n}体。"
+
+#. In the game menu.
+#: res://misspell demo/SpellDemo.cs
+msgctxt "menu"
+msgid "Close"
+msgstr "閉じる"
+
+#. What the player does to a door.
+#: res://misspell demo/SpellDemo.cs
+msgctxt "door"
+msgid "Close"
+msgstr "ドアを閉める"

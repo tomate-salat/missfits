@@ -1,0 +1,36 @@
+# Template of the Misspell demo. Open it in the Misspell screen to see every language beside it.
+msgid ""
+msgstr ""
+"Project-Id-Version: Misspell demo\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: res://misspell demo/SpellDemo.cs
+msgid "Misspell demo — Up/Down: change the number · L: next language"
+msgstr ""
+
+#. {n} is the number of coins.
+#: res://misspell demo/SpellDemo.cs
+msgid "You have {n} coin."
+msgid_plural "You have {n} coins."
+msgstr[0] ""
+msgstr[1] ""
+
+#: res://misspell demo/SpellDemo.cs
+msgid "{n} enemy remains."
+msgid_plural "{n} enemies remain."
+msgstr[0] ""
+msgstr[1] ""
+
+#. In the game menu.
+#: res://misspell demo/SpellDemo.cs
+msgctxt "menu"
+msgid "Close"
+msgstr ""
+
+#. What the player does to a door.
+#: res://misspell demo/SpellDemo.cs
+msgctxt "door"
+msgid "Close"
+msgstr ""

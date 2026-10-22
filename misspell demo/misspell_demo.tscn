@@ -1,0 +1,59 @@
+[gd_scene format=3 uid="uid://btw3t2yv1lcb4"]
+
+[ext_resource type="Script" uid="uid://djffc7h1xka00" path="res://misspell demo/SpellDemo.cs" id="1_demo"]
+
+[node name="MisspellDemo" type="Control" unique_id=821353984 node_paths=PackedStringArray("Title", "Coins", "Enemies", "Words", "Language")]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_demo")
+Title = NodePath("Box/Title")
+Coins = NodePath("Box/Coins")
+Enemies = NodePath("Box/Enemies")
+Words = NodePath("Box/Words")
+Language = NodePath("Box/Language")
+
+[node name="Backdrop" type="ColorRect" parent="." unique_id=1177320909]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.11372549, 0.1254902, 0.14901961, 1)
+
+[node name="Box" type="VBoxContainer" parent="." unique_id=492476361]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 48.0
+offset_top = 40.0
+offset_right = -48.0
+offset_bottom = -40.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 18
+
+[node name="Title" type="Label" parent="Box" unique_id=1339715002]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 0.5)
+
+[node name="Coins" type="Label" parent="Box" unique_id=697968615]
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+
+[node name="Enemies" type="Label" parent="Box" unique_id=1718705946]
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+
+[node name="Words" type="Label" parent="Box" unique_id=1890939466]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+
+[node name="Language" type="Label" parent="Box" unique_id=1143111836]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 0.5)

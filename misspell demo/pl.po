@@ -1,0 +1,39 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Misspell demo\n"
+"Language: pl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n == 1 ? 0 : n%10 >= 2 && n%10 <= 4 && (n%100 < 10 || n%100 >= 20) ? 1 : 2);\n"
+
+#: res://misspell demo/SpellDemo.cs
+msgid "Misspell demo — Up/Down: change the number · L: next language"
+msgstr "Demo Misspell — góra/dół: zmień liczbę · L: następny język"
+
+#. {n} is the number of coins.
+#: res://misspell demo/SpellDemo.cs
+msgid "You have {n} coin."
+msgid_plural "You have {n} coins."
+msgstr[0] "Masz {n} monetę."
+msgstr[1] "Masz {n} monety."
+msgstr[2] "Masz {n} monet."
+
+#: res://misspell demo/SpellDemo.cs
+msgid "{n} enemy remains."
+msgid_plural "{n} enemies remain."
+msgstr[0] "Został {n} wróg."
+msgstr[1] "Zostali {n} wrogowie."
+msgstr[2] "Zostało {n} wrogów."
+
+#. In the game menu.
+#: res://misspell demo/SpellDemo.cs
+msgctxt "menu"
+msgid "Close"
+msgstr "Zamknij"
+
+#. What the player does to a door.
+#: res://misspell demo/SpellDemo.cs
+msgctxt "door"
+msgid "Close"
+msgstr "Zamknij drzwi"

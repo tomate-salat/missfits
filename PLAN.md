@@ -11,6 +11,7 @@ Missfits ist eine Sammlung eigenständiger Godot-Addons (C#). Jedes Addon funkti
 | Statemachine | `addons/misstate` | Runtime, Graph-Editor und Live-Ansicht existieren | misstate / State |
 | Dialog | `addons/misspeak` | Runtime, i18n und Beispiel-UI existieren, Graph-Editor fehlt | misspeak |
 | Quests | `addons/mission` | geplant | miss-ion |
+| Übersetzungen | `addons/misspell` | PO-Editor als Tabelle mit Plural-Zeilen existiert | misspell |
 
 Alle Addons liegen in diesem einen Godot-Projekt (Monorepo). Demos liegen außerhalb von `addons/`.
 
@@ -21,6 +22,7 @@ misscore  ←  missbehave
 misscore  ←  misstate
 misscore  ←  misspeak
 misscore  ←  mission
+misscore  ←  misspell
 ```
 
 Geschwister-Addons kennen sich nie gegenseitig, alle kennen nur den Core.
@@ -102,6 +104,20 @@ Offen:
 - **Entwirren:** Umgesetzt sind Ports (Reroute ohne ausgehenden Draht, im Core, also auch in `misstate`) und Optionen, die ausdrücklich zurückführen (`DialogueOption.Back`). Weitere Ideen, noch nicht gebaut: nur die Drähte der ausgewählten Box hervorheben; automatisch anordnen. Verworfen: ein zweites "sonst"-Ziel an der Option.
 - **Text nur im Inspector:** Sprecher und Text einer Zeile lassen sich im Graph nicht direkt tippen.
 
+## Was misspell zeigt
+
+- Ein Werkzeug ohne Runtime-Knoten: ein eigener Hauptbildschirm im Editor, der `.po`/`.pot`-Dateien als Tabelle zeigt. Zeilen sind Texte, Spalten Sprachen; ein Template und die Sprachen daneben werden zusammen geöffnet (gleicher Ordner, gleiche Domain, `de.po` gehört zum einzigen `.pot` im Ordner).
+- Plural steht im Mittelpunkt: jede Form ist eine eigene Zeile, so viele wie die Sprache mit den meisten Formen braucht. Eine leere Form zeigt ihren Namen und die Zahlen, für die sie gilt (`few · n = 2–4, 22–24, …`). Die `Plural-Forms`-Formel wird selbst ausgewertet, Regeln der üblichen Sprachen liegen bei (`PluralRules`).
+- Das PO-Modell (`PoCatalog`, `PoEntry`, `PluralForms`) ist reines C# in `runtime/` und verlustfrei: Lesen und Schreiben ändert nur, was bearbeitet wurde. Ein Test prüft, dass Godot die geschriebenen Dateien mit denselben Formen liest.
+- Vom Core nutzt es nur `ReloadSafe`. Weil das Modell kein GodotObject ist, geht es beim Assembly-Reload verloren; das Panel hält Pfad und Text ungespeicherter Dateien in Godot-Typen und baut den Stand danach wieder auf.
+- Undo ist eigenes: jeder Schritt merkt sich die betroffenen Dateien als Kopie davor und danach.
+
+Offen:
+
+- **Unscharfe Übernahme** beim Abgleich mit dem Template (wie `msgmerge` ohne `--no-fuzzy-matching`) gibt es nicht; neue Texte kommen leer dazu.
+- **Mehrere Zellen** markieren, kopieren und einfügen (z. B. aus Excel) geht noch nicht, nur einzelne Zellen.
+- **Template erzeugen** bleibt bei Godot (*Template Generation*); ein Knopf dafür fehlt.
+
 Der Core bekommt kein `plugin.cfg`. Als reine Bibliothek muss ihn niemand aktivieren; Editor-Widgets dürfen darin liegen, registriert werden sie vom jeweiligen Addon-Plugin.
 
 ## Namespaces
@@ -134,4 +150,5 @@ Verworfen:
 5. **Umgesetzt:** Live-Ansicht für `misstate`: aktueller State und Status seiner Actions im Graph, während das Spiel läuft.
 6. **Skript umgesetzt, Veröffentlichung offen:** Build-Skript für die Addon-Zips, danach erste gemeinsame Veröffentlichung von `missbehave` und `misstate`.
 7. **Umgesetzt:** `misspeak`, mit Actions und Conditions für BT und FSM.
-8. `mission`.
+8. **Umgesetzt:** `misspell`, PO-Editor mit Plural-Unterstützung.
+9. `mission`.
