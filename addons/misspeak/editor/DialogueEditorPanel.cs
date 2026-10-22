@@ -190,11 +190,13 @@ public partial class DialogueEditorPanel : VBoxContainer, IRunnerDebugView {
         // What was shown live belongs to the previous dialogue; the debugger resends for this one.
         ClearLive();
         _dialogue = dialogue;
+        // A dialogue from an older file names its speakers; it now points at them, and wants saving so.
+        var upgraded = dialogue.UpgradeSpeakers();
         Graph.LoadDialogue(dialogue);
         Blackboard.ShowSource(dialogue);
 
         RememberHistoryOf(dialogue);
-        RememberSpeakers();
+        if (upgraded) MarkDirty();
         _title.Text = string.IsNullOrEmpty(dialogue.ResourcePath) ? "(unsaved dialogue)" : dialogue.ResourcePath;
         ShowDirtyState();
         SetStatus(Describe());
@@ -277,9 +279,9 @@ public partial class DialogueEditorPanel : VBoxContainer, IRunnerDebugView {
         // after the first letter.
         var moved = HistoryMoved(edited);
         var changed = ContentChanged(edited);
-        FollowSpeakerRenames();
         Graph.SyncWithDialogue();
-        if (moved || changed) MarkDirty();
+        // A speaker with a file of its own is saved with that file, not with the dialogue.
+        if ((moved || changed) && !HasOwnFile(edited)) MarkDirty();
     }
 
     /// <summary>
@@ -345,7 +347,7 @@ public partial class DialogueEditorPanel : VBoxContainer, IRunnerDebugView {
         return edited switch {
             Dialogue whole => ReferenceEquals(whole, dialogue),
             DialogueSection section => dialogue.Sections.Contains(section),
-            DialogueSpeaker speaker => dialogue.Speakers.Contains(speaker),
+            DialogueSpeaker speaker => dialogue.SpeakersUsed().Contains(speaker),
             DialogueLine line => dialogue.Sections.Any(s => s != null && s.Lines.Contains(line)),
             DialogueOption option => dialogue.Sections.Any(s => s != null && s.Options.Contains(option)),
             MissNode node => dialogue.AllNodes().Contains(node),
@@ -353,49 +355,13 @@ public partial class DialogueEditorPanel : VBoxContainer, IRunnerDebugView {
         };
     }
 
-    /// <summary>The name the lines carry for each listed speaker, by the speaker's instance id. A Godot dictionary so a reload keeps it.</summary>
-    Godot.Collections.Dictionary _speakerNames = [];
-
-    void RememberSpeakers() {
-        _speakerNames.Clear();
-        foreach (var speaker in Dialogue?.Speakers.Where(s => s != null) ?? []) _speakerNames[speaker.GetInstanceId()] = speaker.Name;
-    }
-
-    /// <summary>
-    /// A line names its speaker by name, so renaming a speaker in the Inspector has to rename it in
-    /// every line that meant that speaker. Undoing the rename comes by here as well, as a rename
-    /// back. While the new name is also another speaker's — typing "Smith" over "Sam" passes through
-    /// "S" — the lines are left as they are, or the two speakers' lines could no longer be told apart.
-    /// </summary>
-    void FollowSpeakerRenames() {
-        var dialogue = Dialogue;
-        if (dialogue == null) return;
-
-        var speakers = dialogue.Speakers.Where(s => s != null).ToList();
-        foreach (var speaker in speakers) {
-            var id = speaker.GetInstanceId();
-            if (!_speakerNames.TryGetValue(id, out var known)) {
-                _speakerNames[id] = speaker.Name;
-                continue;
-            }
-
-            var before = known.AsString();
-            if (before == speaker.Name) continue;
-            if (speakers.Any(other => !ReferenceEquals(other, speaker) && other.Name == speaker.Name)) continue;
-
-            if (before != "") {
-                foreach (var line in dialogue.Sections.Where(s => s != null).SelectMany(s => s.Lines)) {
-                    if (line != null && line.Speaker == before) line.Speaker = speaker.Name;
-                }
-            }
-            _speakerNames[id] = speaker.Name;
-        }
-    }
+    /// <summary>Whether a resource is saved in a file of its own rather than inside the dialogue — a shared speaker, say.</summary>
+    static bool HasOwnFile(GodotObject edited)
+        => edited is DialogueSpeaker speaker && !string.IsNullOrEmpty(speaker.ResourcePath) && !speaker.ResourcePath.Contains("::");
 
     /// <summary>The Inspector changed the dialogue or a part of it: bring the graph up to date.</summary>
     public void OnInspectorEdited() {
         if (Dialogue == null) return;
-        FollowSpeakerRenames();
         Graph.SyncWithDialogue();
         MarkDirty();
     }
@@ -538,8 +504,8 @@ public partial class DialogueEditorPanel : VBoxContainer, IRunnerDebugView {
             return;
         }
 
+        saved.UpgradeSpeakers();
         dialogue.Sections = saved.Sections;
-        dialogue.Speakers = saved.Speakers;
         dialogue.Reroutes = saved.Reroutes;
         dialogue.StartSectionId = saved.StartSectionId;
         dialogue.SpeakerAsTranslationContext = saved.SpeakerAsTranslationContext;
@@ -547,7 +513,6 @@ public partial class DialogueEditorPanel : VBoxContainer, IRunnerDebugView {
         dialogue.Blackboard = saved.Blackboard;
 
         _unsaved.Remove(dialogue);
-        RememberSpeakers();
         Graph.LoadDialogue(dialogue);
         Blackboard.ShowSource(dialogue);
         dialogue.NotifyPropertyListChanged();

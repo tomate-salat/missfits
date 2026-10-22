@@ -18,9 +18,23 @@ public partial class DialogueLine : MissResource {
     [Export]
     public string Id { get; set; } = BlackboardEntry.NewId();
 
-    /// <summary>Who says it. Free text; what it means is up to whatever shows the dialogue.</summary>
+    /// <summary>Who says it, or nobody.</summary>
     [Export]
-    public string Speaker { get; set; } = "";
+    public DialogueSpeaker SpokenBy { get; set; }
+
+    /// <summary>
+    /// How lines named their speaker before speakers were resources: by name. Only ever read from
+    /// an older file — private, so it is filled in when one is loaded but never saved again — and
+    /// turned into <see cref="SpokenBy"/> by <see cref="Dialogue.UpgradeSpeakers"/>.
+    /// </summary>
+    string Speaker { get; set; } = "";
+
+    /// <summary>The name an older file gave as the speaker, once; empty after that, and for a line from a newer file.</summary>
+    internal string TakeOldSpeakerName() {
+        var name = Speaker;
+        Speaker = "";
+        return name;
+    }
 
     /// <summary>
     /// What is said. <c>{entry}</c> is replaced by the value of the blackboard entry of that name.
@@ -55,5 +69,5 @@ public partial class DialogueLine : MissResource {
         if (property["name"].AsString() is nameof(Id)) property["usage"] = (int) PropertyUsageFlags.Storage;
     }
 
-    public override string ToString() => string.IsNullOrEmpty(Speaker) ? Text : $"{Speaker}: {Text}";
+    public override string ToString() => string.IsNullOrEmpty(SpokenBy?.Name) ? Text : $"{SpokenBy.Name}: {Text}";
 }

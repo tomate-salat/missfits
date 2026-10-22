@@ -1,12 +1,12 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://043e378kjv1u"]
 
-[ext_resource type="Script" path="res://addons/misspeak/ui/DialogueBox.cs" id="1_box"]
-[ext_resource type="Script" path="res://addons/misspeak/ui/DialogueSpeakerLabel.cs" id="2_speaker"]
-[ext_resource type="Script" path="res://addons/misspeak/ui/DialogueTextLabel.cs" id="3_text"]
-[ext_resource type="Script" path="res://addons/misspeak/ui/DialogueChoiceList.cs" id="4_choices"]
-[ext_resource type="Script" path="res://addons/misspeak/ui/DialogueContinueHint.cs" id="5_hint"]
+[ext_resource type="Script" uid="uid://cw8o155e8bp6k" path="res://addons/misspeak/ui/DialogueBox.cs" id="1_box"]
+[ext_resource type="Script" uid="uid://jfrimble11ns" path="res://addons/misspeak/ui/DialogueSpeakerLabel.cs" id="2_speaker"]
+[ext_resource type="Script" uid="uid://c3dydu86x7nuc" path="res://addons/misspeak/ui/DialogueTextLabel.cs" id="3_text"]
+[ext_resource type="Script" uid="uid://dv1qqoxw84lnr" path="res://addons/misspeak/ui/DialogueChoiceList.cs" id="4_choices"]
+[ext_resource type="Script" uid="uid://w7li524goyii" path="res://addons/misspeak/ui/DialogueContinueHint.cs" id="5_hint"]
 
-[node name="DialogueBox" type="Control" node_paths=PackedStringArray("ClickArea")]
+[node name="DialogueBox" type="Control" unique_id=1167730961 node_paths=PackedStringArray("ClickArea")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -17,7 +17,7 @@ mouse_filter = 2
 script = ExtResource("1_box")
 ClickArea = NodePath("Panel")
 
-[node name="Panel" type="PanelContainer" parent="."]
+[node name="Panel" type="PanelContainer" parent="." unique_id=115817775]
 layout_mode = 1
 anchors_preset = 12
 anchor_top = 1.0
@@ -29,7 +29,7 @@ offset_bottom = -24.0
 grow_horizontal = 2
 grow_vertical = 0
 
-[node name="Margin" type="MarginContainer" parent="Panel"]
+[node name="Margin" type="MarginContainer" parent="Panel" unique_id=89346125]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/margin_left = 18
@@ -37,18 +37,17 @@ theme_override_constants/margin_top = 12
 theme_override_constants/margin_right = 18
 theme_override_constants/margin_bottom = 12
 
-[node name="Rows" type="VBoxContainer" parent="Panel/Margin"]
+[node name="Rows" type="VBoxContainer" parent="Panel/Margin" unique_id=1545013610]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 8
 
-[node name="Speaker" type="Label" parent="Panel/Margin/Rows"]
+[node name="Speaker" type="Label" parent="Panel/Margin/Rows" unique_id=1441267443]
 layout_mode = 2
-mouse_filter = 2
 theme_override_colors/font_color = Color(0.890196, 0.701961, 0.254902, 1)
 script = ExtResource("2_speaker")
 
-[node name="Text" type="RichTextLabel" parent="Panel/Margin/Rows"]
+[node name="Text" type="RichTextLabel" parent="Panel/Margin/Rows" unique_id=744763120]
 custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
 mouse_filter = 2
@@ -57,14 +56,13 @@ fit_content = true
 scroll_active = false
 script = ExtResource("3_text")
 
-[node name="Choices" type="VBoxContainer" parent="Panel/Margin/Rows"]
+[node name="Choices" type="VBoxContainer" parent="Panel/Margin/Rows" unique_id=712492662]
 layout_mode = 2
 theme_override_constants/separation = 4
 script = ExtResource("4_choices")
 
-[node name="Hint" type="Label" parent="Panel/Margin/Rows"]
+[node name="Hint" type="Label" parent="Panel/Margin/Rows" unique_id=956822874]
 layout_mode = 2
-mouse_filter = 2
 theme_override_colors/font_color = Color(1, 1, 1, 0.5)
 text = "▼"
 horizontal_alignment = 2

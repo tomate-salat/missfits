@@ -27,11 +27,11 @@ public partial class Dialogue : MissResource, IBlackboardSource {
     public string Description { get; set; } = "";
 
     /// <summary>
-    /// Who speaks in this dialogue. The editor offers these for every line, and flags a line whose
-    /// speaker is not among them. Left empty, any name goes.
+    /// The speakers a dialogue listed before speakers were resources of their own. Only ever read
+    /// from an older file — private, so it is filled in when one is loaded but never saved again —
+    /// and used up by <see cref="UpgradeSpeakers"/>.
     /// </summary>
-    [Export]
-    public Godot.Collections.Array<DialogueSpeaker> Speakers { get; set; } = [];
+    Godot.Collections.Array<DialogueSpeaker> Speakers { get; set; } = [];
 
     /// <summary>
     /// On, a line is translated with its speaker as the translation context, so the same words can
@@ -74,24 +74,37 @@ public partial class Dialogue : MissResource, IBlackboardSource {
         return null;
     }
 
-    /// <summary>
-    /// The names a line's speaker can be picked from: the listed speakers first, then whatever
-    /// other names the lines already use.
-    /// </summary>
-    public List<string> SpeakerNames() {
-        var names = new List<string>();
-        void Add(string name) {
-            if (!string.IsNullOrEmpty(name) && !names.Contains(name)) names.Add(name);
-        }
-
-        foreach (var speaker in Speakers) Add(speaker?.Name);
-        foreach (var line in Sections.Where(s => s != null).SelectMany(s => s.Lines)) Add(line?.Speaker);
-        return names;
+    /// <summary>The speakers its lines point at, each once, in the order they first speak.</summary>
+    public List<DialogueSpeaker> SpeakersUsed() {
+        UpgradeSpeakers();
+        return [.. Sections.Where(s => s != null).SelectMany(s => s.Lines).Select(l => l?.SpokenBy).Where(s => s != null).Distinct()];
     }
 
-    /// <summary>Whether a line may be spoken by that name: it is listed, or nobody is listed at all, or it is nobody.</summary>
-    public bool KnowsSpeaker(string name)
-        => string.IsNullOrEmpty(name) || !Speakers.Any(s => s != null && s.Name != "") || Speakers.Any(s => s != null && s.Name == name);
+    /// <summary>
+    /// Brings a dialogue from an older file up to date: each line that named its speaker gets the
+    /// speaker the dialogue listed under that name, or a new one when it listed none. Lines that
+    /// named the same one share it. True when anything changed — the dialogue then wants saving.
+    /// Does nothing to a dialogue that is up to date, so it is safe to call whenever.
+    /// </summary>
+    public bool UpgradeSpeakers() {
+        var byName = new Dictionary<string, DialogueSpeaker>();
+        foreach (var speaker in Speakers) {
+            if (!string.IsNullOrEmpty(speaker?.Name)) byName.TryAdd(speaker.Name, speaker);
+        }
+
+        var changed = Speakers.Count > 0;
+        foreach (var line in Sections.Where(s => s != null).SelectMany(s => s.Lines)) {
+            var name = line?.TakeOldSpeakerName();
+            if (string.IsNullOrEmpty(name)) continue;
+
+            changed = true;
+            if (line.SpokenBy != null) continue;
+            if (!byName.TryGetValue(name, out var speaker)) byName[name] = speaker = new DialogueSpeaker { Name = name };
+            line.SpokenBy = speaker;
+        }
+        Speakers.Clear();
+        return changed;
+    }
 
     public override void _ValidateProperty(Godot.Collections.Dictionary property) {
         if (property["name"].AsString() is nameof(Blackboard) or nameof(StartSectionId) or nameof(Reroutes)) {
@@ -100,7 +113,7 @@ public partial class Dialogue : MissResource, IBlackboardSource {
     }
 
     /// <summary>The context a line's text is translated in: its speaker if the dialogue says so, else none.</summary>
-    public string ContextOf(DialogueLine line) => SpeakerAsTranslationContext ? line?.Speaker ?? "" : "";
+    public string ContextOf(DialogueLine line) => SpeakerAsTranslationContext ? line?.SpokenBy?.Name ?? "" : "";
 
     /// <summary>Every node the dialogue holds: what its lines run and check, and what its options check.</summary>
     public IEnumerable<MissNode> AllNodes() {
@@ -164,9 +177,6 @@ public partial class Dialogue : MissResource, IBlackboardSource {
                 else if (string.IsNullOrEmpty(line.Text) && !line.Actions.Any(a => a != null)) {
                     problems.Add($"{name}: line #{i + 1} says nothing and does nothing.");
                 }
-                else if (!KnowsSpeaker(line.Speaker)) {
-                    problems.Add($"{name}: line #{i + 1} is spoken by {line.Speaker}, who is not among the dialogue's speakers.");
-                }
             }
             if (!section.Lines.Any(l => l != null) && !section.Options.Any(o => o != null)) {
                 problems.Add($"{name}: has no lines and leads nowhere.");
@@ -203,15 +213,14 @@ public partial class Dialogue : MissResource, IBlackboardSource {
     /// speakers, lines and choices, each once. This is what goes into a translation template.
     /// </summary>
     public IEnumerable<(string Text, string Context)> TranslatableTexts() {
+        UpgradeSpeakers();
         var seen = new HashSet<(string, string)>();
-        foreach (var speaker in Speakers) {
-            if (!string.IsNullOrEmpty(speaker?.Name) && seen.Add((speaker.Name, ""))) yield return (speaker.Name, "");
-        }
         foreach (var section in Sections) {
             if (section == null) continue;
             foreach (var line in section.Lines) {
                 if (line == null) continue;
-                if (!string.IsNullOrEmpty(line.Speaker) && seen.Add((line.Speaker, ""))) yield return (line.Speaker, "");
+                var speaker = line.SpokenBy?.Name;
+                if (!string.IsNullOrEmpty(speaker) && seen.Add((speaker, ""))) yield return (speaker, "");
                 if (!string.IsNullOrEmpty(line.Text) && seen.Add((line.Text, ContextOf(line)))) yield return (line.Text, ContextOf(line));
             }
             foreach (var option in section.Options) {

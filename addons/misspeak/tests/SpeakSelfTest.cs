@@ -15,6 +15,14 @@ public partial class SpeakSelfTest : Node {
     const double Step = 0.1;
 
     readonly List<string> _failures = [];
+
+    /// <summary>The speakers of every test, one per name — as they would be one file each.</summary>
+    static readonly Dictionary<string, DialogueSpeaker> Speakers = [];
+
+    static DialogueSpeaker Who(string name) {
+        if (!Speakers.TryGetValue(name, out var speaker)) Speakers[name] = speaker = new DialogueSpeaker { Name = name };
+        return speaker;
+    }
     int _checks;
 
     public override void _Ready() {
@@ -56,6 +64,7 @@ public partial class SpeakSelfTest : Node {
         // instance isolation and serialisation
         TwoRunnersOfOneDialogueAreIndependent();
         ADialogueSurvivesSavingAndLoading();
+        AnOlderDialogueGetsSpeakerResources();
         ProblemsAreReported();
 
         foreach (var failure in _failures) GD.PrintErr($"FAIL  {failure}");
@@ -77,6 +86,7 @@ public partial class SpeakSelfTest : Node {
         Check("a dialogue starts", talk.Runner.Start() && talk.Runner.IsActive);
         Check("its first line is shown at once, with who says it",
             talk.Log.SequenceEqual(["started", "Guard: Halt."]) && talk.Runner.Speaker == "Guard" && talk.Runner.Text == "Halt.");
+        Check("along with the speaker's resource, for more than the name", talk.Runner.SpeakerInfo == Who("Guard"));
         Check("and it waits for the player to carry on", talk.Runner.Waiting == DialogueWait.Advance);
 
         talk.Runner.Tick(Step);
@@ -475,6 +485,9 @@ public partial class SpeakSelfTest : Node {
 
     void OneBoxShowsEveryRunner() {
         var box = GD.Load<PackedScene>("res://addons/misspeak/ui/dialogue_box.tscn").Instantiate<DialogueBox>();
+        // A part of one's own, anywhere below the box: found by its interface.
+        var portrait = new PortraitProbe();
+        box.GetNode("Panel").AddChild(portrait);
         AddChild(box);
         var text = box.GetNode<DialogueTextLabel>("Panel/Margin/Rows/Text");
         var speaker = box.GetNode<DialogueSpeakerLabel>("Panel/Margin/Rows/Speaker");
@@ -488,6 +501,7 @@ public partial class SpeakSelfTest : Node {
         var smith = new Talk(this, Dialogue(ask));
         smith.Runner.Start();
         Check("a runner that came later is shown", box.Visible && box.Showing == smith.Runner && speaker.Text == "Smith" && text.Text == "Need anything?");
+        Check("a speaker part gets the speaker's resource along with the name", portrait.Speaker == Who("Smith") && portrait.SpeakerName == "Smith");
         Check("its choices wait for the line to be written out", choices.GetChildCount() == 0 || !box.Writing);
         // Written out by itself, as frames go by — not cut short by a press.
         text._Process(10);
@@ -541,12 +555,7 @@ public partial class SpeakSelfTest : Node {
         var texts = dialogue.TranslatableTexts().ToList();
         Check("a dialogue lists its texts for translation: speakers, lines and choices, each once",
             texts.SequenceEqual([("Smith", ""), ("That makes {gold} coins.", ""), ("Guard", ""), ("Yes.", ""), ("Pay.", "")]));
-        dialogue.Speakers.Add(new DialogueSpeaker { Name = "Narrator" });
-        Check("a speaker the dialogue lists is translated too, spoken yet or not", dialogue.TranslatableTexts().First() == ("Narrator", ""));
-        Check("the names to pick a speaker from are the listed ones, then those the lines use", dialogue.SpeakerNames().SequenceEqual(["Narrator", "Smith", "Guard"]));
-        Check("once speakers are listed, a line by anyone else is a problem",
-            !dialogue.KnowsSpeaker("Smith") && dialogue.KnowsSpeaker("Narrator") && dialogue.KnowsSpeaker("") && dialogue.Validate().Any(p => p.Contains("not among")));
-        dialogue.Speakers.Clear();
+        Check("the speakers it uses are the resources its lines point at, each once", dialogue.SpeakersUsed().SequenceEqual([Who("Smith"), Who("Guard")]));
 
         dialogue.SpeakerAsTranslationContext = true;
         texts = [.. dialogue.TranslatableTexts()];
@@ -731,6 +740,80 @@ public partial class SpeakSelfTest : Node {
         b.Free();
     }
 
+    /// <summary>What a portrait would do with the speaker: here, only remember them.</summary>
+    sealed partial class PortraitProbe : Control, IDialogueSpeakerView {
+        public DialogueSpeaker Speaker;
+        public string SpeakerName = "";
+
+        public void ShowSpeaker(DialogueSpeaker speaker, string name) {
+            Speaker = speaker;
+            SpeakerName = name;
+        }
+    }
+
+    void AnOlderDialogueGetsSpeakerResources() {
+        // As files were before speakers were resources: lines name them, the dialogue lists them.
+        const string path = "user://misspeak_old_speakers.tres";
+        const string old = """
+            [gd_resource type="Resource" script_class="Dialogue" format=3]
+
+            [ext_resource type="Script" path="res://addons/misspeak/runtime/Dialogue.cs" id="1"]
+            [ext_resource type="Script" path="res://addons/misspeak/runtime/DialogueSection.cs" id="2"]
+            [ext_resource type="Script" path="res://addons/misspeak/runtime/DialogueLine.cs" id="3"]
+            [ext_resource type="Script" path="res://addons/misspeak/runtime/DialogueSpeaker.cs" id="4"]
+
+            [sub_resource type="Resource" id="nurse"]
+            script = ExtResource("4")
+            Name = "Nurse"
+
+            [sub_resource type="Resource" id="l1"]
+            script = ExtResource("3")
+            Speaker = "Nurse"
+            Text = "Welcome."
+
+            [sub_resource type="Resource" id="l2"]
+            script = ExtResource("3")
+            Speaker = "Nurse"
+            Text = "Hold still."
+
+            [sub_resource type="Resource" id="l3"]
+            script = ExtResource("3")
+            Speaker = "Patient"
+            Text = "Ouch."
+
+            [sub_resource type="Resource" id="s1"]
+            script = ExtResource("2")
+            Name = "Ward"
+            Lines = Array[ExtResource("3")]([SubResource("l1"), SubResource("l2"), SubResource("l3")])
+
+            [resource]
+            script = ExtResource("1")
+            Sections = Array[ExtResource("2")]([SubResource("s1")])
+            Speakers = Array[ExtResource("4")]([SubResource("nurse")])
+            """;
+        using (var file = FileAccess.Open(path, FileAccess.ModeFlags.Write)) file.StoreString(old);
+
+        var dialogue = ResourceLoader.Load<Dialogue>(path, "", ResourceLoader.CacheMode.Ignore);
+        var lines = dialogue.Sections[0].Lines;
+        Check("an older dialogue is upgraded, once", dialogue.UpgradeSpeakers() && !dialogue.UpgradeSpeakers());
+        Check("a line gets the speaker the dialogue listed under its name, shared by all their lines",
+            lines[0].SpokenBy is { Name: "Nurse" } && ReferenceEquals(lines[0].SpokenBy, lines[1].SpokenBy));
+        Check("and one it did not list gets a new speaker of that name", lines[2].SpokenBy is { Name: "Patient" } && dialogue.SpeakersUsed().Count == 2);
+
+        ResourceSaver.Save(dialogue, path);
+        var saved = FileAccess.GetFileAsString(path);
+        var again = ResourceLoader.Load<Dialogue>(path, "", ResourceLoader.CacheMode.Ignore);
+        Check("saved again, the names and the list are gone and the speakers stay",
+            !saved.Contains("Speaker = \"") && !saved.Contains("Speakers =") && !again.UpgradeSpeakers()
+            && again.Sections[0].Lines.Select(l => l.SpokenBy?.Name).SequenceEqual(["Nurse", "Nurse", "Patient"]));
+
+        using (var file = FileAccess.Open(path, FileAccess.ModeFlags.Write)) file.StoreString(old);
+        var talk = new Talk(this, ResourceLoader.Load<Dialogue>(path, "", ResourceLoader.CacheMode.Ignore));
+        Check("a runner plays an older dialogue as it is, upgraded on the way", talk.Runner.Start() && talk.Runner.Speaker == "Nurse" && talk.Runner.SpeakerInfo != null);
+        talk.Free();
+        DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(path));
+    }
+
     void ADialogueSurvivesSavingAndLoading() {
         var count = Entry("count", Variant.Type.Int, 0);
         var action = new SpeakProbeAction { RunningTicks = 1 };
@@ -751,7 +834,7 @@ public partial class SpeakSelfTest : Node {
         var loadedLine = loadedAsk?.Lines.FirstOrDefault();
         Check("sections come back with their ids and names", loadedAsk is { Name: "Ask" } && loaded.StartSection == loadedAsk);
         Check("a line comes back with its speaker, text and condition",
-            loadedLine is { Speaker: "Smith", Text: "Well?" } && loadedLine.Id == question.Id && loadedLine.Conditions.FirstOrDefault() is SpeakProbeCondition);
+            loadedLine is { SpokenBy.Name: "Smith", Text: "Well?" } && loadedLine.Id == question.Id && loadedLine.Conditions.FirstOrDefault() is SpeakProbeCondition);
         Check("its action comes back with its link", loadedLine?.Actions.FirstOrDefault() is SpeakProbeAction { RunningTicks: 1 } node && node.Counter.EntryId == count.Id);
         Check("an option comes back with its text, target and condition",
             loadedAsk?.Options.FirstOrDefault() is { Text: "Yes." } option && option.Id == choice.Id
@@ -816,7 +899,7 @@ public partial class SpeakSelfTest : Node {
     }
 
     static DialogueLine Line(string speaker, string text, params MissNode[] actions) {
-        var line = new DialogueLine { Speaker = speaker, Text = text };
+        var line = new DialogueLine { SpokenBy = speaker == "" ? null : Who(speaker), Text = text };
         foreach (var action in actions) line.Actions.Add(action);
         return line;
     }

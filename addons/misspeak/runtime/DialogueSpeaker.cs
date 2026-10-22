@@ -4,13 +4,14 @@ using Misscore;
 namespace Misspeak;
 
 /// <summary>
-/// Someone who speaks in a <see cref="Dialogue"/>. Listing the speakers on the dialogue lets the
-/// editor offer them for each line instead of having the name typed every time, and flags a line
-/// whose speaker is not among them. A line names its speaker by <see cref="Name"/>.
+/// Someone who speaks: a resource of its own, saved as a <c>.tres</c> and shared by every dialogue
+/// they speak in. A line points at its speaker (<see cref="DialogueLine.SpokenBy"/>), so renaming
+/// one here renames them everywhere. Whatever shows a dialogue gets the speaker along with each
+/// line, which is where more about them — a portrait, a colour — can go.
 /// </summary>
 [GlobalClass, Tool]
 public partial class DialogueSpeaker : MissResource {
-    /// <summary>What a line's <see cref="DialogueLine.Speaker"/> says to mean this speaker. Translated like any other text.</summary>
+    /// <summary>The name shown for them. Translated like any other text.</summary>
     [Export]
     public string Name { get; set; } = "";
 

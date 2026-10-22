@@ -368,7 +368,8 @@ public static class SpeakLabels {
         if (line == null) return "";
         if (string.IsNullOrEmpty(line.Text)) return "(silent)";
         var text = Translated(line.Text, dialogue?.ContextOf(line) ?? "");
-        return string.IsNullOrEmpty(line.Speaker) ? Short(text) : Short($"{Translated(line.Speaker)}: {text}");
+        var speaker = line.SpokenBy?.Name;
+        return string.IsNullOrEmpty(speaker) ? Short(text) : Short($"{Translated(speaker)}: {text}");
     }
 
     public static string Does(MissNode action) => action == null ? "" : $"▸ {Runs(action)}";
@@ -403,8 +404,7 @@ public static class SpeakLabels {
 
     public static string Problem(DialogueLine line, Dialogue dialogue) {
         if (line == null) return "";
-        if (string.IsNullOrEmpty(line.Text) && !line.Actions.Any(a => a != null)) return "says nothing and does nothing";
-        return dialogue != null && !dialogue.KnowsSpeaker(line.Speaker) ? $"{line.Speaker} is not among the dialogue's speakers" : "";
+        return string.IsNullOrEmpty(line.Text) && !line.Actions.Any(a => a != null) ? "says nothing and does nothing" : "";
     }
 
     /// <summary>What is wrong with an action or a condition, one problem per line.</summary>

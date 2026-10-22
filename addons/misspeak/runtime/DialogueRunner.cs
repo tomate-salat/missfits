@@ -53,6 +53,9 @@ public partial class DialogueRunner : MissRunner {
     /// <summary>Speaker of the line being shown, or empty.</summary>
     public string Speaker => Instance?.Speaker ?? "";
 
+    /// <summary>The speaker of the line being shown, for all there is to know about them; or null.</summary>
+    public DialogueSpeaker SpeakerInfo => Instance?.SpeakerInfo;
+
     /// <summary>Text of the line being shown, or empty.</summary>
     public string Text => Instance?.Text ?? "";
 

@@ -52,15 +52,14 @@ public partial class DialogueInspectorPlugin : EditorInspectorPlugin {
     /// The dropdown for a line's speaker — or null when the property is not that, or the line
     /// belongs to no open dialogue, in which case the plain text field stays.
     /// </summary>
-    public static SpeakerEditorProperty SpeakerEditorFor(Dialogue dialogue, string property) {
-        if (dialogue == null || property != nameof(DialogueLine.Speaker)) return null;
+    /// <param name="files">The speaker files to offer; left out, every one in the project.</param>
+    public static SpeakerEditorProperty SpeakerEditorFor(Dialogue dialogue, string property,
+        System.Collections.Generic.IEnumerable<DialogueSpeaker> files = null) {
+        if (dialogue == null || property != nameof(DialogueLine.SpokenBy)) return null;
 
-        var listed = new System.Collections.Generic.List<string>();
-        foreach (var speaker in dialogue.Speakers) {
-            if (!string.IsNullOrEmpty(speaker?.Name) && !listed.Contains(speaker.Name)) listed.Add(speaker.Name);
-        }
+        // The files first, then those only this dialogue keeps.
         var editor = new SpeakerEditorProperty();
-        editor.Offer(listed, dialogue.SpeakerNames());
+        editor.Offer([.. files ?? SpeakerEditorProperty.ProjectSpeakers(), .. dialogue.SpeakersUsed()]);
         return editor;
     }
 

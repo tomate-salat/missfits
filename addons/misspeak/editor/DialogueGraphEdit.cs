@@ -662,7 +662,7 @@ public partial class DialogueGraphEdit : MissGraphEdit {
         if (section == null) return null;
 
         // The speaker carries over: most of the time the same one goes on talking.
-        var line = new DialogueLine { Speaker = section.Lines.LastOrDefault(l => l != null)?.Speaker ?? "" };
+        var line = new DialogueLine { SpokenBy = section.Lines.LastOrDefault(l => l != null)?.SpokenBy };
         Commit($"Misspeak: add line to {section.Name}", () => section.Lines.Add(line));
         return line;
     }

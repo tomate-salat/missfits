@@ -98,8 +98,11 @@ public sealed partial class DialogueInstance {
 
     public DialogueWait Waiting { get; private set; }
 
-    /// <summary>Speaker of the line being shown, or empty.</summary>
+    /// <summary>Name of the speaker of the line being shown, translated; or empty.</summary>
     public string Speaker { get; private set; } = "";
+
+    /// <summary>The speaker of the line being shown, for all there is to know about them; or null.</summary>
+    public DialogueSpeaker SpeakerInfo => _shown?.Definition.SpokenBy;
 
     /// <summary>Text of the line being shown, or empty.</summary>
     public string Text { get; private set; } = "";
@@ -157,7 +160,13 @@ public sealed partial class DialogueInstance {
 
     static MissNode[] Clones(IEnumerable<MissNode> nodes) => [.. nodes.Where(n => n != null).Select(n => n.CloneRuntime())];
 
-    public static DialogueInstance Create(Dialogue definition) => definition?.StartSection == null ? null : new DialogueInstance(definition);
+    public static DialogueInstance Create(Dialogue definition) {
+        if (definition?.StartSection == null) return null;
+
+        // A dialogue from an older file is brought up to date in memory; the editor saves it so.
+        definition.UpgradeSpeakers();
+        return new DialogueInstance(definition);
+    }
 
     /// <summary>
     /// Begins the dialogue at its start section — or at the given one — and works on it right away,
@@ -301,7 +310,7 @@ public sealed partial class DialogueInstance {
 
     /// <summary>Puts what is on show into words: translated, and with the placeholders filled in.</summary>
     void Fill(MissContext ctx) {
-        Speaker = _shown == null ? "" : Words(_shown.Definition.Speaker, "", ctx);
+        Speaker = Words(SpeakerInfo?.Name, "", ctx);
         Text = _shown == null ? "" : Words(_shown.Definition.Text, Definition.ContextOf(_shown.Definition), ctx);
         Choices = [.. _offered.Select(option => Words(option.Definition.Text, "", ctx))];
     }

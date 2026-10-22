@@ -39,7 +39,8 @@ Wires are only needed where a dialogue branches or jumps. A talk without choices
 
 A `DialogueLine` has:
 
-- a **speaker** and a **text** — either may be empty;
+- a **speaker** (`SpokenBy`) and a **text** — either may be empty. A speaker is a `DialogueSpeaker`
+  resource of its own, saved as a `.tres` and shared by every dialogue they speak in;
 - **actions**, which run on reaching the line, *before* its text is shown: top to bottom, each
   until it no longer returns Running;
 - **conditions**: a line whose conditions do not hold is skipped, actions and all.
@@ -96,10 +97,12 @@ Texts may name blackboard entries in braces: `You have {gold} coins.`
   target that does not lead back ends the dialogue.
 - **Selecting** a section or a row shows exactly that in the Inspector, which is where texts,
   speakers and parameters are edited.
-- **Speakers.** Click the empty canvas to get the dialogue itself into the Inspector, and list who
-  speaks under *Speakers*. From then on a line's speaker is a dropdown of those instead of a text
-  field, and a line spoken by anyone else is flagged. Renaming a speaker there renames it in every
-  line. With no speakers listed, a line's speaker is free text.
+- **Speakers.** A line's speaker is a dropdown of every speaker file in the project. *New
+  speaker…* saves a new one, named after its file; the button beside the dropdown shows the
+  speaker in the Inspector, where renaming them renames them in every dialogue. A speaker marked
+  *only in this dialogue* is kept inside it — save it to a file from the Inspector to share it.
+  Dialogues from before speakers were resources name them instead; opening one in the editor
+  turns each name into a speaker, and the dialogue then wants saving.
 - **Blackboard.** The dialogue's entries sit beside the graph; parameters of actions and
   conditions link to them in the Inspector, and texts name them in `{braces}`.
 - **⚠** names what is wrong: an option that leads to a section that is gone, a line that says and
@@ -170,7 +173,7 @@ in the scene show it, and are found by their interfaces — any Control can be o
 
 | Interface | Shows | In the scene |
 |---|---|---|
-| `IDialogueSpeakerView` | who speaks | `DialogueSpeakerLabel` |
+| `IDialogueSpeakerView` | who speaks — the `DialogueSpeaker` and their translated name | `DialogueSpeakerLabel` |
 | `IDialogueTextView` | the line, and whether it is still being written out | `DialogueTextLabel` (`CharactersPerSecond`) |
 | `IDialogueChoiceView` | the choices, and which was picked | `DialogueChoiceList` (`ButtonScene` for your own button) |
 | `IDialogueContinueHint` | that a press carries on | `DialogueContinueHint` |
@@ -190,7 +193,7 @@ which leave out the runner — and call the runner's `Advance()` and `Choose(ind
 | `Advance()` | carries on after a line without choices |
 | `Choose(index)` | picks one of the choices offered |
 | `Cancel()` | ends the dialogue where it is |
-| `IsActive`, `Waiting`, `Speaker`, `Text`, `Choices` | where the dialogue is, for a box that polls instead |
+| `IsActive`, `Waiting`, `Speaker`, `SpeakerInfo`, `Text`, `Choices` | where the dialogue is, for a box that polls instead; `SpeakerInfo` is the speaker's resource |
 | `Autostart` | starts the runner's dialogue when the scene is ready |
 
 `Stop()` and `Enabled`, which every Missfits runner has, pause the dialogue where it is.
@@ -217,12 +220,14 @@ name a particular one.
 ## Building one in code
 
 ```csharp
+var smith = GD.Load<DialogueSpeaker>("res://speakers/smith.tres");
+
 var ask = new DialogueSection { Name = "Ask" };
-ask.Lines.Add(new DialogueLine { Speaker = "Smith", Text = "Welcome." });
-ask.Lines.Add(new DialogueLine { Speaker = "Smith", Text = "What do you need?" });
+ask.Lines.Add(new DialogueLine { SpokenBy = smith, Text = "Welcome." });
+ask.Lines.Add(new DialogueLine { SpokenBy = smith, Text = "What do you need?" });
 
 var sword = new DialogueSection { Name = "Sword" };
-sword.Lines.Add(new DialogueLine { Speaker = "Smith", Text = "A fine blade. {gold} coins." });
+sword.Lines.Add(new DialogueLine { SpokenBy = smith, Text = "A fine blade. {gold} coins." });
 
 ask.Options.Add(new DialogueOption { Text = "A sword.", TargetSectionId = sword.Id });
 ask.Options.Add(new DialogueOption { Text = "Nothing." });

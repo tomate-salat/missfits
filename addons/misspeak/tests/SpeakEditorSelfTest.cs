@@ -26,6 +26,7 @@ public partial class SpeakEditorSelfTest : Node {
     DialogueSection _sword;
     DialogueLine _question;
     DialogueOption _buy;
+    readonly DialogueSpeaker _smith = new() { Name = "Smith" };
 
     Resource _lastEdited;
     int _inspectorCalls;
@@ -62,7 +63,7 @@ public partial class SpeakEditorSelfTest : Node {
         await PortsAndLeadingBackNeedNoWire();
         await NodesLinkToTheBlackboardBesideTheGraph();
         await RowsShowTheProjectsTranslations();
-        await SpeakersArePickedFromTheDialoguesList();
+        await SpeakersAreSharedResources();
         await SavingAndRevertingFollowTheFile();
         await TheGraphShowsWhereARunningDialogueIs();
 
@@ -74,13 +75,13 @@ public partial class SpeakEditorSelfTest : Node {
     }
 
     void BuildDialogue() {
-        _question = new DialogueLine { Speaker = "Smith", Text = "What do you need?" };
+        _question = new DialogueLine { SpokenBy = _smith, Text = "What do you need?" };
         _ask = new DialogueSection { Name = "Ask", GraphPosition = new Vector2(40, 40) };
-        _ask.Lines.Add(new DialogueLine { Speaker = "Smith", Text = "Welcome." });
+        _ask.Lines.Add(new DialogueLine { SpokenBy = _smith, Text = "Welcome." });
         _ask.Lines.Add(_question);
 
         _sword = new DialogueSection { Name = "Sword", GraphPosition = new Vector2(460, 40) };
-        _sword.Lines.Add(new DialogueLine { Speaker = "Smith", Text = "A fine blade, forged in the old way, and worth every single coin of its price." });
+        _sword.Lines.Add(new DialogueLine { SpokenBy = _smith, Text = "A fine blade, forged in the old way, and worth every single coin of its price." });
 
         _buy = new DialogueOption { Text = "A sword.", TargetSectionId = _sword.Id };
         _buy.Conditions.Add(new SpeakProbeCondition { AtLeast = 1 });
@@ -139,7 +140,7 @@ public partial class SpeakEditorSelfTest : Node {
         await Settle();
         var added = _ask.Lines.Last();
         Check("the button below the lines adds one", _ask.Lines.Count == 3 && Rows(_ask, SpeakRow.Line).Count == 3);
-        Check("with the speaker of the line before it", added.Speaker == "Smith");
+        Check("with the speaker of the line before it", added.SpokenBy == _smith);
 
         var action = _graph.AddAction(_ask.Id, _question.Id, typeof(SpeakProbeAction));
         var gate = _graph.AddLineCondition(_ask.Id, _question.Id, typeof(SpeakProbeCondition));
@@ -488,7 +489,7 @@ public partial class SpeakEditorSelfTest : Node {
         ProjectSettings.SetSetting(testKey, "de_DE");
 
         Check("a line reads in the project's translation, its speaker too",
-            SpeakLabels.Says(new DialogueLine { Speaker = "Smith", Text = "%smith/greet" }) == "Schmiedin: Willkommen.");
+            SpeakLabels.Says(new DialogueLine { SpokenBy = new DialogueSpeaker { Name = "Smith" }, Text = "%smith/greet" }) == "Schmiedin: Willkommen.");
         Check("and so does a choice", SpeakLabels.Describe(new DialogueOption { Text = "%smith/leave" }, _dialogue) == "“Tschüss.” → end");
         Check("a text no translation knows reads as written", SpeakLabels.Translated("%nobody/knows") == "%nobody/knows");
 
@@ -524,53 +525,40 @@ public partial class SpeakEditorSelfTest : Node {
 
     // ---- speakers ----------------------------------------------------------------------------
 
-    async System.Threading.Tasks.Task SpeakersArePickedFromTheDialoguesList() {
-        Check("with no speakers listed, any name goes", _dialogue.KnowsSpeaker("Smith") && Rows(_ask, SpeakRow.Line)[0].Warning == "");
+    async System.Threading.Tasks.Task SpeakersAreSharedResources() {
         Check("only a line of the open dialogue gets the dropdown, and only for its speaker",
-            DialogueInspectorPlugin.SpeakerEditorFor(_dialogue, nameof(DialogueLine.Speaker)) != null
-            && DialogueInspectorPlugin.SpeakerEditorFor(_dialogue, nameof(DialogueLine.Text)) == null
-            && DialogueInspectorPlugin.SpeakerEditorFor(null, nameof(DialogueLine.Speaker)) == null);
+            DialogueInspectorPlugin.SpeakerEditorFor(_dialogue, nameof(DialogueLine.SpokenBy), []) != null
+            && DialogueInspectorPlugin.SpeakerEditorFor(_dialogue, nameof(DialogueLine.Text), []) == null
+            && DialogueInspectorPlugin.SpeakerEditorFor(null, nameof(DialogueLine.SpokenBy), []) == null);
 
-        var you = new DialogueSpeaker { Name = "You" };
-        var guard = new DialogueSpeaker { Name = "Guard" };
-        _dialogue.Speakers.Add(you);
-        _dialogue.Speakers.Add(guard);
-        _panel.OnInspectorEdited();
-        await Settle();
-        Check("the panel owns the speakers of its dialogue", _panel.Owns(you) && !_panel.Owns(new DialogueSpeaker()));
+        // Speakers saved as files, as the dropdown makes them: named after the file.
+        var you = SpeakerEditorProperty.CreateSpeakerFile("user://you.tres");
+        var guard = SpeakerEditorProperty.CreateSpeakerFile("user://guard.tres");
+        Check("a new speaker file is named after the file", you is { Name: "You", ResourcePath: "user://you.tres" } && guard is { Name: "Guard" });
 
-        var editor = DialogueInspectorPlugin.SpeakerEditorFor(_dialogue, nameof(DialogueLine.Speaker));
-        Check("the dropdown offers nobody, the listed speakers, then names the lines use besides",
-            editor.Entries.SequenceEqual([SpeakerEditorProperty.Nobody, "You", "Guard", "Smith" + SpeakerEditorProperty.Unlisted]));
+        var editor = DialogueInspectorPlugin.SpeakerEditorFor(_dialogue, nameof(DialogueLine.SpokenBy), [you, guard]);
+        Check("the dropdown offers nobody, the speaker files, those only this dialogue keeps, and a new one",
+            editor.Entries.SequenceEqual([SpeakerEditorProperty.Nobody, "You", "Guard", "Smith" + SpeakerEditorProperty.OnlyHere, SpeakerEditorProperty.NewSpeaker]));
         editor.Free();
-        Check("a line whose speaker is not listed is flagged", Rows(_ask, SpeakRow.Line)[0].Warning.Contains("not among the dialogue's speakers")
-                                                               && _dialogue.Validate().Any(p => p.Contains("not among the dialogue's speakers")));
+        Check("the panel owns the speakers its lines use", _panel.Owns(_smith) && !_panel.Owns(guard));
 
-        guard.Name = "Smith";
+        // One speaker, many lines: renaming it renames it everywhere, with nothing to follow up.
+        _smith.Name = "Your smith";
         _panel.OnInspectorEdited();
         await Settle();
-        Check("which goes once the speaker is listed", Rows(_ask, SpeakRow.Line)[0].Warning == "" && _dialogue.Validate().Length == 0);
-
-        // Renamed letter by letter, as typing in the Inspector does — through a name another speaker has.
-        foreach (var name in new[] { "Y", "Yo", "You", "Your", "Your smith" }) {
-            guard.Name = name;
-            _panel.OnInspectorEdited();
-        }
-        await Settle();
-        Check("renaming a speaker renames it in the lines that meant it", _ask.Lines.All(l => l.Speaker == "Your smith") && _sword.Lines[0].Speaker == "Your smith");
-        Check("and shows on their rows", RowText(_ask, SpeakRow.Line, 1) == "Your smith: What do you need?");
-
-        var mine = new DialogueLine { Speaker = "You", Text = "Hello." };
-        _ask.Lines.Add(mine);
-        guard.Name = "Smith";
+        Check("renaming a speaker shows on every row it speaks", RowText(_ask, SpeakRow.Line, 1) == "Your smith: What do you need?"
+                                                                 && RowText(_sword, SpeakRow.Line, 0).StartsWith("Your smith: "));
+        _smith.Name = "Smith";
+        _question.SpokenBy = guard;
         _panel.OnInspectorEdited();
         await Settle();
-        Check("passing through another speaker's name left that speaker's lines alone", mine.Speaker == "You" && _question.Speaker == "Smith");
-
-        _ask.Lines.Remove(mine);
-        _dialogue.Speakers.Clear();
+        Check("a line spoken by anyone is no problem", RowText(_ask, SpeakRow.Line, 1) == "Guard: What do you need?" && Rows(_ask, SpeakRow.Line)[1].Warning == "");
+        _question.SpokenBy = _smith;
         _panel.OnInspectorEdited();
         await Settle();
+
+        DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath("user://you.tres"));
+        DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath("user://guard.tres"));
     }
 
     // ---- saving ------------------------------------------------------------------------------

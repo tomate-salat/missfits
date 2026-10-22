@@ -95,7 +95,7 @@ public partial class DialogueBox : Control {
         if (runner != Showing) return;
 
         _choices = [];
-        foreach (var view in _speakers) view.ShowSpeaker(speaker);
+        foreach (var view in _speakers) view.ShowSpeaker(runner.SpeakerInfo, speaker);
         foreach (var view in _texts) view.ShowText(text);
         Show();
         Refresh();
@@ -133,7 +133,7 @@ public partial class DialogueBox : Control {
     void Clear() {
         _choices = [];
         _offered = [];
-        foreach (var view in _speakers) view.ShowSpeaker("");
+        foreach (var view in _speakers) view.ShowSpeaker(null, "");
         foreach (var view in _texts) view.ShowText("");
         foreach (var view in _choiceViews) view.ShowChoices([]);
         foreach (var view in _hints) view.ShowHint(false);

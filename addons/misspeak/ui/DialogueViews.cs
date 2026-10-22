@@ -6,9 +6,11 @@ namespace Misspeak;
 // so any Control can be one: put your own in the scene in place of the one it replaces. A part that
 // is missing is simply not shown.
 
-/// <summary>Shows who is speaking. Empty when nobody is named.</summary>
+/// <summary>Shows who is speaking.</summary>
 public interface IDialogueSpeakerView {
-    void ShowSpeaker(string speaker);
+    /// <param name="speaker">The speaker's resource, for more than the name — or null for nobody.</param>
+    /// <param name="name">The speaker's name, translated; empty for nobody.</param>
+    void ShowSpeaker(DialogueSpeaker speaker, string name);
 }
 
 /// <summary>Shows the text of a line, at once or written out bit by bit.</summary>
