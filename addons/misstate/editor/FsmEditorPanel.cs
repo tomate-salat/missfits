@@ -540,8 +540,7 @@ public partial class FsmEditorPanel : VBoxContainer, IRunnerDebugView {
     }
 
     public override void _ShortcutInput(InputEvent @event) {
-        if (Machine == null || !IsVisibleInTree()) return;
-        if (@event is not InputEventKey { Pressed: true, Keycode: Key.S, CtrlPressed: true }) return;
+        if (Machine == null || !EditorShortcuts.IsSave(this, @event)) return;
 
         Save();
         AcceptEvent();

@@ -550,8 +550,7 @@ public partial class DialogueEditorPanel : VBoxContainer, IRunnerDebugView {
     }
 
     public override void _ShortcutInput(InputEvent @event) {
-        if (Dialogue == null || !IsVisibleInTree()) return;
-        if (@event is not InputEventKey { Pressed: true, Keycode: Key.S, CtrlPressed: true }) return;
+        if (Dialogue == null || !EditorShortcuts.IsSave(this, @event)) return;
 
         Save();
         AcceptEvent();
