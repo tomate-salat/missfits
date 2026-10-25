@@ -58,6 +58,19 @@ language's title for its language and plural rule.
 Right-click a cell for more: copy the source into the translation (marked fuzzy, as a start), toggle
 fuzzy, clear, make a text plural or singular, delete it.
 
+**Keys as paths — the tree.** When the sources are keys laid out like paths rather than English
+sentences (`%welcome/option/enter`), the table shows them as a tree: one row per folder, which folds
+and unfolds, with per language how many of the texts inside are translated (`2/3`, red while
+something is missing). A text shows only the last part of its key; hover for the whole key, and
+edit the source cell to rename it. Sets whose sources mostly contain a `/` open as a tree; the
+*Tree* button switches. Enter or a double-click folds a folder, folded folders stay folded, and
+*+ Text* starts a new key in the folder at hand.
+
+Why keys: with the English text as the key, changing the English changes the key — every
+translation of the old text no longer matches, and the game quietly shows the new English instead.
+With keys, the English is a translation like any other (add an `en` language), and a missing one
+shows the key, which is hard to miss.
+
 The search looks into contexts, sources and every translation. The filter shows only what is
 untranslated, fuzzy, has problems, or is plural.
 

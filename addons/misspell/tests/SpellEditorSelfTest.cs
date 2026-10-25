@@ -98,6 +98,7 @@ public partial class SpellEditorSelfTest : Node {
             ProblemsAreFound();
             SavingWritesTheFiles();
             await TheTableShowsPluralsAsRows();
+            await KeysLaidOutAsPathsShowAsATree();
         } catch (System.Exception e) {
             // Without this, a crash would leave the headless run waiting forever.
             _failures.Add($"crashed: {e}");
@@ -401,6 +402,85 @@ public partial class SpellEditorSelfTest : Node {
         Check("Godot reads the saved file with its plural rule", Pick(1) == "Masz {n} monetę." && Pick(3) == "Masz {n} monety."
                                                                 && Pick(5) == "Masz {n} monet." && Pick(22) == "Masz {n} monety." && Pick(12) == "Masz {n} monet.");
         panel.QueueFree();
+    }
+
+    async System.Threading.Tasks.Task KeysLaidOutAsPathsShowAsATree() {
+        const string keys = Folder + "/keys";
+        DirAccess.MakeDirRecursiveAbsolute(keys);
+        string[] ids = ["%welcome/welcome", "%welcome/option/enter", "%welcome/option/good bye", "%quest missing/missing text", "plain"];
+        string Po(string language, Dictionary<string, string> texts) {
+            var po = PoCatalog.Create(language);
+            foreach (var id in ids) po.Entries.Add(new PoEntry { Id = id, Strings = [texts.GetValueOrDefault(id, "")] });
+            return po.Write();
+        }
+        void Save(string name, string text) {
+            using var file = FileAccess.Open($"{keys}/{name}", FileAccess.ModeFlags.Write);
+            file.StoreString(text);
+        }
+        Save("arena.pot", Po(null, []));
+        // Written as another tool might: Windows line ends, a string split over two lines.
+        Save("arena.de.po", Po("de", new() { ["%welcome/welcome"] = "Willkommen", ["%welcome/option/enter"] = "Eintreten", ["%quest missing/missing text"] = "Quest fehlt", ["plain"] = "Schlicht" })
+            .Replace("msgstr \"Willkommen\"", "msgstr \"Will\"\n\"kommen\"").Replace("\n", "\r\n"));
+
+        var panel = new MisspellPanel();
+        AddChild(panel);
+        panel.Size = new Vector2(1400, 700);
+        await Settle();
+        panel.Open($"{keys}/arena.pot");
+        await Settle();
+        var table = panel.Table;
+        var set = panel.Catalogs;
+
+        Check("a file formatted differently is not unsaved just by being opened", !panel.IsDirty && Language(set, "de").Catalog.Find("%welcome/welcome")?.StringAt(0) == "Willkommen");
+        Check("keys laid out as paths open as a tree", table.TreeView);
+        Check("the source comes first, where the tree indents", table.KindOf(0) == TranslationTable.ColumnKind.Source && table.KindOf(1) == TranslationTable.ColumnKind.Status);
+
+        var top = Children(table.GetRoot());
+        Check("folders and loose keys at the top, in the order of the file", top.Select(i => i.GetText(0)).SequenceEqual(["%welcome/", "%quest missing/", "plain"]));
+        var welcome = table.GroupItem("%welcome");
+        Check("a folder holds its texts and the folders below it", Children(welcome).Select(i => i.GetText(0)).SequenceEqual(["welcome", "option/"])
+                                                                   && Children(table.GroupItem("%welcome/option")).Select(i => i.GetText(0)).SequenceEqual(["enter", "good bye"]));
+        var enter = table.ItemOf(Row(set, "%welcome/option/enter"));
+        Check("a text shows the last part of its key, the whole key on hover", enter.GetText(0) == "enter" && enter.GetTooltipText(0) == "%welcome/option/enter");
+        var de = table.ColumnOf(Language(set, "de"));
+        Check("a folder counts what is translated inside it", welcome.GetText(de) == "2/3" && table.GroupItem("%welcome/option").GetText(de) == "1/2"
+                                                              && table.GroupItem("%quest missing").GetText(de) == "1/1");
+        Check("a folder is no text: it cannot be edited", !table.CanEdit(welcome, de) && !table.CanEdit(welcome, 0) && table.RowOf(welcome) == null);
+
+        table.SelectCell(Row(set, "%welcome/option/good bye"), 0, de);
+        table.WriteCell(table.GetSelected(), de, "Tschüss");
+        Check("translating a text updates the folders above it", table.GroupItem("%welcome/option").GetText(de) == "2/2" && table.GroupItem("%welcome").GetText(de) == "3/3");
+
+        Check("a new text goes in the folder of the selected one", table.SelectedFolder() == "%welcome/option/");
+        table.SelectItem(table.GroupItem("%quest missing"), de);
+        Check("or in the selected folder", table.SelectedFolder() == "%quest missing/");
+        table._GuiInput(new InputEventKey { Pressed = true, Keycode = Key.X, Unicode = 'x' });
+        Check("typing on a folder opens no editor", !table.IsEditing);
+        table._GuiInput(new InputEventKey { Pressed = true, Keycode = Key.Enter });
+        Check("Enter folds a folder", table.GroupItem("%quest missing").Collapsed);
+
+        table.GroupItem("%welcome").Collapsed = true;
+        table.Rebuild();
+        Check("folded folders stay folded when the table is rebuilt", table.GroupItem("%welcome").Collapsed && table.GroupItem("%quest missing").Collapsed);
+        table.SelectCell(Row(set, "%welcome/option/enter"), 0, de);
+        Check("selecting a text inside unfolds the folders it is in", !table.GroupItem("%welcome").Collapsed && !table.GroupItem("%welcome/option").Collapsed);
+
+        table.Search = "tschüss";
+        table.Rebuild();
+        Check("the search keeps only the folders with something found", Children(table.GetRoot()).Select(i => i.GetText(0)).SequenceEqual(["%welcome/"])
+                                                                         && table.GroupItem("%welcome/option").GetText(0) == "option/");
+        table.Search = "";
+
+        panel.ShowAsTree(false);
+        Check("without the tree the keys are rows of their own again", table.KindOf(0) == TranslationTable.ColumnKind.Status && table.GroupItem("%welcome") == null
+                                                                       && Children(table.GetRoot()).Count == 5 && table.ItemOf(Row(set, "%welcome/option/enter")).GetText(table.ColumnOf(TranslationTable.ColumnKind.Source)) == "%welcome/option/enter");
+        panel.QueueFree();
+    }
+
+    static List<TreeItem> Children(TreeItem parent) {
+        var children = new List<TreeItem>();
+        for (var item = parent?.GetFirstChild(); item != null; item = item.GetNext()) children.Add(item);
+        return children;
     }
 
     static string WriteAndRead(TranslationTable table, string text) {

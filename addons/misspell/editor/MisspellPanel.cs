@@ -51,6 +51,7 @@ public partial class MisspellPanel : VBoxContainer {
     Button _addMessage;
     LineEdit _search;
     OptionButton _filter;
+    Button _treeToggle;
     Button _contextToggle;
     Button _detailsToggle;
     Label _status;
@@ -140,6 +141,9 @@ public partial class MisspellPanel : VBoxContainer {
         _filter.Connect(OptionButton.SignalName.ItemSelected, new Callable(this, MethodName.OnFilterPicked));
         bar.AddChild(_filter);
 
+        _treeToggle = new Button { Text = "Tree", ToggleMode = true, Flat = true, TooltipText = "Show keys like welcome/option/enter as folders" };
+        _treeToggle.Connect(BaseButton.SignalName.Toggled, new Callable(this, MethodName.OnTreeToggled));
+        bar.AddChild(_treeToggle);
         _contextToggle = new Button { Text = "Context", ToggleMode = true, ButtonPressed = true, Flat = true, TooltipText = "Show the context column" };
         _contextToggle.Connect(BaseButton.SignalName.Toggled, new Callable(this, MethodName.OnContextToggled));
         bar.AddChild(_contextToggle);
@@ -186,7 +190,7 @@ public partial class MisspellPanel : VBoxContainer {
         _register.Clear();
         _set = CatalogSet.Open(path);
         HandOver();
-        Table.Rebuild();
+        ShowAsTree(LooksLikePaths(_set));
         Details.ShowRow(null, null);
         RefreshCatalogList();
         UpdateUi();
@@ -471,11 +475,13 @@ public partial class MisspellPanel : VBoxContainer {
 
     void AddMessagePressed() {
         if (Catalogs == null) return;
-        _newSource.Text = _search.Text;
+        // In the tree, a new key starts in the folder at hand.
+        _newSource.Text = Table.SelectedFolder() ?? _search.Text;
         _newPlural.Text = "";
         _newContext.Text = "";
         _messageDialog.PopupCentered();
         _newSource.GrabFocus();
+        _newSource.CaretColumn = _newSource.Text.Length;
     }
 
     void OnMessageConfirmed() {
@@ -505,6 +511,18 @@ public partial class MisspellPanel : VBoxContainer {
         Table.ShowOnly = (TranslationTable.Filter) _filter.GetItemId((int) index);
         Table.Rebuild();
     }
+
+    /// <summary>Sources that are mostly keys laid out as paths are shown as a tree when opened; sentences rarely hold a slash.</summary>
+    static bool LooksLikePaths(CatalogSet set) =>
+        set.Rows.Count > 0 && set.Rows.Count(r => r.Id.Contains(TranslationTable.PathSeparator)) * 2 >= set.Rows.Count;
+
+    public void ShowAsTree(bool on) {
+        _treeToggle.SetPressedNoSignal(on);
+        Table.TreeView = on;
+        Table.Rebuild();
+    }
+
+    void OnTreeToggled(bool on) => ShowAsTree(on);
 
     void OnContextToggled(bool on) {
         Table.ShowContext = on;

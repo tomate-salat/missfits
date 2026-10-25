@@ -41,9 +41,25 @@ public partial class TranslationTable : Tree {
     public Filter ShowOnly = Filter.All;
     public bool ShowContext = true;
 
+    /// <summary>
+    /// Sources that are keys laid out as paths — <c>welcome/option/enter</c> — are shown as a tree:
+    /// a row per folder, which can be folded, with how far each language is inside it.
+    /// </summary>
+    public bool TreeView;
+
+    public const char PathSeparator = '/';
+
+    /// <summary>Marks the metadata of a folder's row, so no message's key is ever mistaken for it.</summary>
+    const string GroupMark = "\u0001";
+
     readonly List<ColumnKind> _kinds = [];
     readonly List<CatalogFile> _columnFiles = [];
     readonly Dictionary<string, TreeItem> _items = [];
+    readonly Dictionary<string, TreeItem> _groups = [];
+    readonly Dictionary<string, List<CatalogRow>> _groupRows = [];
+
+    /// <summary>Folders the user folded, by path; they stay folded when the table is rebuilt.</summary>
+    readonly HashSet<string> _collapsed = [];
     int _sortColumn = -1;
     bool _sortDescending;
 
@@ -69,6 +85,7 @@ public partial class TranslationTable : Tree {
         Connect(Tree.SignalName.ItemActivated, new Callable(this, MethodName.OnItemActivated));
         Connect(Tree.SignalName.ColumnTitleClicked, new Callable(this, MethodName.OnColumnTitleClicked));
         Connect(Tree.SignalName.ItemMouseSelected, new Callable(this, MethodName.OnItemMouseSelected));
+        Connect(Tree.SignalName.ItemCollapsed, new Callable(this, MethodName.OnItemCollapsed));
 
         _editor = new TextEdit {
             Name = "CellEditor",
@@ -107,6 +124,8 @@ public partial class TranslationTable : Tree {
 
         Clear();
         _items.Clear();
+        _groups.Clear();
+        _groupRows.Clear();
         _kinds.Clear();
         _columnFiles.Clear();
         if (Catalogs == null) {
@@ -115,9 +134,12 @@ public partial class TranslationTable : Tree {
             return;
         }
 
+        // A Tree indents and draws its fold arrows in the first column only: in the tree view that
+        // has to be the source, where the folders are.
+        if (TreeView) _kinds.Add(ColumnKind.Source);
         _kinds.Add(ColumnKind.Status);
         if (ShowContext) _kinds.Add(ColumnKind.Context);
-        _kinds.Add(ColumnKind.Source);
+        if (!TreeView) _kinds.Add(ColumnKind.Source);
         foreach (var _ in Catalogs.Languages) _kinds.Add(ColumnKind.Language);
         _columnFiles.AddRange(_kinds.Select(_ => (CatalogFile) null));
         var first = _kinds.IndexOf(ColumnKind.Language);
@@ -140,7 +162,7 @@ public partial class TranslationTable : Tree {
                 default:
                     SetColumnExpand(c, true);
                     SetColumnExpandRatio(c, 3);
-                    SetColumnCustomMinimumWidth(c, 140);
+                    SetColumnCustomMinimumWidth(c, _kinds[c] == ColumnKind.Source && TreeView ? 220 : 140);
                     break;
             }
         }
@@ -149,15 +171,103 @@ public partial class TranslationTable : Tree {
         var root = CreateItem();
         var maxForms = Catalogs.MaxForms;
         foreach (var row in SortedRows(VisibleRows())) {
-            var item = CreateItem(root);
+            var item = CreateItem(TreeView ? FolderOf(root, row) : root);
             _items[row.Key] = item;
             Fill(item, row, 0);
             if (!row.IsPlural) continue;
             for (var form = 1; form < maxForms; form++) Fill(CreateItem(item), row, form);
         }
+        foreach (var (path, group) in _groups) FillGroup(group, path);
 
         RestoreSelection(selectedKey, selectedForm, selectedKind == ColumnKind.Language ? ColumnOf(selectedFile) : ColumnOf(selectedKind));
         CallDeferred(MethodName.SetScroll, scroll);
+    }
+
+    /// <summary>The folders of a key — <c>a/b/c</c> lies in <c>a</c> and <c>a/b</c> — or none.</summary>
+    public static string[] FoldersOf(string id) {
+        var parts = (id ?? "").Split(PathSeparator);
+        var folders = new string[Math.Max(0, parts.Length - 1)];
+        for (var i = 0; i < folders.Length; i++) folders[i] = i == 0 ? parts[0] : $"{folders[i - 1]}{PathSeparator}{parts[i]}";
+        return folders;
+    }
+
+    /// <summary>The row of the folder a message goes in, made along with the folders above it as needed.</summary>
+    TreeItem FolderOf(TreeItem root, CatalogRow row) {
+        var parent = root;
+        foreach (var path in FoldersOf(row.Id)) {
+            if (!_groups.TryGetValue(path, out var group)) {
+                group = CreateItem(parent);
+                group.SetMetadata(0, GroupMark + path);
+                group.SetMetadata(1, 0);
+                group.Collapsed = _collapsed.Contains(path);
+                _groups[path] = group;
+                _groupRows[path] = [];
+            }
+            _groupRows[path].Add(row);
+            parent = group;
+        }
+        return parent;
+    }
+
+    /// <summary>A folder's row: its name, and per language how many of the texts inside are translated.</summary>
+    void FillGroup(TreeItem item, string path) {
+        var rows = _groupRows[path];
+        var hint = GetThemeColor("font_placeholder_color", "LineEdit");
+        var problems = 0;
+        for (var c = 0; c < _kinds.Count; c++) {
+            item.ClearCustomBgColor(c);
+            item.SetCustomColor(c, hint);
+            item.SetText(c, "");
+            item.SetTooltipText(c, "");
+            switch (_kinds[c]) {
+                case ColumnKind.Source:
+                    item.SetText(c, path[(path.LastIndexOf(PathSeparator) + 1)..] + PathSeparator);
+                    item.SetCustomColor(c, GetThemeColor("font_color", "Tree"));
+                    item.SetTooltipText(c, $"{path}{PathSeparator} — {rows.Count} text{(rows.Count == 1 ? "" : "s")}");
+                    break;
+                case ColumnKind.Language:
+                    var file = _columnFiles[c];
+                    var forms = file.Catalog.Plurals.Count;
+                    var done = rows.Count(r => Catalogs.EntryOf(r, file) is { Fuzzy: false } entry && entry.IsTranslated(forms));
+                    problems += rows.Sum(r => Catalogs.ProblemsOf(r, file).Count);
+                    item.SetText(c, $"{done}/{rows.Count}");
+                    item.SetTooltipText(c, $"{file.Label}: {done} of {rows.Count} translated in {path}{PathSeparator}");
+                    if (done < rows.Count) item.SetCustomBgColor(c, Missing);
+                    break;
+            }
+        }
+        if (problems > 0) {
+            var status = ColumnOf(ColumnKind.Status);
+            item.SetText(status, "⚠");
+            item.SetCustomColor(status, GetThemeColor("warning_color", "Editor"));
+            item.SetTooltipText(status, $"{problems} problem{(problems == 1 ? "" : "s")} inside");
+        }
+    }
+
+    /// <summary>The path of a folder's row, or null for a message's row.</summary>
+    public static string GroupPathOf(TreeItem item) {
+        var key = item?.GetMetadata(0).AsString() ?? "";
+        return key.StartsWith(GroupMark, StringComparison.Ordinal) ? key[GroupMark.Length..] : null;
+    }
+
+    public TreeItem GroupItem(string path) => _groups.GetValueOrDefault(path);
+
+    /// <summary>
+    /// Where a new text would go in the tree: the selected folder, or the folder of the selected
+    /// text — as a path ending in the separator. Null outside the tree view or with nothing to go by.
+    /// </summary>
+    public string SelectedFolder() {
+        if (!TreeView) return null;
+        var item = GetSelected();
+        if (GroupPathOf(item) is { } path) return path + PathSeparator;
+        var folders = FoldersOf(RowOf(item)?.Id);
+        return folders.Length > 0 ? folders[^1] + PathSeparator : null;
+    }
+
+    void OnItemCollapsed(TreeItem item) {
+        if (GroupPathOf(item) is not { } path) return;
+        if (item.Collapsed) _collapsed.Add(path);
+        else _collapsed.Remove(path);
     }
 
     /// <summary>The column titles: what a column shows, and for a language how far it is.</summary>
@@ -242,7 +352,9 @@ public partial class TranslationTable : Tree {
                     break;
                 case ColumnKind.Source:
                     if (form == 0) {
-                        item.SetText(c, OneLine(row.Id));
+                        // In the tree its folders are already above it; the last part of the key is enough.
+                        var shown = TreeView && FoldersOf(row.Id).Length > 0 ? row.Id[(row.Id.LastIndexOf(PathSeparator) + 1)..] : row.Id;
+                        item.SetText(c, OneLine(shown));
                         item.SetTooltipText(c, row.Id);
                     } else if (form == 1) {
                         item.SetText(c, OneLine(row.IdPlural));
@@ -321,6 +433,8 @@ public partial class TranslationTable : Tree {
         Fill(item, row, 0);
         var form = 1;
         for (var child = item.GetFirstChild(); child != null; child = child.GetNext()) Fill(child, row, form++);
+        // The folders above count this text too.
+        for (var parent = item.GetParent(); GroupPathOf(parent) is { } path; parent = parent.GetParent()) FillGroup(parent, path);
         UpdateTitles();
     }
 
@@ -353,15 +467,22 @@ public partial class TranslationTable : Tree {
     }
 
     /// <summary>Selects a cell: the message's row, or the row of one of its plural forms.</summary>
-    public void SelectCell(CatalogRow row, int form, int column) {
-        var item = ItemOf(row, form);
+    public void SelectCell(CatalogRow row, int form, int column) => SelectItem(ItemOf(row, form), column);
+
+    /// <summary>Selects a cell of a row, unfolding the folders it is in.</summary>
+    public void SelectItem(TreeItem item, int column) {
         if (item == null || column < 0 || column >= Columns) return;
+        for (var parent = item.GetParent(); parent != null; parent = parent.GetParent()) parent.Collapsed = false;
         item.Select(column);
         ScrollToItem(item);
     }
 
     void RestoreSelection(string key, int form, int column) {
         if (key == null) return;
+        if (key.StartsWith(GroupMark, StringComparison.Ordinal)) {
+            SelectItem(GroupItem(key[GroupMark.Length..]), column < 0 ? ColumnOf(ColumnKind.Source) : column);
+            return;
+        }
         var row = Catalogs.Rows.FirstOrDefault(r => r.Key == key);
         if (row == null) return;
         SelectCell(row, form, column < 0 ? ColumnOf(ColumnKind.Source) : column);
@@ -514,7 +635,10 @@ public partial class TranslationTable : Tree {
         if (current == null) return;
 
         if (right != 0) {
-            current.Select(Math.Clamp(column + right, 1, Columns - 1));
+            var target = column + right;
+            if (KindOf(target) == ColumnKind.Status) target += right;
+            if (target >= 0 && target < Columns) current.Select(target);
+            else current.Select(column);
             return;
         }
         var next = current.GetNextVisible();
@@ -535,6 +659,14 @@ public partial class TranslationTable : Tree {
         if (item == null) return;
 
         var command = key.IsCommandOrControlPressed();
+        if (GroupPathOf(item) != null) {
+            // A folder holds no text of its own; Enter folds and unfolds it.
+            if (key.Keycode is Key.Enter or Key.KpEnter or Key.F2) {
+                item.Collapsed = !item.Collapsed;
+                AcceptEvent();
+            }
+            return;
+        }
         if (command && key.Keycode == Key.C) {
             DisplayServer.ClipboardSet(CellText(item, column));
             AcceptEvent();
@@ -556,7 +688,10 @@ public partial class TranslationTable : Tree {
         }
     }
 
-    void OnItemActivated() => BeginEdit();
+    void OnItemActivated() {
+        if (GetSelected() is { } item && GroupPathOf(item) != null) item.Collapsed = !item.Collapsed;
+        else BeginEdit();
+    }
 
     void OnColumnTitleClicked(int column, int mouseButton) {
         if (mouseButton == (int) MouseButton.Right) {

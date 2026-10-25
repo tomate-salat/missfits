@@ -14,7 +14,22 @@ public sealed class CatalogFile {
     public bool IsTemplate;
 
     /// <summary>The text last read from or written to disk; null for a file not saved yet.</summary>
-    public string SavedText;
+    public string SavedText {
+        get => _savedText;
+        set {
+            _savedText = value;
+            _baseline = null;
+        }
+    }
+
+    string _savedText;
+
+    /// <summary>
+    /// What the saved text becomes when written again. Changes are measured against this, not the
+    /// file itself: a file written by another tool, wrapped or spaced differently, is not unsaved
+    /// just because it was opened.
+    /// </summary>
+    string _baseline;
 
     /// <summary>The messages by key, for the table's lookups. Rebuilt by <see cref="Index"/>.</summary>
     readonly Dictionary<string, PoEntry> _byKey = [];
@@ -46,7 +61,14 @@ public sealed class CatalogFile {
     }
 
     /// <summary>Compares the catalog with what is on disk. Called after every change.</summary>
-    public void UpdateDirty() => _dirty = SavedText == null || Catalog.Write() != SavedText;
+    public void UpdateDirty() {
+        if (SavedText == null) {
+            _dirty = true;
+            return;
+        }
+        _baseline ??= PoCatalog.Parse(SavedText).Write();
+        _dirty = Catalog.Write() != _baseline;
+    }
 
     // ---- names -------------------------------------------------------------------------------
 
