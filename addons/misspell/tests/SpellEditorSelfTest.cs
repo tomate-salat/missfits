@@ -471,7 +471,49 @@ public partial class SpellEditorSelfTest : Node {
                                                                          && table.GroupItem("%welcome/option").GetText(0) == "option/");
         table.Search = "";
 
+        table.Rebuild();
+        await Settle();
+
+        // Drag and drop moves keys between folders.
+        var questRect = table.GetItemAreaRect(table.GroupItem("%quest missing"), 0);
+        Check("a drop on a folder lands in it", table.FolderAt(questRect.GetCenter()) == "%quest missing");
+        var enterRect = table.GetItemAreaRect(table.ItemOf(Row(set, "%welcome/option/enter")), 0);
+        Check("a drop on a text lands beside it", table.FolderAt(enterRect.GetCenter()) == "%welcome/option");
+        Check("a drop below the rows lands at the top", table.FolderAt(new Vector2(20, table.Size.Y - 5)) == "");
+
+        var dragEnter = table.DragDataFor(table.ItemOf(Row(set, "%welcome/option/enter")));
+        Check("a text can be dropped in another folder", table._CanDropData(questRect.GetCenter(), dragEnter));
+        Check("not where it already is", !table._CanDropData(enterRect.GetCenter(), dragEnter));
+        table._DropData(questRect.GetCenter(), dragEnter);
+        Check("dropping renames the key in every file, translation and all", Row(set, "%quest missing/enter") != null && Row(set, "%welcome/option/enter") == null
+                                                                             && set.Template.Find("%quest missing/enter") != null
+                                                                             && Language(set, "de").Find("%quest missing/enter")?.StringAt(0) == "Eintreten");
+        Check("the moved text is selected in its new folder", table.SelectedRow?.Id == "%quest missing/enter"
+                                                              && table.GetSelected().GetParent() == table.GroupItem("%quest missing"));
+        panel.Undo();
+        Check("one undo puts it back", Row(set, "%welcome/option/enter") != null && Row(set, "%quest missing/enter") == null);
+
+        var dragOption = table.DragDataFor(table.GroupItem("%welcome/option"));
+        Check("a folder cannot go into itself or below itself", table.MovesFor(dragOption, "%welcome/option") == null
+                                                                && table.MovesFor(table.DragDataFor(table.GroupItem("%welcome")), "%welcome/option") == null);
+        table.Move(dragOption, "%quest missing");
+        Check("a folder moves with everything in it", Row(set, "%quest missing/option/enter") != null && Row(set, "%quest missing/option/good bye") != null
+                                                      && table.GroupItem("%welcome/option") == null && table.GroupItem("%quest missing/option") != null
+                                                      && table.GetSelected() == table.GroupItem("%quest missing/option"));
+        table.Move(table.DragDataFor(table.GroupItem("%quest missing/option")), "");
+        Check("and to the top level", Row(set, "option/enter") != null && table.GroupItem("option") != null);
+        panel.Undo();
+        panel.Undo();
+
+        set.AddRow(null, "%quest missing/welcome");
+        table.Rebuild();
+        table.Move(table.DragDataFor(table.ItemOf(Row(set, "%welcome/welcome"))), "%quest missing");
+        Check("a move onto a key that is there is refused, and changes nothing", Row(set, "%welcome/welcome") != null
+                                                                                 && panel.StatusText.Contains("already there"));
+        panel.Undo();
+
         panel.ShowAsTree(false);
+        Check("without the tree nothing can be dragged", table.DragDataFor(table.ItemOf(Row(set, "plain"))) == null);
         Check("without the tree the keys are rows of their own again", table.KindOf(0) == TranslationTable.ColumnKind.Status && table.GroupItem("%welcome") == null
                                                                        && Children(table.GetRoot()).Count == 5 && table.ItemOf(Row(set, "%welcome/option/enter")).GetText(table.ColumnOf(TranslationTable.ColumnKind.Source)) == "%welcome/option/enter");
         panel.QueueFree();

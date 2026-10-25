@@ -79,6 +79,8 @@ public partial class TranslationTable : Tree {
         SelectMode = SelectModeEnum.Single;
         ColumnTitlesVisible = true;
         AllowRmbSelect = true;
+        // Only shows while something is dragged, which only the tree view allows.
+        DropModeFlags = (int) DropModeFlagsEnum.OnItem;
         SizeFlagsHorizontal = SizeFlags.ExpandFill;
         SizeFlagsVertical = SizeFlags.ExpandFill;
 
@@ -268,6 +270,105 @@ public partial class TranslationTable : Tree {
         if (GroupPathOf(item) is not { } path) return;
         if (item.Collapsed) _collapsed.Add(path);
         else _collapsed.Remove(path);
+    }
+
+    // ---- moving by drag and drop -------------------------------------------------------------
+
+    const string DragKey = "misspell_move";
+
+    /// <summary>
+    /// What dragging a row of the tree carries: a text by its key, or a folder by its path. A row
+    /// of a further plural form carries its text. Nothing outside the tree view.
+    /// </summary>
+    public Godot.Collections.Dictionary DragDataFor(TreeItem item) {
+        if (!TreeView || Catalogs == null || item == null) return null;
+        if (GroupPathOf(item) is { } folder) return new() { [DragKey] = folder, ["folder"] = true };
+        return RowOf(item) is { } row ? new() { [DragKey] = row.Key, ["folder"] = false } : null;
+    }
+
+    public override Variant _GetDragData(Vector2 atPosition) {
+        if (IsEditing) return default;
+        var data = DragDataFor(GetItemAtPosition(atPosition));
+        if (data == null) return default;
+
+        var preview = new Label { Text = data["folder"].AsBool() ? $"{data[DragKey].AsString()}{PathSeparator}" : RowOf(GetItemAtPosition(atPosition)).Id };
+        preview.AddThemeColorOverride("font_color", GetThemeColor("font_color", "Tree"));
+        SetDragPreview(preview);
+        return data;
+    }
+
+    public override bool _CanDropData(Vector2 atPosition, Variant data) => MovesFor(data, FolderAt(atPosition)) is { Count: > 0 };
+
+    public override void _DropData(Vector2 atPosition, Variant data) => Move(data, FolderAt(atPosition));
+
+    /// <summary>
+    /// Where a drop lands: on a folder, in it; on a text, beside it in its folder; below the
+    /// rows, at the top level.
+    /// </summary>
+    public string FolderAt(Vector2 position) {
+        var item = GetItemAtPosition(position);
+        if (item == null) return "";
+        if (GroupPathOf(item) is { } folder) return folder;
+        var folders = FoldersOf(RowOf(item)?.Id);
+        return folders.Length > 0 ? folders[^1] : "";
+    }
+
+    /// <summary>
+    /// The new keys of what is dragged when dropped in <paramref name="target"/>: what it lies in
+    /// is swapped for the target, the rest of each key stays. Null when there is nothing to move —
+    /// already there, or a folder dropped into itself.
+    /// </summary>
+    public List<(CatalogRow Row, string Id)> MovesFor(Variant data, string target) {
+        if (!TreeView || Catalogs == null || data.VariantType != Variant.Type.Dictionary) return null;
+        var dict = data.AsGodotDictionary();
+        if (!dict.ContainsKey(DragKey)) return null;
+        var dragged = dict[DragKey].AsString();
+        var isFolder = dict["folder"].AsBool();
+
+        List<CatalogRow> rows;
+        string parent;
+        if (isFolder) {
+            if (target == dragged || target.StartsWith(dragged + PathSeparator, StringComparison.Ordinal)) return null;
+            rows = [.. Catalogs.Rows.Where(r => r.Id.StartsWith(dragged + PathSeparator, StringComparison.Ordinal))];
+            var folders = FoldersOf(dragged + PathSeparator + "x");
+            parent = folders.Length > 1 ? folders[^2] : "";
+        } else {
+            var row = Catalogs.Rows.FirstOrDefault(r => r.Key == dragged);
+            if (row == null) return null;
+            rows = [row];
+            var folders = FoldersOf(row.Id);
+            parent = folders.Length > 0 ? folders[^1] : "";
+        }
+        if (parent == target || rows.Count == 0) return null;
+
+        var strip = parent.Length == 0 ? 0 : parent.Length + 1;
+        return [.. rows.Select(r => (r, target.Length == 0 ? r.Id[strip..] : $"{target}{PathSeparator}{r.Id[strip..]}"))];
+    }
+
+    /// <summary>Moves what is dragged into a folder: every key renamed in every file, as one undo step.</summary>
+    public void Move(Variant data, string target) {
+        var moves = MovesFor(data, target);
+        if (moves == null || moves.Count == 0) return;
+
+        var isFolder = data.AsGodotDictionary()["folder"].AsBool();
+        var column = GetSelectedColumn() >= 0 ? GetSelectedColumn() : ColumnOf(ColumnKind.Source);
+        var where = target.Length == 0 ? "the top level" : $"{target}{PathSeparator}";
+        var error = Catalogs.RenameRows($"Move to {where}", moves);
+        if (error != null) {
+            EmitSignal(SignalName.EditRejected, error);
+            return;
+        }
+
+        Rebuild();
+        if (isFolder) {
+            var name = data.AsGodotDictionary()[DragKey].AsString();
+            name = name[(name.LastIndexOf(PathSeparator) + 1)..];
+            SelectItem(GroupItem(target.Length == 0 ? name : $"{target}{PathSeparator}{name}"), column);
+        } else {
+            var (row, id) = moves[0];
+            SelectCell(Catalogs.Rows.FirstOrDefault(r => r.Key == PoEntry.KeyOf(row.Context, id)), 0, column);
+        }
+        EmitSignal(SignalName.Edited);
     }
 
     /// <summary>The column titles: what a column shows, and for a language how far it is.</summary>

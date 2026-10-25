@@ -333,6 +333,35 @@ public sealed class CatalogSet {
         return null;
     }
 
+    /// <summary>
+    /// Gives several messages new sources at once, in every file, as one undo step — how a text or
+    /// a whole folder of keys moves elsewhere. Contexts stay. Refused, with the reason returned,
+    /// when a new source would clash with a message that stays where it is, or with another new one.
+    /// </summary>
+    public string RenameRows(string name, IReadOnlyList<(CatalogRow Row, string Id)> renames) {
+        if (renames.Count == 0) return null;
+        if (renames.Any(r => string.IsNullOrEmpty(r.Id))) return "A message needs a source text.";
+
+        var moving = renames.Select(r => r.Row.Key).ToHashSet();
+        var newKeys = renames.Select(r => PoEntry.KeyOf(r.Row.Context, r.Id)).ToList();
+        if (newKeys.Distinct().Count() != newKeys.Count) return "Two messages would get the same source.";
+        var staying = Rows.Where(r => !moving.Contains(r.Key)).Select(r => r.Key).ToHashSet();
+        var clash = renames.FirstOrDefault(r => staying.Contains(PoEntry.KeyOf(r.Row.Context, r.Id)));
+        if (clash.Row != null) return $"\"{clash.Id}\" is already there.";
+
+        var files = Files.Where(f => renames.Any(r => f.Find(r.Row.Key) != null)).ToList();
+        Change(name, files, () => {
+            foreach (var file in files) {
+                // Every entry is looked up before any is renamed: one may take another's old key.
+                var entries = renames.Select(r => (Entry: file.Find(r.Row.Key), r.Id)).ToList();
+                foreach (var (entry, id) in entries) {
+                    if (entry != null) entry.Id = id;
+                }
+            }
+        }, structural: true);
+        return null;
+    }
+
     /// <summary>Gives a message a plural source, so every language gets a row per plural form.</summary>
     public string MakePlural(CatalogRow row) => row == null || row.IsPlural ? null : EditSource(row, row.Context, row.Id, row.Id);
 

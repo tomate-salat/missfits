@@ -66,6 +66,12 @@ edit the source cell to rename it. Sets whose sources mostly contain a `/` open 
 *Tree* button switches. Enter or a double-click folds a folder, folded folders stay folded, and
 *+ Text* starts a new key in the folder at hand.
 
+**Drag and drop** moves keys in the tree: drag a text or a whole folder onto a folder to move it
+in, onto a text to put it beside that one, or below the rows to move it to the top level. Every key
+is renamed in every file, translations and comments included — `%welcome/option/enter` dropped on
+`%quest missing/` becomes `%quest missing/enter` — and the whole move is one undo step. A move that
+would give a key one that is already there is refused.
+
 Why keys: with the English text as the key, changing the English changes the key — every
 translation of the old text no longer matches, and the game quietly shows the new English instead.
 With keys, the English is a translation like any other (add an `en` language), and a missing one
