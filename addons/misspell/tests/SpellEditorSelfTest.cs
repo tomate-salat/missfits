@@ -303,47 +303,53 @@ public partial class SpellEditorSelfTest : Node {
         var table = panel.Table;
         var set = panel.Catalogs;
 
-        Check("columns: status, context, source, then one per language", table.Columns == 5
-                                                                         && table.KindOf(2) == TranslationTable.ColumnKind.Source
-                                                                         && table.FileOf(3)?.Label == "de" && table.FileOf(4)?.Label == "pl");
-        Check("a language's title says how far it is", table.GetColumnTitle(3) == "de  75%" && table.GetColumnTitle(4) == "pl  0%");
+        Check("columns: context first, as the set has contexts, then source, then one per language", table.Columns == 4
+                                                                         && table.KindOf(0) == TranslationTable.ColumnKind.Context
+                                                                         && table.KindOf(1) == TranslationTable.ColumnKind.Source
+                                                                         && table.FileOf(2)?.Label == "de" && table.FileOf(3)?.Label == "pl");
+        var src = table.ColumnOf(TranslationTable.ColumnKind.Source);
+        var de = table.ColumnOf(Language(set, "de"));
+        var pl = table.ColumnOf(Language(set, "pl"));
+        Check("a language's title says which it is and how far", table.GetColumnTitle(de).StartsWith("de") && table.GetColumnTitle(de).EndsWith("  75%")
+                                                                 && table.GetColumnTitle(pl).StartsWith("pl") && table.GetColumnTitle(pl).EndsWith("  0%"));
 
         var coins = Row(set, "You have {n} coin.");
         var item = table.ItemOf(coins);
         Check("a plural message has a row per further form, as many as Polish needs", item != null && item.GetChildCount() == 2);
-        Check("the second row shows the plural source", item.GetChild(0).GetText(2) == "You have {n} coins.");
-        Check("filled forms show their text", item.GetText(4) == "Masz {n} monetę." && item.GetChild(1).GetText(4) == "Masz {n} monet.");
-        Check("an empty form says which numbers it is for", item.GetChild(0).GetText(4) == "few · n = 2–4, 22–24, 32–34, 42–44, …");
-        Check("a form German does not have stays empty", item.GetChild(1).GetText(3) == "" && !table.CanEdit(item.GetChild(1), 3) && table.CanEdit(item.GetChild(1), 4));
-        Check("its tooltip names the language, the form and its numbers", item.GetChild(0).GetTooltipText(4).StartsWith("pl · few · n = 2–4"));
+        Check("the second row shows the plural source", item.GetChild(0).GetText(src) == "You have {n} coins.");
+        Check("filled forms show their text", item.GetText(pl) == "Masz {n} monetę." && item.GetChild(1).GetText(pl) == "Masz {n} monet.");
+        Check("an empty form says which numbers it is for", item.GetChild(0).GetText(pl) == "few · n = 2–4, 22–24, 32–34, 42–44, …");
+        Check("a form German does not have stays empty", item.GetChild(1).GetText(de) == "" && !table.CanEdit(item.GetChild(1), de) && table.CanEdit(item.GetChild(1), pl));
+        Check("its tooltip names the language, the form and its numbers", item.GetChild(0).GetTooltipText(pl).StartsWith("pl · few · n = 2–4"));
         Check("a singular message has no further rows", table.ItemOf(Row(set, "Buy")).GetChildCount() == 0);
-        Check("the status column marks problems", table.ItemOf(Row(set, "Hello, {name}!")).GetText(0) == "⚠"
-                                                   && table.ItemOf(Row(set, "Hello, {name}!")).GetTooltipText(0).Contains("de: {name} is missing"));
-        Check("and fuzzy ones", table.ItemOf(Row(set, "Sell")).GetText(0) == "~");
+        Check("a text with a problem says so on hover", table.HasProblems(Row(set, "Hello, {name}!")) && !table.HasProblems(Row(set, "Buy"))
+                                                         && table.ItemOf(Row(set, "Hello, {name}!")).GetTooltipText(src).Contains("de: {name} is missing"));
+        Check("and where it is fuzzy", table.ItemOf(Row(set, "Sell")).GetTooltipText(src).Contains("Fuzzy in de"));
+        Check("a further plural form names itself in the source column", item.GetChild(1).GetText(src) == "form 2");
 
         // Typing into a selected cell replaces it, Enter keeps it and goes down.
-        table.SelectCell(coins, 1, 4);
+        table.SelectCell(coins, 1, pl);
         table._GuiInput(new InputEventKey { Pressed = true, Keycode = Key.M, Unicode = 'M' });
         Check("typing opens the cell editor with what was typed", table.IsEditing && panel.Table.GetNode<TextEdit>("CellEditor").Text == "M");
         panel.Table.GetNode<TextEdit>("CellEditor").Text = "Masz {n} monety.";
         table.CommitEdit();
         await Settle();
         Check("committing writes the form into the file", set.EntryOf(coins, Language(set, "pl")).StringAt(1) == "Masz {n} monety.");
-        Check("the cell and the column title show it", table.ItemOf(coins, 1).GetText(4) == "Masz {n} monety." && table.GetColumnTitle(4) == "pl*  25%");
+        Check("the cell and the column title show it", table.ItemOf(coins, 1).GetText(pl) == "Masz {n} monety." && table.GetColumnTitle(pl).StartsWith("● pl") && table.GetColumnTitle(pl).EndsWith("  25%"));
         Check("the panel knows there is something to save", panel.IsDirty && panel.UnsavedPaths().SequenceEqual([$"{Folder}/pl.po"]));
 
-        table.SelectCell(Row(set, "Buy"), 0, 3);
+        table.SelectCell(Row(set, "Buy"), 0, de);
         Check("Enter opens the editor on the text as it is", table.BeginEdit() && panel.Table.GetNode<TextEdit>("CellEditor").Text == "Kaufen");
         table.CancelEdit();
         Check("Escape leaves it as it was", !table.IsEditing && set.EntryOf(Row(set, "Buy"), Language(set, "de")).StringAt(0) == "Kaufen");
 
-        table.SelectCell(Row(set, "Hello, {name}!"), 0, 3);
+        table.SelectCell(Row(set, "Hello, {name}!"), 0, de);
         Check("a line break is kept in the file and shown as ↵", WriteAndRead(table, "Hallo,\n{name}!") == "Hallo,↵{name}!"
                                                                  && set.EntryOf(Row(set, "Hello, {name}!"), Language(set, "de")).StringAt(0) == "Hallo,\n{name}!");
 
         // Sources are edited in place too, and the row follows its new key.
-        table.SelectCell(Row(set, "Buy"), 0, 2);
-        table.WriteCell(table.GetSelected(), 2, "Purchase");
+        table.SelectCell(Row(set, "Buy"), 0, src);
+        table.WriteCell(table.GetSelected(), src, "Purchase");
         Check("editing a source renames the message everywhere", Row(set, "Purchase") != null && set.Template.Find("Purchase") != null
                                                                  && table.SelectedRow?.Id == "Purchase");
         panel.Undo();
@@ -363,12 +369,12 @@ public partial class SpellEditorSelfTest : Node {
         table.Search = "";
         table.ShowContext = false;
         table.Rebuild();
-        Check("the context column can be hidden", table.Columns == 4 && table.ColumnOf(TranslationTable.ColumnKind.Context) < 0);
+        Check("the context column can be hidden", table.Columns == 3 && table.ColumnOf(TranslationTable.ColumnKind.Context) < 0);
         table.ShowContext = true;
         table.Rebuild();
 
         // The details explain the plural forms.
-        table.SelectCell(coins, 0, 4);
+        table.SelectCell(coins, 0, pl);
         panel.Details.ShowRow(table.SelectedRow, table.SelectedFile);
         await Settle();
         var labels = panel.Details.FindChildren("*", nameof(Label), true, false).OfType<Label>().Select(l => l.Text).ToList();
@@ -433,12 +439,12 @@ public partial class SpellEditorSelfTest : Node {
 
         Check("a file formatted differently is not unsaved just by being opened", !panel.IsDirty && Language(set, "de").Catalog.Find("%welcome/welcome")?.StringAt(0) == "Willkommen");
         Check("keys laid out as paths open as a tree", table.TreeView);
-        Check("the source comes first, where the tree indents", table.KindOf(0) == TranslationTable.ColumnKind.Source && table.KindOf(1) == TranslationTable.ColumnKind.Status);
+        Check("the source comes first, where the tree indents", table.KindOf(0) == TranslationTable.ColumnKind.Source && table.ColumnOf(TranslationTable.ColumnKind.Context) < 0);
 
         var top = Children(table.GetRoot());
-        Check("folders and loose keys at the top, in the order of the file", top.Select(i => i.GetText(0)).SequenceEqual(["%welcome/", "%quest missing/", "plain"]));
+        Check("folders and loose keys at the top, in the order of the file", top.Select(i => i.GetText(0)).SequenceEqual(["%welcome", "%quest missing", "plain"]));
         var welcome = table.GroupItem("%welcome");
-        Check("a folder holds its texts and the folders below it", Children(welcome).Select(i => i.GetText(0)).SequenceEqual(["welcome", "option/"])
+        Check("a folder holds its texts and the folders below it", Children(welcome).Select(i => i.GetText(0)).SequenceEqual(["welcome", "option"])
                                                                    && Children(table.GroupItem("%welcome/option")).Select(i => i.GetText(0)).SequenceEqual(["enter", "good bye"]));
         var enter = table.ItemOf(Row(set, "%welcome/option/enter"));
         Check("a text shows the last part of its key, the whole key on hover", enter.GetText(0) == "enter" && enter.GetTooltipText(0) == "%welcome/option/enter");
@@ -467,8 +473,8 @@ public partial class SpellEditorSelfTest : Node {
 
         table.Search = "tschüss";
         table.Rebuild();
-        Check("the search keeps only the folders with something found", Children(table.GetRoot()).Select(i => i.GetText(0)).SequenceEqual(["%welcome/"])
-                                                                         && table.GroupItem("%welcome/option").GetText(0) == "option/");
+        Check("the search keeps only the folders with something found", Children(table.GetRoot()).Select(i => i.GetText(0)).SequenceEqual(["%welcome"])
+                                                                         && table.GroupItem("%welcome/option").GetText(0) == "option");
         table.Search = "";
 
         table.Rebuild();
@@ -563,7 +569,7 @@ public partial class SpellEditorSelfTest : Node {
 
         panel.ShowAsTree(false);
         Check("without the tree nothing can be dragged", table.DragDataFor(table.ItemOf(Row(set, "plain"))) == null);
-        Check("without the tree the keys are rows of their own again", table.KindOf(0) == TranslationTable.ColumnKind.Status && table.GroupItem("%welcome") == null
+        Check("without the tree the keys are rows of their own again", table.KindOf(0) == TranslationTable.ColumnKind.Source && table.GroupItem("%welcome") == null
                                                                        && Children(table.GetRoot()).Count == 5 && table.ItemOf(Row(set, "%welcome/option/enter")).GetText(table.ColumnOf(TranslationTable.ColumnKind.Source)) == "%welcome/option/enter");
         panel.QueueFree();
     }

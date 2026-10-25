@@ -35,10 +35,9 @@ not list `.pot` files, which is why the list at the top finds them for you.
 
 | Column | |
 |---|---|
-| status | `⚠` a problem (hover for which), `~` fuzzy somewhere, a number for a plural form's row |
-| Context | `msgctxt` — tells the same words apart, e.g. *Close* in a menu and *Close* a door |
-| Source | `msgid`, and in the row below a plural message `msgid_plural` |
-| one per language | the translation, titled with the language and how much is translated, `*` while unsaved |
+| Context | `msgctxt` — tells the same words apart, e.g. *Close* in a menu and *Close* a door. First, as it is half of what identifies a text; shown only when the files have contexts (the *Context* button switches it — without it, a context shows after its text as `‹menu›`) |
+| Source (*Key* in the tree) | `msgid`. A warning icon means a problem in some language; hover for which, and for where it is fuzzy. The rows below a plural message hold `msgid_plural` and `form 2`, `form 3` … |
+| one per language | the translation, titled like `de · German  75%` — a tick once complete, a dot while unsaved |
 
 Red cells are untranslated, amber ones fuzzy (a guess Godot does not use). Click a column title to
 sort by it — again to sort the other way, a third time for the order of the file. Right-click a
@@ -60,11 +59,11 @@ fuzzy, clear, make a text plural or singular, delete it.
 
 **Keys as paths — the tree.** When the sources are keys laid out like paths rather than English
 sentences (`%welcome/option/enter`), the table shows them as a tree: one row per folder, which folds
-and unfolds, with per language how many of the texts inside are translated (`2/3`, red while
-something is missing). A text shows only the last part of its key; hover for the whole key, and
+and unfolds, with per language how many of the texts inside are translated (`2/3` — green when
+all are, amber while some are, red while none is). A text shows only the last part of its key; hover for the whole key, and
 edit the source cell to rename it. Sets whose sources mostly contain a `/` open as a tree; the
 *Tree* button switches. Enter or a double-click folds a folder, folded folders stay folded, and
-*+ Text* starts a new key in the folder at hand.
+*Text* starts a new key in the folder at hand.
 
 **Renaming a folder:** F2 on it, typing on its name, or right-click → *Rename folder*. The editor
 holds the folder's whole path: change the last part to rename it (`%test` → `%arena`), the rest to
@@ -108,7 +107,7 @@ The **details** beside the table show, for the selected text, every language's f
 numbers and texts. *Try n* picks a number and marks the form each language uses for it, with the
 number filled into `{n}`, `{count}` or `%d` — what the player will read.
 
-**Language and plural rule:** *+ Language* and right-clicking a language's title open the same
+**Language and plural rule:** *Language* in the toolbar and right-clicking a language's title open the same
 dialog. Type the language (`de`, `pt_BR`, `pl` …) and its usual rule is filled in; the forms are
 listed with their numbers as you type, and a rule that is broken, leaves a form unused, or differs
 from the usual one for the language is pointed out. The rules of the languages games are commonly
@@ -128,15 +127,15 @@ label.Text = TrN("You have {n} coin.", "You have {n} coins.", n).Replace("{n}", 
 
 ## Template, languages, saving
 
-- **Update from template** brings every language in line with the `.pot`, like gettext's
+- **Update** (from the template; only shown when there is one) brings every language in line with the `.pot`, like gettext's
   `msgmerge` without guessing: new texts are added untranslated, texts gone from the template become
   obsolete (kept at the end of the file, and back with their translation if they return), and
   references, comments for translators and plural sources are taken over. Generate the template
   with Godot under *Project Settings → Localization → Template Generation* first.
-- **+ Language** creates a file for a new language with every text of the template, named like the
+- **Language** creates a file for a new language with every text of the template, named like the
   files already there (`fr.po` beside `de.po`, `dialogue.fr.po` beside `dialogue.de.po`). It can add
   the file to *Project Settings → Localization → Translations* for you.
-- **+ Text** adds a text by hand to every file — for projects without a template.
+- **Text** adds a text by hand to every file — for projects without a template.
 - **Save** writes every changed file, nothing else. Files are written as gettext writes them;
   comments, flags, references, obsolete texts and the order of everything are kept, so a diff shows
   only what you changed. The editor reloads the translations after saving, and running the game

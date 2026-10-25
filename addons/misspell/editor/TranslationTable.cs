@@ -32,7 +32,7 @@ public partial class TranslationTable : Tree {
 
     public enum Filter { All, Untranslated, Fuzzy, Problems, Plural }
 
-    public enum ColumnKind { Status, Context, Source, Language }
+    public enum ColumnKind { None, Context, Source, Language }
 
     /// <summary>Plain C#, so gone after an assembly reload; the panel hands it over again.</summary>
     public CatalogSet Catalogs;
@@ -86,6 +86,14 @@ public partial class TranslationTable : Tree {
         SizeFlagsHorizontal = SizeFlags.ExpandFill;
         SizeFlagsVertical = SizeFlags.ExpandFill;
 
+        // More air between rows and inside cells, and no lines between parent and child: a table
+        // to read, not a node tree.
+        AddThemeConstantOverride("v_separation", GetThemeConstant("v_separation") + 6);
+        AddThemeConstantOverride("inner_item_margin_left", 6);
+        AddThemeConstantOverride("inner_item_margin_right", 6);
+        AddThemeConstantOverride("draw_relationship_lines", 0);
+        AddThemeConstantOverride("icon_max_width", 16);
+
         Connect(Tree.SignalName.ItemActivated, new Callable(this, MethodName.OnItemActivated));
         Connect(Tree.SignalName.ColumnTitleClicked, new Callable(this, MethodName.OnColumnTitleClicked));
         Connect(Tree.SignalName.ItemMouseSelected, new Callable(this, MethodName.OnItemMouseSelected));
@@ -114,7 +122,7 @@ public partial class TranslationTable : Tree {
     // ---- building ----------------------------------------------------------------------------
 
     /// <summary>Which column shows what, and the file of a language column.</summary>
-    public ColumnKind KindOf(int column) => column >= 0 && column < _kinds.Count ? _kinds[column] : ColumnKind.Status;
+    public ColumnKind KindOf(int column) => column >= 0 && column < _kinds.Count ? _kinds[column] : ColumnKind.None;
 
     public CatalogFile FileOf(int column) => column >= 0 && column < _columnFiles.Count ? _columnFiles[column] : null;
 
@@ -142,10 +150,10 @@ public partial class TranslationTable : Tree {
             return;
         }
 
-        // A Tree indents and draws its fold arrows in the first column only: in the tree view that
-        // has to be the source, where the folders are.
+        // The context goes first, as it is the first half of what identifies a text. But a Tree
+        // indents and draws its fold arrows in the first column only: in the tree view that has to
+        // be the source, where the folders are.
         if (TreeView) _kinds.Add(ColumnKind.Source);
-        _kinds.Add(ColumnKind.Status);
         if (ShowContext) _kinds.Add(ColumnKind.Context);
         if (!TreeView) _kinds.Add(ColumnKind.Source);
         foreach (var _ in Catalogs.Languages) _kinds.Add(ColumnKind.Language);
@@ -158,10 +166,6 @@ public partial class TranslationTable : Tree {
         for (var c = 0; c < Columns; c++) {
             SetColumnClipContent(c, true);
             switch (_kinds[c]) {
-                case ColumnKind.Status:
-                    SetColumnExpand(c, false);
-                    SetColumnCustomMinimumWidth(c, 40);
-                    break;
                 case ColumnKind.Context:
                     SetColumnExpand(c, true);
                     SetColumnExpandRatio(c, 1);
@@ -217,20 +221,22 @@ public partial class TranslationTable : Tree {
         return parent;
     }
 
-    /// <summary>A folder's row: its name, and per language how many of the texts inside are translated.</summary>
+    /// <summary>
+    /// A folder's row: a folder icon and its name, and per language how many of the texts inside
+    /// are translated — green when all are, amber while some are, red while none is.
+    /// </summary>
     void FillGroup(TreeItem item, string path) {
         var rows = _groupRows[path];
-        var hint = GetThemeColor("font_placeholder_color", "LineEdit");
         var problems = 0;
         for (var c = 0; c < _kinds.Count; c++) {
             item.ClearCustomBgColor(c);
-            item.SetCustomColor(c, hint);
+            item.ClearCustomColor(c);
+            item.SetIcon(c, null);
             item.SetText(c, "");
             item.SetTooltipText(c, "");
             switch (_kinds[c]) {
                 case ColumnKind.Source:
-                    item.SetText(c, path[(path.LastIndexOf(PathSeparator) + 1)..] + PathSeparator);
-                    item.SetCustomColor(c, GetThemeColor("font_color", "Tree"));
+                    item.SetText(c, path[(path.LastIndexOf(PathSeparator) + 1)..]);
                     item.SetTooltipText(c, $"{path}{PathSeparator} — {rows.Count} text{(rows.Count == 1 ? "" : "s")}");
                     break;
                 case ColumnKind.Language:
@@ -238,18 +244,33 @@ public partial class TranslationTable : Tree {
                     var forms = file.Catalog.Plurals.Count;
                     var done = rows.Count(r => Catalogs.EntryOf(r, file) is { Fuzzy: false } entry && entry.IsTranslated(forms));
                     problems += rows.Sum(r => Catalogs.ProblemsOf(r, file).Count);
+                    // Coloured text rather than a drawn bar: Tree's custom-drawn cells crash the
+                    // editor when the table is rebuilt (seen in Godot 4.7.2).
                     item.SetText(c, $"{done}/{rows.Count}");
+                    item.SetCustomColor(c, done == rows.Count ? Success : done > 0 ? Partial : Failed);
                     item.SetTooltipText(c, $"{file.Label}: {done} of {rows.Count} translated in {path}{PathSeparator}");
-                    if (done < rows.Count) item.SetCustomBgColor(c, Missing);
                     break;
             }
         }
+
+        var source = ColumnOf(ColumnKind.Source);
         if (problems > 0) {
-            var status = ColumnOf(ColumnKind.Status);
-            item.SetText(status, "⚠");
-            item.SetCustomColor(status, GetThemeColor("warning_color", "Editor"));
-            item.SetTooltipText(status, $"{problems} problem{(problems == 1 ? "" : "s")} inside");
+            SetIcon(item, source, "StatusWarning", GetThemeColor("warning_color", "Editor"));
+            item.SetTooltipText(source, $"{item.GetTooltipText(source)}\n{problems} problem{(problems == 1 ? "" : "s")} inside");
+        } else {
+            SetIcon(item, source, "Folder", HasThemeColor("folder_icon_color", "FileDialog") ? GetThemeColor("folder_icon_color", "FileDialog") : Colors.White);
         }
+    }
+
+    static readonly Color Success = new(0.45f, 0.8f, 0.5f);
+    static readonly Color Partial = new(0.95f, 0.7f, 0.3f);
+    static readonly Color Failed = new(1f, 0.45f, 0.4f);
+
+    /// <summary>An icon of the editor's theme in a cell, or none outside the editor.</summary>
+    void SetIcon(TreeItem item, int column, string name, Color modulate) {
+        if (column < 0 || !HasThemeIcon(name, "EditorIcons")) return;
+        item.SetIcon(column, GetThemeIcon(name, "EditorIcons"));
+        item.SetIconModulate(column, modulate);
     }
 
     /// <summary>The path of a folder's row, or null for a message's row.</summary>
@@ -382,19 +403,22 @@ public partial class TranslationTable : Tree {
         for (var c = 0; c < _kinds.Count; c++) {
             var arrow = c == _sortColumn ? (_sortDescending ? " ▼" : " ▲") : "";
             SetColumnTitle(c, _kinds[c] switch {
-                ColumnKind.Status => "",
                 ColumnKind.Context => "Context" + arrow,
-                ColumnKind.Source => (Catalogs?.Template != null ? "Source" : "Source (no template)") + arrow,
-                _ => LanguageTitle(_columnFiles[c]) + arrow,
+                ColumnKind.Source => (TreeView ? "Key" : "Source") + arrow,
+                ColumnKind.Language => LanguageTitle(_columnFiles[c]) + arrow,
+                _ => "",
             });
         }
     }
 
+    /// <summary><c>de · German  75%</c>, with a dot in front while the file has unsaved changes, and a tick once it is complete.</summary>
     string LanguageTitle(CatalogFile file) {
         var stats = Catalogs.StatsOf(file);
         var percent = stats.Total == 0 ? 100 : stats.Translated * 100 / stats.Total;
-        var dirty = file.Dirty ? "*" : "";
-        return $"{file.Label}{dirty}  {percent}%";
+        var dirty = file.Dirty ? "● " : "";
+        var name = string.IsNullOrEmpty(file.Locale) ? "" : TranslationServer.GetLocaleName(file.Locale);
+        var label = string.IsNullOrEmpty(name) || name == file.Label ? file.Label : $"{file.Label} · {name}";
+        return $"{dirty}{label}  {(percent == 100 ? "✓" : $"{percent}%")}";
     }
 
     IEnumerable<CatalogRow> VisibleRows() {
@@ -428,7 +452,7 @@ public partial class TranslationTable : Tree {
     }
 
     IEnumerable<CatalogRow> SortedRows(IEnumerable<CatalogRow> rows) {
-        if (_sortColumn < 0 || _sortColumn >= _kinds.Count || _kinds[_sortColumn] == ColumnKind.Status) return rows;
+        if (_sortColumn < 0 || _sortColumn >= _kinds.Count || _kinds[_sortColumn] == ColumnKind.None) return rows;
         var column = _sortColumn;
         Func<CatalogRow, string> key = _kinds[column] switch {
             ColumnKind.Context => r => r.Context ?? "",
@@ -448,28 +472,16 @@ public partial class TranslationTable : Tree {
             item.SetTextOverrunBehavior(c, TextServer.OverrunBehavior.TrimEllipsis);
             item.ClearCustomBgColor(c);
             item.ClearCustomColor(c);
+            item.SetIcon(c, null);
             item.SetTooltipText(c, "");
 
             switch (_kinds[c]) {
-                case ColumnKind.Status:
-                    FillStatus(item, row, form, c);
-                    break;
                 case ColumnKind.Context:
                     item.SetText(c, form == 0 ? OneLine(row.Context ?? "") : "");
+                    if (form == 0 && row.Context != null) item.SetCustomColor(c, Accent);
                     break;
                 case ColumnKind.Source:
-                    if (form == 0) {
-                        // In the tree its folders are already above it; the last part of the key is enough.
-                        var shown = TreeView && FoldersOf(row.Id).Length > 0 ? row.Id[(row.Id.LastIndexOf(PathSeparator) + 1)..] : row.Id;
-                        item.SetText(c, OneLine(shown));
-                        item.SetTooltipText(c, row.Id);
-                    } else if (form == 1) {
-                        item.SetText(c, OneLine(row.IdPlural));
-                        item.SetTooltipText(c, $"Plural source: {row.IdPlural}");
-                    } else {
-                        item.SetText(c, "");
-                    }
-                    if (form > 0) item.SetCustomColor(c, hint);
+                    FillSource(item, row, form, c, hint);
                     break;
                 default:
                     FillTranslation(item, row, form, c, hint);
@@ -478,24 +490,40 @@ public partial class TranslationTable : Tree {
         }
     }
 
-    void FillStatus(TreeItem item, CatalogRow row, int form, int column) {
+    /// <summary>
+    /// The source cell: the text — in the tree only the last part of its key — with a warning icon
+    /// when something is wrong in a language, which the tooltip names. A row of a further plural
+    /// form shows the plural source, or which form it is.
+    /// </summary>
+    void FillSource(TreeItem item, CatalogRow row, int form, int column, Color hint) {
         if (form > 0) {
-            item.SetText(column, $"  {form}");
-            item.SetCustomColor(column, GetThemeColor("font_placeholder_color", "LineEdit"));
-            item.SetTooltipText(column, $"Plural form {form}");
+            item.SetText(column, form == 1 ? OneLine(row.IdPlural) : $"form {form}");
+            item.SetCustomColor(column, hint);
+            item.SetTooltipText(column, form == 1 ? $"Plural source: {row.IdPlural}" : $"Plural form {form}; the languages' cells say which numbers it is for");
             return;
         }
 
-        var problems = Catalogs.Languages.SelectMany(f => Catalogs.ProblemsOf(row, f).Select(p => $"{f.Label}: {p}")).ToList();
-        var fuzzy = Catalogs.Languages.Any(f => Catalogs.EntryOf(row, f)?.Fuzzy == true);
-        item.SetText(column, problems.Count > 0 ? "⚠" : fuzzy ? "~" : row.IsPlural ? "  0" : "");
-        var tips = new List<string>();
-        if (row.IsPlural) tips.Add("Plural message: one row per plural form");
-        if (fuzzy) tips.Add("Fuzzy in: " + string.Join(", ", Catalogs.Languages.Where(f => Catalogs.EntryOf(row, f)?.Fuzzy == true).Select(f => f.Label)));
+        // In the tree its folders are already above it; the last part of the key is enough.
+        var shown = TreeView && FoldersOf(row.Id).Length > 0 ? row.Id[(row.Id.LastIndexOf(PathSeparator) + 1)..] : row.Id;
+        // Without the context column, the context still shows, after the text.
+        if (!ShowContext && row.Context != null) shown += $"   ‹{row.Context}›";
+        item.SetText(column, OneLine(shown));
+
+        var problems = Catalogs.Languages.SelectMany(f => Catalogs.ProblemsOf(row, f).Select(p => $"⚠ {f.Label}: {p}")).ToList();
+        var fuzzy = Catalogs.Languages.Where(f => Catalogs.EntryOf(row, f)?.Fuzzy == true).Select(f => f.Label).ToList();
+        var tips = new List<string> { row.Context != null ? $"{row.Id}  (context: {row.Context})" : row.Id };
+        if (row.IsPlural) tips.Add("Plural: one row per plural form below");
+        if (fuzzy.Count > 0) tips.Add($"Fuzzy in {string.Join(", ", fuzzy)}");
         tips.AddRange(problems);
         item.SetTooltipText(column, string.Join("\n", tips));
-        if (problems.Count > 0) item.SetCustomColor(column, GetThemeColor("warning_color", "Editor"));
+        if (problems.Count > 0) SetIcon(item, column, "StatusWarning", GetThemeColor("warning_color", "Editor"));
     }
+
+    /// <summary>The colour contexts are written in, so they stand apart from the text.</summary>
+    Color Accent => HasThemeColor("accent_color", "Editor") ? GetThemeColor("accent_color", "Editor") : new Color(0.55f, 0.7f, 1f);
+
+    /// <summary>Whether a message has a problem in any language — what the warning icon says.</summary>
+    public bool HasProblems(CatalogRow row) => Catalogs.Languages.Any(f => Catalogs.ProblemsOf(row, f).Count > 0);
 
     void FillTranslation(TreeItem item, CatalogRow row, int form, int column, Color hint) {
         var file = _columnFiles[column];
@@ -808,7 +836,7 @@ public partial class TranslationTable : Tree {
 
         if (right != 0) {
             var target = column + right;
-            if (KindOf(target) == ColumnKind.Status) target += right;
+            if (KindOf(target) == ColumnKind.None) target += right;
             if (target >= 0 && target < Columns) current.Select(target);
             else current.Select(column);
             return;
@@ -882,7 +910,7 @@ public partial class TranslationTable : Tree {
             if (FileOf(column) is { } file) EmitSignal(SignalName.LanguageMenuRequested, file.Path);
             return;
         }
-        if (KindOf(column) == ColumnKind.Status) return;
+        if (KindOf(column) == ColumnKind.None) return;
         // Click once to sort up, again to sort down, a third time for the order of the file.
         if (_sortColumn != column) {
             _sortColumn = column;

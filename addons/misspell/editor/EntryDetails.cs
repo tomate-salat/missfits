@@ -39,19 +39,26 @@ public partial class EntryDetails : ScrollContainer {
         CustomMinimumSize = new Vector2(280, 0);
         HorizontalScrollMode = ScrollMode.Disabled;
 
+        var margin = new MarginContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        foreach (var side in new[] { "left", "right", "top", "bottom" }) margin.AddThemeConstantOverride($"margin_{side}", 10);
+        AddChild(margin);
         _box = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        _box.AddThemeConstantOverride("separation", 6);
-        AddChild(_box);
+        _box.AddThemeConstantOverride("separation", 8);
+        margin.AddChild(_box);
 
         _context = Wrapped();
+        _context.AddThemeColorOverride("font_color", Accent);
         _source = Wrapped();
+        _source.AddThemeFontSizeOverride("font_size", 16);
         _plural = Wrapped();
+        _plural.Modulate = new Color(1, 1, 1, 0.7f);
         _box.AddChild(Heading("Source"));
         _box.AddChild(_context);
         _box.AddChild(_source);
         _box.AddChild(_plural);
 
         _notes = Wrapped();
+        _notes.Modulate = new Color(1, 1, 1, 0.7f);
         _box.AddChild(_notes);
         _references = new RichTextLabel { BbcodeEnabled = true, FitContent = true, ScrollActive = false, TooltipText = "Open where this text comes from" };
         _references.Connect(RichTextLabel.SignalName.MetaClicked, new Callable(this, MethodName.OnReferenceClicked));
@@ -64,7 +71,7 @@ public partial class EntryDetails : ScrollContainer {
         _box.AddChild(new HSeparator());
         _languageTitle = Heading("");
         _box.AddChild(_languageTitle);
-        _fuzzy = new CheckBox { Text = "Fuzzy — a guess to check; the game does not use it" };
+        _fuzzy = new CheckBox { Text = "Fuzzy", TooltipText = "A guess to check. The game does not use a fuzzy translation; editing the text clears the mark." };
         _fuzzy.Connect(BaseButton.SignalName.Toggled, new Callable(this, MethodName.OnFuzzyToggled));
         _box.AddChild(_fuzzy);
         _comment = new TextEdit {
@@ -92,12 +99,16 @@ public partial class EntryDetails : ScrollContainer {
         ShowNothing();
     }
 
-    static Label Heading(string text) {
-        var label = new Label { Text = text };
-        label.AddThemeFontSizeOverride("font_size", 13);
-        label.AddThemeColorOverride("font_color", new Color(0.65f, 0.75f, 1f));
+    /// <summary>A section's title: small, in capitals and the editor's accent colour, with room above it.</summary>
+    Label Heading(string text) {
+        var label = new Label { Text = text, Uppercase = true };
+        label.AddThemeFontSizeOverride("font_size", 11);
+        label.AddThemeColorOverride("font_color", Accent);
+        if (HasThemeFont("bold", "EditorFonts")) label.AddThemeFontOverride("font", GetThemeFont("bold", "EditorFonts"));
         return label;
     }
+
+    Color Accent => HasThemeColor("accent_color", "Editor") ? GetThemeColor("accent_color", "Editor") : new Color(0.55f, 0.7f, 1f);
 
     static Label Wrapped() => new() { AutowrapMode = TextServer.AutowrapMode.WordSmart, SizeFlagsHorizontal = SizeFlags.ExpandFill };
 
@@ -167,7 +178,7 @@ public partial class EntryDetails : ScrollContainer {
             var plurals = file.Catalog.Plurals;
             var entry = Catalogs.EntryOf(_row, file);
             var title = new Label { Text = $"{file.Label} · {plurals.Count} form{(plurals.Count == 1 ? "" : "s")}", TooltipText = plurals.Header };
-            title.AddThemeColorOverride("font_color", new Color(0.65f, 0.75f, 1f));
+            title.AddThemeColorOverride("font_color", Accent);
             _forms.AddChild(title);
 
             // Each form as two lines — what it is for, then its text indented below — so long

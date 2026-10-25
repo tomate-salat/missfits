@@ -61,6 +61,8 @@ public partial class MisspellPanel : VBoxContainer {
     LineEdit _newSource;
     LineEdit _newPlural;
     FileDialog _openDialog;
+    Control _empty;
+    Control _split;
     readonly List<string> _catalogPaths = [];
 
     public override void _Ready() {
@@ -68,9 +70,14 @@ public partial class MisspellPanel : VBoxContainer {
         SizeFlagsVertical = SizeFlags.ExpandFill;
         SizeFlagsHorizontal = SizeFlags.ExpandFill;
 
+        AddThemeConstantOverride("separation", 6);
         AddChild(BuildToolbar());
 
+        _empty = BuildEmptyState();
+        AddChild(_empty);
+
         var split = new HSplitContainer { Name = "Split", SizeFlagsVertical = SizeFlags.ExpandFill };
+        _split = split;
         AddChild(split);
 
         Table = new TranslationTable { Name = "Table" };
@@ -106,57 +113,98 @@ public partial class MisspellPanel : VBoxContainer {
         UpdateUi();
     }
 
+    /// <summary>
+    /// File on the left (catalog, open, reload, save), editing next (add text, add language, update
+    /// from the template), finding in the middle (search, filter), and on the right how to look at
+    /// it (tree, context, details).
+    /// </summary>
     Control BuildToolbar() {
         var bar = new HBoxContainer { Name = "Toolbar" };
-        bar.AddThemeConstantOverride("separation", 4);
+        bar.AddThemeConstantOverride("separation", 2);
 
-        _catalogs = new OptionButton { TooltipText = "The catalogs in this project: a template and its languages", CustomMinimumSize = new Vector2(220, 0), FitToLongestItem = false };
+        _catalogs = new OptionButton { TooltipText = "The catalogs in this project: a template and its languages", CustomMinimumSize = new Vector2(240, 0), FitToLongestItem = false };
         _catalogs.Connect(OptionButton.SignalName.ItemSelected, new Callable(this, MethodName.OnCatalogPicked));
         bar.AddChild(_catalogs);
-        bar.AddChild(Tool("Open…", "Open a .po or .pot file, and the files that go with it", MethodName.ShowOpenDialog));
-
-        _save = Tool("Save", "Write every changed file (Ctrl+S)", MethodName.SavePressed);
-        bar.AddChild(_save);
-        _reload = Tool("Reload", "Read the files from disk again, dropping unsaved changes", MethodName.ReloadPressed);
+        bar.AddChild(Tool("", "Open a .po or .pot file, and the files that go with it", MethodName.ShowOpenDialog, "Load"));
+        _reload = Tool("", "Read the files from disk again, dropping unsaved changes", MethodName.ReloadPressed, "Reload");
         bar.AddChild(_reload);
-        bar.AddChild(new VSeparator());
-        _merge = Tool("Update from template", "Add new texts of the template to every language, and mark texts gone from it obsolete", MethodName.MergePressed);
-        bar.AddChild(_merge);
-        _addLanguage = Tool("+ Language", "Add a language: a new .po file with every text of the template", MethodName.AddLanguagePressed);
-        bar.AddChild(_addLanguage);
-        _addMessage = Tool("+ Text", "Add a text by hand to every file", MethodName.AddMessagePressed);
-        bar.AddChild(_addMessage);
-        bar.AddChild(new VSeparator());
+        _save = Tool("Save", "Write every changed file (Ctrl+S)", MethodName.SavePressed, "Save");
+        bar.AddChild(_save);
+        bar.AddChild(Gap());
 
-        _search = new LineEdit { PlaceholderText = "Search", ClearButtonEnabled = true, CustomMinimumSize = new Vector2(180, 0), SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _addMessage = Tool("Text", "Add a text by hand to every file", MethodName.AddMessagePressed, "Add");
+        bar.AddChild(_addMessage);
+        _addLanguage = Tool("Language", "Add a language: a new .po file with every text of the template", MethodName.AddLanguagePressed, "Translation");
+        bar.AddChild(_addLanguage);
+        _merge = Tool("Update", "Update from the template: add its new texts to every language, and mark texts gone from it obsolete", MethodName.MergePressed, "ImportCheck");
+        bar.AddChild(_merge);
+        bar.AddChild(Gap());
+
+        _search = new LineEdit { PlaceholderText = "Search keys and translations  (Ctrl+F)", ClearButtonEnabled = true, CustomMinimumSize = new Vector2(180, 0), SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        if (Icon("Search") is { } search) _search.RightIcon = search;
         _search.Connect(LineEdit.SignalName.TextChanged, new Callable(this, MethodName.OnSearchChanged));
         bar.AddChild(_search);
 
         _filter = new OptionButton { TooltipText = "Which texts to show" };
-        _filter.AddItem("All", (int) TranslationTable.Filter.All);
+        _filter.AddItem("All texts", (int) TranslationTable.Filter.All);
         _filter.AddItem("Untranslated", (int) TranslationTable.Filter.Untranslated);
         _filter.AddItem("Fuzzy", (int) TranslationTable.Filter.Fuzzy);
-        _filter.AddItem("Problems", (int) TranslationTable.Filter.Problems);
+        _filter.AddItem("With problems", (int) TranslationTable.Filter.Problems);
         _filter.AddItem("Plural", (int) TranslationTable.Filter.Plural);
         _filter.Connect(OptionButton.SignalName.ItemSelected, new Callable(this, MethodName.OnFilterPicked));
         bar.AddChild(_filter);
+        bar.AddChild(Gap());
 
-        _treeToggle = new Button { Text = "Tree", ToggleMode = true, Flat = true, TooltipText = "Show keys like welcome/option/enter as folders" };
-        _treeToggle.Connect(BaseButton.SignalName.Toggled, new Callable(this, MethodName.OnTreeToggled));
+        _treeToggle = Toggle("Tree", "Show keys like welcome/option/enter as folders", MethodName.OnTreeToggled, "Folder");
         bar.AddChild(_treeToggle);
-        _contextToggle = new Button { Text = "Context", ToggleMode = true, ButtonPressed = true, Flat = true, TooltipText = "Show the context column" };
-        _contextToggle.Connect(BaseButton.SignalName.Toggled, new Callable(this, MethodName.OnContextToggled));
+        _contextToggle = Toggle("Context", "Show the context column; without it, a context shows after its text", MethodName.OnContextToggled, "");
         bar.AddChild(_contextToggle);
-        _detailsToggle = new Button { Text = "Details", ToggleMode = true, ButtonPressed = true, Flat = true, TooltipText = "Show the details of the selected text" };
-        _detailsToggle.Connect(BaseButton.SignalName.Toggled, new Callable(this, MethodName.OnDetailsToggled));
+        _detailsToggle = Toggle("Details", "Show the details of the selected text", MethodName.OnDetailsToggled, "");
+        _detailsToggle.SetPressedNoSignal(true);
         bar.AddChild(_detailsToggle);
         return bar;
     }
 
-    Button Tool(string text, string tooltip, StringName method) {
-        var button = new Button { Text = text, TooltipText = tooltip, Flat = true };
+    Button Tool(string text, string tooltip, StringName method, string icon) {
+        var button = new Button { Text = text, TooltipText = tooltip, Flat = true, Icon = Icon(icon) };
         button.Connect(BaseButton.SignalName.Pressed, new Callable(this, method));
         return button;
+    }
+
+    Button Toggle(string text, string tooltip, StringName method, string icon) {
+        var button = new Button { Text = text, TooltipText = tooltip, Flat = true, ToggleMode = true, Icon = Icon(icon) };
+        button.Connect(BaseButton.SignalName.Toggled, new Callable(this, method));
+        return button;
+    }
+
+    static Control Gap() => new Control { CustomMinimumSize = new Vector2(12, 0) };
+
+    /// <summary>An icon of the editor's theme; none outside the editor, where the buttons keep their words.</summary>
+    Texture2D Icon(string name) => name.Length > 0 && HasThemeIcon(name, "EditorIcons") ? GetThemeIcon(name, "EditorIcons") : null;
+
+    /// <summary>What shows while no catalog is open: what this is, and how to start.</summary>
+    Control BuildEmptyState() {
+        var center = new CenterContainer { Name = "Empty", SizeFlagsVertical = SizeFlags.ExpandFill };
+        var box = new VBoxContainer { CustomMinimumSize = new Vector2(420, 0) };
+        box.AddThemeConstantOverride("separation", 10);
+        center.AddChild(box);
+
+        if (Icon("Translation") is { } icon) {
+            box.AddChild(new TextureRect { Texture = icon, StretchMode = TextureRect.StretchModeEnum.KeepCentered, CustomMinimumSize = new Vector2(0, 32) });
+        }
+        var title = new Label { Text = "No translations open", HorizontalAlignment = HorizontalAlignment.Center };
+        title.AddThemeFontSizeOverride("font_size", 18);
+        box.AddChild(title);
+        box.AddChild(new Label {
+            Text = "Pick a catalog from the list above, open a .po or .pot file, or double-click a .po file in the FileSystem dock.",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            Modulate = new Color(1, 1, 1, 0.6f),
+        });
+        var open = new Button { Text = "Open…", Icon = Icon("Load"), SizeFlagsHorizontal = SizeFlags.ShrinkCenter };
+        open.Connect(BaseButton.SignalName.Pressed, new Callable(this, MethodName.ShowOpenDialog));
+        box.AddChild(open);
+        return center;
     }
 
     Window BuildMessageDialog() {
@@ -190,6 +238,10 @@ public partial class MisspellPanel : VBoxContainer {
         _register.Clear();
         _set = CatalogSet.Open(path);
         HandOver();
+        // The context column only when there are contexts to show.
+        var contexts = _set.Rows.Any(r => r.Context != null);
+        _contextToggle.SetPressedNoSignal(contexts);
+        Table.ShowContext = contexts;
         ShowAsTree(LooksLikePaths(_set));
         Details.ShowRow(null, null);
         RefreshCatalogList();
@@ -538,9 +590,13 @@ public partial class MisspellPanel : VBoxContainer {
         var dirty = IsDirty;
         _save.Disabled = !dirty;
         _reload.Disabled = !open;
-        _merge.Disabled = !open || _set.Template == null || !_set.Languages.Any();
+        // Updating from a template only means something with one; without, the button is not shown at all.
+        _merge.Visible = open && _set.Template != null;
+        _merge.Disabled = !open || !_set.Languages.Any();
         _addLanguage.Disabled = !open;
         _addMessage.Disabled = !open;
+        _empty.Visible = !open;
+        _split.Visible = open;
         if (open) Table.UpdateTitles();
 
         if (dirty != _wasDirty) {
