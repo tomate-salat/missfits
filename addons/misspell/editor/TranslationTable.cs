@@ -68,6 +68,8 @@ public partial class TranslationTable : Tree {
     int _editColumn = -1;
     bool _committing;
     PopupMenu _menu;
+    ConfirmationDialog _deleteDialog;
+    string _pendingDelete = "";
 
     // Colours of the cells, kept faint so text stays readable in light and dark themes.
     static readonly Color Missing = new(1f, 0.35f, 0.3f, 0.13f);
@@ -103,6 +105,10 @@ public partial class TranslationTable : Tree {
         _menu = new PopupMenu { Name = "CellMenu" };
         _menu.Connect(PopupMenu.SignalName.IdPressed, new Callable(this, MethodName.OnMenuId));
         AddChild(_menu);
+
+        _deleteDialog = new ConfirmationDialog { Name = "DeleteFolderDialog", Title = "Delete folder", OkButtonText = "Delete" };
+        _deleteDialog.Connect(AcceptDialog.SignalName.Confirmed, new Callable(this, MethodName.OnDeleteConfirmed));
+        AddChild(_deleteDialog);
     }
 
     // ---- building ----------------------------------------------------------------------------
@@ -737,6 +743,33 @@ public partial class TranslationTable : Tree {
         EmitSignal(SignalName.Edited);
     }
 
+    /// <summary>Asks before deleting a folder, saying how many texts go with it.</summary>
+    public void AskDeleteFolder(string folder) {
+        var count = RowsIn(folder).Count;
+        _pendingDelete = folder;
+        _deleteDialog.DialogText = $"Delete {folder}{PathSeparator} and the {count} text{(count == 1 ? "" : "s")} in it from every file?\nUndo brings them back.";
+        _deleteDialog.PopupCentered();
+    }
+
+    void OnDeleteConfirmed() => DeleteFolder(_pendingDelete);
+
+    /// <summary>Deletes every text in a folder, and the folders inside, from every file — one undo step.</summary>
+    public void DeleteFolder(string folder) {
+        var rows = RowsIn(folder);
+        if (rows.Count == 0) return;
+        var parent = FoldersOf(folder + PathSeparator + "x") is { Length: > 1 } folders ? folders[^2] : null;
+        var column = GetSelectedColumn() >= 0 ? GetSelectedColumn() : ColumnOf(ColumnKind.Source);
+
+        Catalogs.DeleteRows($"Delete folder {folder}{PathSeparator}", rows);
+        _collapsed.RemoveWhere(p => p == folder || p.StartsWith(folder + PathSeparator, StringComparison.Ordinal));
+        Rebuild();
+        // The folder it was in, if that is still there.
+        if (parent != null) SelectItem(GroupItem(parent), column);
+        EmitSignal(SignalName.Edited);
+    }
+
+    List<CatalogRow> RowsIn(string folder) => [.. Catalogs.Rows.Where(r => r.Id.StartsWith(folder + PathSeparator, StringComparison.Ordinal))];
+
     void OnEditorInput(InputEvent @event) {
         if (@event is not InputEventKey { Pressed: true } key) return;
         switch (key.Keycode) {
@@ -807,6 +840,9 @@ public partial class TranslationTable : Tree {
             } else if (key.Keycode == Key.F2) {
                 item.Select(source);
                 if (BeginEdit()) AcceptEvent();
+            } else if (key.Keycode == Key.Delete && !command) {
+                AskDeleteFolder(GroupPathOf(item));
+                AcceptEvent();
             } else if (command && key.Keycode == Key.C) {
                 DisplayServer.ClipboardSet(CellText(item, source));
                 AcceptEvent();
@@ -859,7 +895,7 @@ public partial class TranslationTable : Tree {
         Rebuild();
     }
 
-    public enum MenuId { Edit, CopySource, ToggleFuzzy, Clear, MakePlural, MakeSingular, Delete, LanguageSettings, RenameFolder, ToggleFold }
+    public enum MenuId { Edit, CopySource, ToggleFuzzy, Clear, MakePlural, MakeSingular, Delete, LanguageSettings, RenameFolder, ToggleFold, DeleteFolder }
 
     void OnItemMouseSelected(Vector2 position, int mouseButton) {
         if (mouseButton != (int) MouseButton.Right) return;
@@ -871,6 +907,8 @@ public partial class TranslationTable : Tree {
         if (GroupPathOf(item) != null) {
             _menu.AddItem("Rename folder", (int) MenuId.RenameFolder);
             _menu.AddItem(item.Collapsed ? "Unfold" : "Fold", (int) MenuId.ToggleFold);
+            _menu.AddSeparator();
+            _menu.AddItem("Delete folder…", (int) MenuId.DeleteFolder);
         } else if (row != null) {
             FillTextMenu(item, column, row);
         } else {
@@ -915,6 +953,8 @@ public partial class TranslationTable : Tree {
                 BeginEdit();
             } else if (id == MenuId.ToggleFold) {
                 item.Collapsed = !item.Collapsed;
+            } else if (id == MenuId.DeleteFolder) {
+                AskDeleteFolder(GroupPathOf(item));
             }
             return;
         }

@@ -384,11 +384,16 @@ public sealed class CatalogSet {
     }
 
     public void DeleteRow(CatalogRow row) {
-        if (row == null) return;
-        var key = row.Key;
-        var files = Files.Where(f => f.Find(key) != null).ToList();
-        Change("Delete message", files, () => {
-            foreach (var file in files) file.Catalog.Entries.Remove(file.Find(key));
+        if (row != null) DeleteRows("Delete message", [row]);
+    }
+
+    /// <summary>Removes messages from every file, as one undo step — a whole folder of keys, say.</summary>
+    public void DeleteRows(string name, IReadOnlyCollection<CatalogRow> rows) {
+        var keys = rows.Select(r => r.Key).ToHashSet();
+        var files = Files.Where(f => keys.Any(k => f.Find(k) != null)).ToList();
+        if (files.Count == 0) return;
+        Change(name, files, () => {
+            foreach (var file in files) file.Catalog.Entries.RemoveAll(e => !e.Obsolete && keys.Contains(e.Key));
         }, structural: true);
     }
 

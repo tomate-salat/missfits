@@ -540,6 +540,27 @@ public partial class SpellEditorSelfTest : Node {
         panel.Undo();
         Check("each rename is one undo step", Row(set, "%welcome/option/enter") != null && Row(set, "%quest missing/missing text") != null && table.GroupItem("%welcome/choices") == null);
 
+        // Deleting folders.
+        table.SelectItem(table.GroupItem("%welcome/option"), de);
+        table._GuiInput(new InputEventKey { Pressed = true, Keycode = Key.Delete });
+        var dialog = table.GetNode<ConfirmationDialog>("DeleteFolderDialog");
+        Check("Delete on a folder asks first, saying how much goes", dialog.Visible && dialog.DialogText.StartsWith("Delete %welcome/option/ and the 2 texts")
+                                                                     && Row(set, "%welcome/option/enter") != null);
+        dialog.Hide();
+        dialog.EmitSignal(AcceptDialog.SignalName.Confirmed);
+        Check("confirming deletes every text inside from every file", Row(set, "%welcome/option/enter") == null && Row(set, "%welcome/option/good bye") == null
+                                                                      && set.Files.All(f => f.Find("%welcome/option/enter") == null)
+                                                                      && table.GroupItem("%welcome/option") == null);
+        Check("and nothing outside it", Row(set, "%welcome/welcome") != null && Row(set, "%quest missing/missing text") != null);
+        Check("the folder it was in is selected", table.GetSelected() == table.GroupItem("%welcome"));
+        table.DeleteFolder("%welcome");
+        Check("a folder goes with the folders inside it", set.Rows.All(r => !r.Id.StartsWith("%welcome/")) && table.GroupItem("%welcome") == null);
+        panel.Undo();
+        panel.Undo();
+        Check("each delete is one undo step, translations and all", Row(set, "%welcome/option/enter") != null
+                                                                    && Language(set, "de").Find("%welcome/option/enter")?.StringAt(0) == "Eintreten"
+                                                                    && table.GroupItem("%welcome/option") != null);
+
         panel.ShowAsTree(false);
         Check("without the tree nothing can be dragged", table.DragDataFor(table.ItemOf(Row(set, "plain"))) == null);
         Check("without the tree the keys are rows of their own again", table.KindOf(0) == TranslationTable.ColumnKind.Status && table.GroupItem("%welcome") == null

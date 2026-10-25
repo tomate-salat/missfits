@@ -71,6 +71,10 @@ holds the folder's whole path: change the last part to rename it (`%test` → `%
 move it (`%welcome/option` → `%menu/option`). Every key inside is renamed in every file, as one undo
 step; a rename that would give a key one that is already there is refused.
 
+**Deleting a folder:** Delete on it, or right-click → *Delete folder…*. After asking — with how
+many texts go — every text in it and in the folders inside is removed from every file, as one undo
+step.
+
 **Drag and drop** moves keys in the tree: drag a text or a whole folder onto a folder to move it
 in, onto a text to put it beside that one, or below the rows to move it to the top level. Every key
 is renamed in every file, translations and comments included — `%welcome/option/enter` dropped on
