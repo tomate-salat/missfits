@@ -445,7 +445,7 @@ public partial class SpellEditorSelfTest : Node {
         var de = table.ColumnOf(Language(set, "de"));
         Check("a folder counts what is translated inside it", welcome.GetText(de) == "2/3" && table.GroupItem("%welcome/option").GetText(de) == "1/2"
                                                               && table.GroupItem("%quest missing").GetText(de) == "1/1");
-        Check("a folder is no text: it cannot be edited", !table.CanEdit(welcome, de) && !table.CanEdit(welcome, 0) && table.RowOf(welcome) == null);
+        Check("a folder is no text: only its name can be edited", !table.CanEdit(welcome, de) && table.CanEdit(welcome, 0) && table.RowOf(welcome) == null);
 
         table.SelectCell(Row(set, "%welcome/option/good bye"), 0, de);
         table.WriteCell(table.GetSelected(), de, "Tschüss");
@@ -511,6 +511,34 @@ public partial class SpellEditorSelfTest : Node {
         Check("a move onto a key that is there is refused, and changes nothing", Row(set, "%welcome/welcome") != null
                                                                                  && panel.StatusText.Contains("already there"));
         panel.Undo();
+
+        // Renaming folders.
+        var source = table.ColumnOf(TranslationTable.ColumnKind.Source);
+        table.SelectItem(table.GroupItem("%welcome/option"), de);
+        table._GuiInput(new InputEventKey { Pressed = true, Keycode = Key.F2 });
+        Check("F2 on a folder edits its whole path", table.IsEditing && table.GetNode<TextEdit>("CellEditor").Text == "%welcome/option");
+        table.CancelEdit();
+
+        table.GroupItem("%welcome/option").Collapsed = true;
+        table.WriteCell(table.GroupItem("%welcome/option"), source, "%welcome/choices");
+        Check("renaming a folder renames every key inside, in every file", Row(set, "%welcome/choices/enter") != null && Row(set, "%welcome/choices/good bye") != null
+                                                                          && Row(set, "%welcome/option/enter") == null
+                                                                          && Language(set, "de").Find("%welcome/choices/enter")?.StringAt(0) == "Eintreten"
+                                                                          && set.Template.Find("%welcome/choices/good bye") != null);
+        Check("the renamed folder is selected and stays folded", table.GetSelected() == table.GroupItem("%welcome/choices") && table.GroupItem("%welcome/choices").Collapsed);
+        Check("keys outside it stay", Row(set, "%welcome/welcome") != null);
+
+        table.WriteCell(table.GroupItem("%quest missing"), source, "/%quest/");
+        Check("slashes around the name are dropped", table.GroupItem("%quest") != null && Row(set, "%quest/missing text") != null);
+        table.WriteCell(table.GroupItem("%quest"), source, "%welcome/quest");
+        Check("changing the rest of the path moves the folder", Row(set, "%welcome/quest/missing text") != null && table.GroupItem("%welcome/quest") != null);
+        table.WriteCell(table.GroupItem("%welcome"), source, " ");
+        Check("an empty name is refused", Row(set, "%welcome/welcome") != null && panel.StatusText == "A folder needs a name.");
+
+        panel.Undo();
+        panel.Undo();
+        panel.Undo();
+        Check("each rename is one undo step", Row(set, "%welcome/option/enter") != null && Row(set, "%quest missing/missing text") != null && table.GroupItem("%welcome/choices") == null);
 
         panel.ShowAsTree(false);
         Check("without the tree nothing can be dragged", table.DragDataFor(table.ItemOf(Row(set, "plain"))) == null);

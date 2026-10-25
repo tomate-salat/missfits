@@ -600,6 +600,8 @@ public partial class TranslationTable : Tree {
 
     /// <summary>Whether a cell can be typed into: sources, contexts, and every form a language has.</summary>
     public bool CanEdit(TreeItem item, int column) {
+        // A folder's name is its source cell: changing it renames every key inside.
+        if (GroupPathOf(item) != null) return KindOf(column) == ColumnKind.Source;
         var row = RowOf(item);
         if (row == null) return false;
         var form = item.GetMetadata(1).AsInt32();
@@ -613,6 +615,8 @@ public partial class TranslationTable : Tree {
 
     /// <summary>The text a cell holds, line breaks and all — not what it shows.</summary>
     public string CellText(TreeItem item, int column) {
+        // The whole path, so a folder can be moved by editing it as well as renamed.
+        if (GroupPathOf(item) is { } folder) return KindOf(column) == ColumnKind.Source ? folder : "";
         var row = RowOf(item);
         if (row == null) return "";
         var form = item.GetMetadata(1).AsInt32();
@@ -675,6 +679,10 @@ public partial class TranslationTable : Tree {
 
     /// <summary>Writes a cell through the set, so it is an undo step, and redraws what changed.</summary>
     public void WriteCell(TreeItem item, int column, string text) {
+        if (GroupPathOf(item) is { } folder) {
+            if (CanEdit(item, column)) RenameFolder(folder, text, column);
+            return;
+        }
         var row = RowOf(item);
         if (row == null || !CanEdit(item, column)) return;
         var form = item.GetMetadata(1).AsInt32();
@@ -696,6 +704,36 @@ public partial class TranslationTable : Tree {
             Rebuild();
             if (Catalogs.Rows.FirstOrDefault(r => r.Key == key) is { } moved) SelectCell(moved, Math.Min(form, moved.IsPlural ? 1 : 0), column);
         }
+        EmitSignal(SignalName.Edited);
+    }
+
+    /// <summary>
+    /// Gives a folder a new path: every key inside is renamed in every file, as one undo step.
+    /// Changing only the last part renames the folder, changing the rest moves it.
+    /// </summary>
+    public void RenameFolder(string folder, string path, int column = -1) {
+        path = (path ?? "").Replace("\r", "").Replace("\n", "").Trim().Trim(PathSeparator);
+        if (path.Length == 0) {
+            EmitSignal(SignalName.EditRejected, "A folder needs a name.");
+            return;
+        }
+        if (path == folder) return;
+
+        var renames = Catalogs.Rows.Where(r => r.Id.StartsWith(folder + PathSeparator, StringComparison.Ordinal))
+            .Select(r => (r, path + r.Id[folder.Length..])).ToList();
+        var error = Catalogs.RenameRows($"Rename folder {folder}{PathSeparator}", renames);
+        if (error != null) {
+            EmitSignal(SignalName.EditRejected, error);
+            return;
+        }
+
+        // Folded folders stay folded under their new name, the ones inside too.
+        foreach (var old in _collapsed.Where(p => p == folder || p.StartsWith(folder + PathSeparator, StringComparison.Ordinal)).ToList()) {
+            _collapsed.Remove(old);
+            _collapsed.Add(path + old[folder.Length..]);
+        }
+        Rebuild();
+        SelectItem(GroupItem(path), column >= 0 ? column : ColumnOf(ColumnKind.Source));
         EmitSignal(SignalName.Edited);
     }
 
@@ -761,10 +799,19 @@ public partial class TranslationTable : Tree {
 
         var command = key.IsCommandOrControlPressed();
         if (GroupPathOf(item) != null) {
-            // A folder holds no text of its own; Enter folds and unfolds it.
-            if (key.Keycode is Key.Enter or Key.KpEnter or Key.F2) {
+            // Enter folds and unfolds a folder; F2, or typing on its name, renames it.
+            var source = ColumnOf(ColumnKind.Source);
+            if (key.Keycode is Key.Enter or Key.KpEnter) {
                 item.Collapsed = !item.Collapsed;
                 AcceptEvent();
+            } else if (key.Keycode == Key.F2) {
+                item.Select(source);
+                if (BeginEdit()) AcceptEvent();
+            } else if (command && key.Keycode == Key.C) {
+                DisplayServer.ClipboardSet(CellText(item, source));
+                AcceptEvent();
+            } else if (!command && !key.AltPressed && key.Unicode > 32 && column == source) {
+                if (BeginEdit(char.ConvertFromUtf32((int) key.Unicode))) AcceptEvent();
             }
             return;
         }
@@ -812,16 +859,30 @@ public partial class TranslationTable : Tree {
         Rebuild();
     }
 
-    public enum MenuId { Edit, CopySource, ToggleFuzzy, Clear, MakePlural, MakeSingular, Delete, LanguageSettings }
+    public enum MenuId { Edit, CopySource, ToggleFuzzy, Clear, MakePlural, MakeSingular, Delete, LanguageSettings, RenameFolder, ToggleFold }
 
     void OnItemMouseSelected(Vector2 position, int mouseButton) {
         if (mouseButton != (int) MouseButton.Right) return;
         var item = GetSelected();
         var column = GetSelectedColumn();
         var row = RowOf(item);
-        if (row == null) return;
-
         _menu.Clear();
+
+        if (GroupPathOf(item) != null) {
+            _menu.AddItem("Rename folder", (int) MenuId.RenameFolder);
+            _menu.AddItem(item.Collapsed ? "Unfold" : "Fold", (int) MenuId.ToggleFold);
+        } else if (row != null) {
+            FillTextMenu(item, column, row);
+        } else {
+            return;
+        }
+
+        _menu.Position = (Vector2I) (GetScreenPosition() + position);
+        _menu.ResetSize();
+        _menu.Popup();
+    }
+
+    void FillTextMenu(TreeItem item, int column, CatalogRow row) {
         _menu.AddItem("Edit", (int) MenuId.Edit);
         _menu.SetItemDisabled(_menu.ItemCount - 1, !CanEdit(item, column));
         if (FileOf(column) is { } file) {
@@ -838,10 +899,6 @@ public partial class TranslationTable : Tree {
         if (row.IsPlural) _menu.AddItem("Make singular", (int) MenuId.MakeSingular);
         else _menu.AddItem("Make plural", (int) MenuId.MakePlural);
         _menu.AddItem("Delete message", (int) MenuId.Delete);
-
-        _menu.Position = (Vector2I) (GetScreenPosition() + position);
-        _menu.ResetSize();
-        _menu.Popup();
     }
 
     void OnMenuId(long id) => RunMenu((MenuId) id);
@@ -852,6 +909,15 @@ public partial class TranslationTable : Tree {
         var column = GetSelectedColumn();
         var row = RowOf(item);
         var file = FileOf(column);
+        if (GroupPathOf(item) != null) {
+            if (id == MenuId.RenameFolder) {
+                item.Select(ColumnOf(ColumnKind.Source));
+                BeginEdit();
+            } else if (id == MenuId.ToggleFold) {
+                item.Collapsed = !item.Collapsed;
+            }
+            return;
+        }
         if (row == null) return;
 
         string error = null;

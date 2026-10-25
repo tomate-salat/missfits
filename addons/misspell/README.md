@@ -66,6 +66,11 @@ edit the source cell to rename it. Sets whose sources mostly contain a `/` open 
 *Tree* button switches. Enter or a double-click folds a folder, folded folders stay folded, and
 *+ Text* starts a new key in the folder at hand.
 
+**Renaming a folder:** F2 on it, typing on its name, or right-click → *Rename folder*. The editor
+holds the folder's whole path: change the last part to rename it (`%test` → `%arena`), the rest to
+move it (`%welcome/option` → `%menu/option`). Every key inside is renamed in every file, as one undo
+step; a rename that would give a key one that is already there is refused.
+
 **Drag and drop** moves keys in the tree: drag a text or a whole folder onto a folder to move it
 in, onto a text to put it beside that one, or below the rows to move it to the top level. Every key
 is renamed in every file, translations and comments included — `%welcome/option/enter` dropped on
