@@ -48,7 +48,7 @@ language's title for its language and plural rule.
 - Type on a selected cell to replace it; **Enter**, **F2** or a double-click to change it.
 - While editing: **Enter** keeps the text and goes down, **Tab** / **Shift+Tab** go right / left,
   **Shift+Enter** breaks the line, **Escape** cancels. Clicking elsewhere keeps what you typed.
-- **Delete** empties a cell, **Ctrl+C** / **Ctrl+X** / **Ctrl+V** copy, cut and paste one.
+- **Delete** empties a cell, **Ctrl+C** / **Ctrl+X** / **Ctrl+V** copy, cut and paste one. On a key or folder, Ctrl+C copies its whole path, even where the tree shows only its name.
 - **Ctrl+Z** / **Ctrl+Y** undo and redo, **Ctrl+F** searches, **Ctrl+S** saves.
 - Writing a translation clears its *fuzzy* flag: you have looked at it.
 - Line breaks show as `↵` in the table and are real line breaks in the file.

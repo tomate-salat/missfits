@@ -763,6 +763,16 @@ public partial class TranslationTable : Tree {
         };
     }
 
+    /// <summary>
+    /// What Ctrl+C copies from a cell: like <see cref="CellText"/>, but a folder or a key always
+    /// whole, path and all — what the code needs, though the tree shows and edits only the name.
+    /// </summary>
+    public string CopyText(TreeItem item, int column) {
+        if (GroupPathOf(item) is { } folder) return folder;
+        if (KindOf(column) == ColumnKind.Source && item.GetMetadata(1).AsInt32() == 0 && RowOf(item) is { } row) return row.Id;
+        return CellText(item, column);
+    }
+
     /// <summary>Opens the cell editor on the selected cell; with <paramref name="replaceWith"/>, starting from that text instead.</summary>
     public bool BeginEdit(string replaceWith = null) {
         var item = GetSelected();
@@ -990,7 +1000,7 @@ public partial class TranslationTable : Tree {
                 AskDeleteFolder(GroupPathOf(item));
                 AcceptEvent();
             } else if (command && key.Keycode == Key.C) {
-                DisplayServer.ClipboardSet(CellText(item, source));
+                DisplayServer.ClipboardSet(CopyText(item, source));
                 AcceptEvent();
             } else if (!command && !key.AltPressed && key.Unicode > 32 && column == source) {
                 if (BeginEdit(char.ConvertFromUtf32((int) key.Unicode))) AcceptEvent();
@@ -998,7 +1008,7 @@ public partial class TranslationTable : Tree {
             return;
         }
         if (command && key.Keycode == Key.C) {
-            DisplayServer.ClipboardSet(CellText(item, column));
+            DisplayServer.ClipboardSet(CopyText(item, column));
             AcceptEvent();
         } else if (command && key.Keycode == Key.X && CanEdit(item, column) && KindOf(column) == ColumnKind.Language) {
             DisplayServer.ClipboardSet(CellText(item, column));

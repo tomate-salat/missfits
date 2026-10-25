@@ -577,6 +577,12 @@ public partial class SpellEditorSelfTest : Node {
                                                             && table.SelectedRow?.Id == "%welcome/option/go in");
         panel.Undo();
 
+        // Copying gives the whole path, though the tree shows only the name.
+        table.SelectCell(Row(set, "%welcome/option/enter"), 0, source);
+        Check("Ctrl+C on a key copies it whole", table.CopyText(table.GetSelected(), source) == "%welcome/option/enter");
+        Check("on a folder too", table.CopyText(table.GroupItem("%welcome/option"), source) == "%welcome/option");
+        Check("on a translation it copies the translation", table.CopyText(table.GetSelected(), de) == "Eintreten");
+
         // Right-click below the rows: a new folder at the top.
         table.SelectCell(Row(set, "%welcome/option/enter"), 0, source);
         table.EmitSignal(Tree.SignalName.EmptyClicked, new Vector2(20, table.Size.Y - 5), (long) MouseButton.Right);
