@@ -86,6 +86,7 @@ public partial class MisspellPanel : VBoxContainer {
         Table.Connect(TranslationTable.SignalName.Edited, new Callable(this, MethodName.OnEdited));
         Table.Connect(TranslationTable.SignalName.EditRejected, new Callable(this, MethodName.OnRejected));
         Table.Connect(TranslationTable.SignalName.LanguageMenuRequested, new Callable(this, MethodName.OnLanguageMenu));
+        Table.Connect(TranslationTable.SignalName.NewTextRequested, new Callable(this, MethodName.AddMessagePressed));
         Table.Connect(Tree.SignalName.CellSelected, new Callable(this, MethodName.OnCellSelected));
 
         Details = new EntryDetails { Name = "Details" };
@@ -211,7 +212,7 @@ public partial class MisspellPanel : VBoxContainer {
     }
 
     Window BuildMessageDialog() {
-        _messageDialog = new ConfirmationDialog { Title = "Add text", OkButtonText = "Add", MinSize = new Vector2I(420, 0) };
+        _messageDialog = new ConfirmationDialog { Name = "MessageDialog", Title = "Add text", OkButtonText = "Add", MinSize = new Vector2I(420, 0) };
         var grid = new GridContainer { Columns = 2 };
         _messageDialog.AddChild(grid);
         _newSource = new LineEdit { SizeFlagsHorizontal = SizeFlags.ExpandFill, PlaceholderText = "The text as the code says it" };

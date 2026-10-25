@@ -30,6 +30,10 @@ public partial class TranslationTable : Tree {
     [Signal]
     public delegate void LanguageMenuRequestedEventHandler(string path);
 
+    /// <summary>"New text" was picked from the menu: the panel asks for it, in <see cref="SelectedFolder"/>.</summary>
+    [Signal]
+    public delegate void NewTextRequestedEventHandler();
+
     public enum Filter { All, Untranslated, Fuzzy, Problems, Plural }
 
     public enum ColumnKind { None, Context, Source, Language }
@@ -1051,18 +1055,19 @@ public partial class TranslationTable : Tree {
         Rebuild();
     }
 
-    public enum MenuId { Edit, CopySource, ToggleFuzzy, Clear, MakePlural, MakeSingular, Delete, LanguageSettings, RenameFolder, ToggleFold, DeleteFolder, NewFolder, NewTopFolder }
+    public enum MenuId { Edit, CopySource, ToggleFuzzy, Clear, MakePlural, MakeSingular, Delete, LanguageSettings, RenameFolder, ToggleFold, DeleteFolder, NewFolder, NewTopFolder, NewText }
 
     /// <summary>
     /// A click below the rows lets go of the selection, so a new folder or text lands at the top;
-    /// a right-click there offers a new folder at the top.
+    /// a right-click there offers a new text or folder at the top.
     /// </summary>
     void OnEmptyClicked(Vector2 position, long mouseButton) {
         DeselectAll();
-        if (mouseButton != (long) MouseButton.Right || !TreeView || Catalogs == null) return;
+        if (mouseButton != (long) MouseButton.Right || Catalogs == null) return;
 
         _menu.Clear();
-        _menu.AddItem("New folder", (int) MenuId.NewTopFolder);
+        _menu.AddItem("New text", (int) MenuId.NewText);
+        if (TreeView) _menu.AddItem("New folder", (int) MenuId.NewTopFolder);
         _menu.Position = (Vector2I) (GetScreenPosition() + position);
         _menu.ResetSize();
         _menu.Popup();
@@ -1076,7 +1081,9 @@ public partial class TranslationTable : Tree {
         _menu.Clear();
 
         if (GroupPathOf(item) != null) {
+            _menu.AddItem("New text inside", (int) MenuId.NewText);
             _menu.AddItem("New folder inside", (int) MenuId.NewFolder);
+            _menu.AddSeparator();
             _menu.AddItem("Rename folder", (int) MenuId.RenameFolder);
             _menu.AddItem(item.Collapsed ? "Unfold" : "Fold", (int) MenuId.ToggleFold);
             _menu.AddSeparator();
@@ -1093,6 +1100,9 @@ public partial class TranslationTable : Tree {
     }
 
     void FillTextMenu(TreeItem item, int column, CatalogRow row) {
+        _menu.AddItem(TreeView ? "New text here" : "New text", (int) MenuId.NewText);
+        if (TreeView) _menu.AddItem("New folder here", (int) MenuId.NewFolder);
+        _menu.AddSeparator();
         _menu.AddItem("Edit", (int) MenuId.Edit);
         _menu.SetItemDisabled(_menu.ItemCount - 1, !CanEdit(item, column));
         if (FileOf(column) is { } file) {
@@ -1109,7 +1119,6 @@ public partial class TranslationTable : Tree {
         if (row.IsPlural) _menu.AddItem("Make singular", (int) MenuId.MakeSingular);
         else _menu.AddItem("Make plural", (int) MenuId.MakePlural);
         _menu.AddItem("Delete message", (int) MenuId.Delete);
-        if (TreeView) _menu.AddItem("New folder here", (int) MenuId.NewFolder);
     }
 
     void OnMenuId(long id) => RunMenu((MenuId) id);
@@ -1118,6 +1127,10 @@ public partial class TranslationTable : Tree {
     public void RunMenu(MenuId id) {
         if (id == MenuId.NewTopFolder) {
             NewFolder("");
+            return;
+        }
+        if (id == MenuId.NewText) {
+            EmitSignal(SignalName.NewTextRequested);
             return;
         }
         var item = GetSelected();

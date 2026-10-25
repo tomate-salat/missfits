@@ -587,9 +587,22 @@ public partial class SpellEditorSelfTest : Node {
         table.SelectCell(Row(set, "%welcome/option/enter"), 0, source);
         table.EmitSignal(Tree.SignalName.EmptyClicked, new Vector2(20, table.Size.Y - 5), (long) MouseButton.Right);
         var menu = table.GetNode<PopupMenu>("CellMenu");
-        Check("a right-click below the rows lets go of the selection and offers a new folder", table.GetSelected() == null && menu.Visible
-                                                                                                && menu.ItemCount == 1 && menu.GetItemText(0) == "New folder");
+        Check("a right-click below the rows lets go of the selection and offers a new text and folder", table.GetSelected() == null && menu.Visible
+                                                                                                         && menu.ItemCount == 2 && menu.GetItemText(0) == "New text" && menu.GetItemText(1) == "New folder");
         menu.Hide();
+        table.RunMenu(TranslationTable.MenuId.NewText);
+        var messageDialog = panel.GetNode<ConfirmationDialog>("MessageDialog");
+        Check("a new text asks for its key", messageDialog.Visible);
+        messageDialog.Hide();
+        table.SelectCell(Row(set, "%welcome/option/enter"), 0, source);
+        table.EmitSignal(Tree.SignalName.ItemMouseSelected, Vector2.Zero, (long) MouseButton.Right);
+        Check("on a text, new text and folder come first", menu.GetItemText(0) == "New text here" && menu.GetItemText(1) == "New folder here");
+        menu.Hide();
+        table.SelectItem(table.GroupItem("%welcome"), source);
+        table.EmitSignal(Tree.SignalName.ItemMouseSelected, Vector2.Zero, (long) MouseButton.Right);
+        Check("on a folder too", menu.GetItemText(0) == "New text inside" && menu.GetItemText(1) == "New folder inside");
+        menu.Hide();
+        table.DeselectAll();
         table.RunMenu(TranslationTable.MenuId.NewTopFolder);
         Check("which is made at the top", table.GroupItem("new folder") != null && table.GroupItem("new folder").GetParent() == table.GetRoot() && table.IsEditing);
         table.CancelEdit();
