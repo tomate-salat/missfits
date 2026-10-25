@@ -49,6 +49,7 @@ public partial class MisspellPanel : VBoxContainer {
     Button _merge;
     Button _addLanguage;
     Button _addMessage;
+    Button _addFolder;
     LineEdit _search;
     OptionButton _filter;
     Button _treeToggle;
@@ -134,6 +135,8 @@ public partial class MisspellPanel : VBoxContainer {
 
         _addMessage = Tool("Text", "Add a text by hand to every file", MethodName.AddMessagePressed, "Add");
         bar.AddChild(_addMessage);
+        _addFolder = Tool("Folder", "Add a folder in the selected one. It stays empty, and is not saved, until a text is put in it", MethodName.AddFolderPressed, "FolderCreate");
+        bar.AddChild(_addFolder);
         _addLanguage = Tool("Language", "Add a language: a new .po file with every text of the template", MethodName.AddLanguagePressed, "Translation");
         bar.AddChild(_addLanguage);
         _merge = Tool("Update", "Update from the template: add its new texts to every language, and mark texts gone from it obsolete", MethodName.MergePressed, "ImportCheck");
@@ -572,7 +575,11 @@ public partial class MisspellPanel : VBoxContainer {
         _treeToggle.SetPressedNoSignal(on);
         Table.TreeView = on;
         Table.Rebuild();
+        UpdateUi();
     }
+
+    /// <summary>A new folder in the selected one, or beside the selected text; its name opens for typing.</summary>
+    void AddFolderPressed() => Table.NewFolder(Table.SelectedFolder()?.TrimEnd(TranslationTable.PathSeparator) ?? "");
 
     void OnTreeToggled(bool on) => ShowAsTree(on);
 
@@ -595,6 +602,7 @@ public partial class MisspellPanel : VBoxContainer {
         _merge.Disabled = !open || !_set.Languages.Any();
         _addLanguage.Disabled = !open;
         _addMessage.Disabled = !open;
+        _addFolder.Visible = open && Table.TreeView;
         _empty.Visible = !open;
         _split.Visible = open;
         if (open) Table.UpdateTitles();

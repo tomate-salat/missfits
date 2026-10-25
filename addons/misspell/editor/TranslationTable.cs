@@ -60,6 +60,12 @@ public partial class TranslationTable : Tree {
 
     /// <summary>Folders the user folded, by path; they stay folded when the table is rebuilt.</summary>
     readonly HashSet<string> _collapsed = [];
+
+    /// <summary>
+    /// Folders made in the tree that hold no text yet. A PO file only knows keys, so they cannot be
+    /// saved: they last until a text is put in them or the editor is closed, and look greyed out.
+    /// </summary>
+    readonly HashSet<string> _emptyFolders = [];
     int _sortColumn = -1;
     bool _sortDescending;
 
@@ -98,6 +104,7 @@ public partial class TranslationTable : Tree {
         Connect(Tree.SignalName.ColumnTitleClicked, new Callable(this, MethodName.OnColumnTitleClicked));
         Connect(Tree.SignalName.ItemMouseSelected, new Callable(this, MethodName.OnItemMouseSelected));
         Connect(Tree.SignalName.ItemCollapsed, new Callable(this, MethodName.OnItemCollapsed));
+        Connect(Tree.SignalName.EmptyClicked, new Callable(this, MethodName.OnEmptyClicked));
 
         _editor = new TextEdit {
             Name = "CellEditor",
@@ -181,13 +188,11 @@ public partial class TranslationTable : Tree {
         UpdateTitles();
 
         var root = CreateItem();
-        var maxForms = Catalogs.MaxForms;
-        foreach (var row in SortedRows(VisibleRows())) {
-            var item = CreateItem(TreeView ? FolderOf(root, row) : root);
-            _items[row.Key] = item;
-            Fill(item, row, 0);
-            if (!row.IsPlural) continue;
-            for (var form = 1; form < maxForms; form++) Fill(CreateItem(item), row, form);
+        var rows = SortedRows(VisibleRows()).ToList();
+        if (TreeView) {
+            BuildTree(root, rows);
+        } else {
+            foreach (var row in rows) AddRowItem(root, row);
         }
         foreach (var (path, group) in _groups) FillGroup(group, path);
 
@@ -203,23 +208,77 @@ public partial class TranslationTable : Tree {
         return folders;
     }
 
-    /// <summary>The row of the folder a message goes in, made along with the folders above it as needed.</summary>
-    TreeItem FolderOf(TreeItem root, CatalogRow row) {
-        var parent = root;
-        foreach (var path in FoldersOf(row.Id)) {
-            if (!_groups.TryGetValue(path, out var group)) {
-                group = CreateItem(parent);
+    void AddRowItem(TreeItem parent, CatalogRow row) {
+        var item = CreateItem(parent);
+        _items[row.Key] = item;
+        Fill(item, row, 0);
+        if (!row.IsPlural) return;
+        for (var form = 1; form < Catalogs.MaxForms; form++) Fill(CreateItem(item), row, form);
+    }
+
+    /// <summary>What lies directly in one folder: the folders, in the order they turn up, and the texts.</summary>
+    sealed class FolderNode {
+        public readonly List<string> Folders = [];
+        public readonly List<CatalogRow> Rows = [];
+    }
+
+    /// <summary>
+    /// The tree: in each folder first the folders, then the texts. The folders keep the order in
+    /// which they first turn up, or are sorted by name while the key column is sorted. Folders made
+    /// here and still empty are shown too, unless a search or filter is on.
+    /// </summary>
+    void BuildTree(TreeItem root, List<CatalogRow> rows) {
+        var nodes = new Dictionary<string, FolderNode> { [""] = new() };
+
+        FolderNode Ensure(string path) {
+            if (nodes.TryGetValue(path, out var node)) return node;
+            var folders = FoldersOf(path + PathSeparator + "x");
+            var parent = folders.Length > 1 ? folders[^2] : "";
+            Ensure(parent).Folders.Add(path);
+            _groupRows[path] = [];
+            return nodes[path] = new FolderNode();
+        }
+
+        // A made folder that has texts now is a folder like any other.
+        _emptyFolders.RemoveWhere(path => Catalogs.Rows.Any(r => r.Id.StartsWith(path + PathSeparator, StringComparison.Ordinal)));
+
+        foreach (var row in rows) {
+            var folders = FoldersOf(row.Id);
+            foreach (var path in folders) {
+                Ensure(path);
+                _groupRows[path].Add(row);
+            }
+            Ensure(folders.Length > 0 ? folders[^1] : "").Rows.Add(row);
+        }
+        if ((Search?.Trim() ?? "").Length == 0 && ShowOnly == Filter.All) {
+            foreach (var path in _emptyFolders.OrderBy(p => p, StringComparer.Ordinal)) Ensure(path);
+        }
+
+        var byName = _sortColumn >= 0 && KindOf(_sortColumn) == ColumnKind.Source;
+        void Add(TreeItem parent, FolderNode node) {
+            IEnumerable<string> folders = node.Folders;
+            if (byName) {
+                folders = _sortDescending ? folders.OrderByDescending(NameOf, StringComparer.CurrentCultureIgnoreCase)
+                                          : folders.OrderBy(NameOf, StringComparer.CurrentCultureIgnoreCase);
+            }
+            foreach (var path in folders) {
+                var group = CreateItem(parent);
                 group.SetMetadata(0, GroupMark + path);
                 group.SetMetadata(1, 0);
                 group.Collapsed = _collapsed.Contains(path);
                 _groups[path] = group;
-                _groupRows[path] = [];
+                Add(group, nodes[path]);
             }
-            _groupRows[path].Add(row);
-            parent = group;
+            foreach (var row in node.Rows) AddRowItem(parent, row);
         }
-        return parent;
+        Add(root, nodes[""]);
     }
+
+    /// <summary>The last part of a key or folder path: what the tree shows of it.</summary>
+    public static string NameOf(string path) => path[(path.LastIndexOf(PathSeparator) + 1)..];
+
+    /// <summary>The folder a path lies in, or "" at the top.</summary>
+    public static string ParentOf(string path) => path.LastIndexOf(PathSeparator) is var at && at > 0 ? path[..at] : "";
 
     /// <summary>
     /// A folder's row: a folder icon and its name, and per language how many of the texts inside
@@ -236,10 +295,13 @@ public partial class TranslationTable : Tree {
             item.SetTooltipText(c, "");
             switch (_kinds[c]) {
                 case ColumnKind.Source:
-                    item.SetText(c, path[(path.LastIndexOf(PathSeparator) + 1)..]);
-                    item.SetTooltipText(c, $"{path}{PathSeparator} — {rows.Count} text{(rows.Count == 1 ? "" : "s")}");
+                    item.SetText(c, NameOf(path));
+                    item.SetTooltipText(c, rows.Count == 0
+                        ? $"{path}{PathSeparator} — empty. A folder is part of its texts' keys, so it is not saved until a text is put in it."
+                        : $"{path}{PathSeparator} — {rows.Count} text{(rows.Count == 1 ? "" : "s")}");
+                    if (rows.Count == 0) item.SetCustomColor(c, GetThemeColor("font_placeholder_color", "LineEdit"));
                     break;
-                case ColumnKind.Language:
+                case ColumnKind.Language when rows.Count > 0:
                     var file = _columnFiles[c];
                     var forms = file.Catalog.Plurals.Count;
                     var done = rows.Count(r => Catalogs.EntryOf(r, file) is { Fuzzy: false } entry && entry.IsTranslated(forms));
@@ -257,8 +319,43 @@ public partial class TranslationTable : Tree {
         if (problems > 0) {
             SetIcon(item, source, "StatusWarning", GetThemeColor("warning_color", "Editor"));
             item.SetTooltipText(source, $"{item.GetTooltipText(source)}\n{problems} problem{(problems == 1 ? "" : "s")} inside");
+        } else if (rows.Count == 0) {
+            SetIcon(item, source, "Folder", new Color(0.6f, 0.6f, 0.6f, 0.6f));
         } else {
             SetIcon(item, source, "Folder", HasThemeColor("folder_icon_color", "FileDialog") ? GetThemeColor("folder_icon_color", "FileDialog") : Colors.White);
+        }
+    }
+
+    /// <summary>Whether a folder only exists in the editor so far: made here, with no text in it.</summary>
+    public bool IsEmptyFolder(string path) => _groupRows.TryGetValue(path, out var rows) && rows.Count == 0;
+
+    /// <summary>Whether a folder is there: with texts in it, or made here and still empty.</summary>
+    bool FolderExists(string path) => _emptyFolders.Contains(path) || _emptyFolders.Any(p => p.StartsWith(path + PathSeparator, StringComparison.Ordinal))
+                                      || Catalogs.Rows.Any(r => r.Id.StartsWith(path + PathSeparator, StringComparison.Ordinal));
+
+    /// <summary>
+    /// Makes an empty folder in <paramref name="parent"/> ("" for the top), named apart from what is
+    /// there, selects it and opens its name for typing.
+    /// </summary>
+    public string NewFolder(string parent) {
+        if (!TreeView || Catalogs == null) return null;
+        parent = (parent ?? "").Trim(PathSeparator);
+        string PathFor(string name) => parent.Length == 0 ? name : $"{parent}{PathSeparator}{name}";
+        var path = PathFor("new folder");
+        for (var i = 2; FolderExists(path); i++) path = PathFor($"new folder {i}");
+
+        _emptyFolders.Add(path);
+        Rebuild();
+        SelectItem(GroupItem(path), ColumnOf(ColumnKind.Source));
+        BeginEdit();
+        return path;
+    }
+
+    /// <summary>Renames or drops the made folders at and below a path, as their folder is renamed, moved or deleted.</summary>
+    void RepathEmptyFolders(string folder, string path) {
+        foreach (var old in _emptyFolders.Where(p => p == folder || p.StartsWith(folder + PathSeparator, StringComparison.Ordinal)).ToList()) {
+            _emptyFolders.Remove(old);
+            if (path != null) _emptyFolders.Add(path + old[folder.Length..]);
         }
     }
 
@@ -324,7 +421,7 @@ public partial class TranslationTable : Tree {
         return data;
     }
 
-    public override bool _CanDropData(Vector2 atPosition, Variant data) => MovesFor(data, FolderAt(atPosition)) is { Count: > 0 };
+    public override bool _CanDropData(Vector2 atPosition, Variant data) => MovesFor(data, FolderAt(atPosition)) != null;
 
     public override void _DropData(Vector2 atPosition, Variant data) => Move(data, FolderAt(atPosition));
 
@@ -366,7 +463,8 @@ public partial class TranslationTable : Tree {
             var folders = FoldersOf(row.Id);
             parent = folders.Length > 0 ? folders[^1] : "";
         }
-        if (parent == target || rows.Count == 0) return null;
+        // A folder made here and still empty moves with no key to rename: an empty list, not null.
+        if (parent == target || (rows.Count == 0 && !(isFolder && FolderExists(dragged)))) return null;
 
         var strip = parent.Length == 0 ? 0 : parent.Length + 1;
         return [.. rows.Select(r => (r, target.Length == 0 ? r.Id[strip..] : $"{target}{PathSeparator}{r.Id[strip..]}"))];
@@ -375,27 +473,29 @@ public partial class TranslationTable : Tree {
     /// <summary>Moves what is dragged into a folder: every key renamed in every file, as one undo step.</summary>
     public void Move(Variant data, string target) {
         var moves = MovesFor(data, target);
-        if (moves == null || moves.Count == 0) return;
+        if (moves == null) return;
 
         var isFolder = data.AsGodotDictionary()["folder"].AsBool();
         var column = GetSelectedColumn() >= 0 ? GetSelectedColumn() : ColumnOf(ColumnKind.Source);
         var where = target.Length == 0 ? "the top level" : $"{target}{PathSeparator}";
-        var error = Catalogs.RenameRows($"Move to {where}", moves);
+        var error = moves.Count == 0 ? null : Catalogs.RenameRows($"Move to {where}", moves);
         if (error != null) {
             EmitSignal(SignalName.EditRejected, error);
             return;
         }
 
-        Rebuild();
         if (isFolder) {
-            var name = data.AsGodotDictionary()[DragKey].AsString();
-            name = name[(name.LastIndexOf(PathSeparator) + 1)..];
-            SelectItem(GroupItem(target.Length == 0 ? name : $"{target}{PathSeparator}{name}"), column);
+            var folder = data.AsGodotDictionary()[DragKey].AsString();
+            var moved = target.Length == 0 ? NameOf(folder) : $"{target}{PathSeparator}{NameOf(folder)}";
+            RepathEmptyFolders(folder, moved);
+            Rebuild();
+            SelectItem(GroupItem(moved), column);
         } else {
+            Rebuild();
             var (row, id) = moves[0];
             SelectCell(Catalogs.Rows.FirstOrDefault(r => r.Key == PoEntry.KeyOf(row.Context, id)), 0, column);
         }
-        EmitSignal(SignalName.Edited);
+        if (moves.Count > 0) EmitSignal(SignalName.Edited);
     }
 
     /// <summary>The column titles: what a column shows, and for a language how far it is.</summary>
@@ -649,14 +749,15 @@ public partial class TranslationTable : Tree {
 
     /// <summary>The text a cell holds, line breaks and all — not what it shows.</summary>
     public string CellText(TreeItem item, int column) {
-        // The whole path, so a folder can be moved by editing it as well as renamed.
-        if (GroupPathOf(item) is { } folder) return KindOf(column) == ColumnKind.Source ? folder : "";
+        // Just the folder's name: where it lies is what the tree shows, and moving is by dragging.
+        if (GroupPathOf(item) is { } folder) return KindOf(column) == ColumnKind.Source ? NameOf(folder) : "";
         var row = RowOf(item);
         if (row == null) return "";
         var form = item.GetMetadata(1).AsInt32();
         return KindOf(column) switch {
             ColumnKind.Context => row.Context ?? "",
-            ColumnKind.Source => form == 0 ? row.Id : row.IdPlural ?? "",
+            // In the tree a key is edited like a folder: its name, without the folders above it.
+            ColumnKind.Source => form == 0 ? (TreeView ? NameOf(row.Id) : row.Id) : row.IdPlural ?? "",
             ColumnKind.Language => Catalogs.EntryOf(row, FileOf(column))?.StringAt(form) ?? "",
             _ => "",
         };
@@ -714,7 +815,10 @@ public partial class TranslationTable : Tree {
     /// <summary>Writes a cell through the set, so it is an undo step, and redraws what changed.</summary>
     public void WriteCell(TreeItem item, int column, string text) {
         if (GroupPathOf(item) is { } folder) {
-            if (CanEdit(item, column)) RenameFolder(folder, text, column);
+            // The name typed replaces the last part of the path; a slash in it makes folders inside.
+            var name = (text ?? "").Replace("\r", "").Replace("\n", "").Trim().Trim(PathSeparator);
+            var parent = ParentOf(folder);
+            if (CanEdit(item, column)) RenameFolder(folder, name.Length == 0 ? "" : parent.Length == 0 ? name : $"{parent}{PathSeparator}{name}", column);
             return;
         }
         var row = RowOf(item);
@@ -726,6 +830,10 @@ public partial class TranslationTable : Tree {
             Catalogs.SetTranslation(row, FileOf(column), form, text);
             RefreshRow(row);
         } else {
+            // A name typed in the tree stays in the folder the key is in.
+            if (kind == ColumnKind.Source && form == 0 && TreeView && ParentOf(row.Id) is { Length: > 0 } keyFolder) {
+                text = text.Trim(PathSeparator).Length == 0 ? "" : $"{keyFolder}{PathSeparator}{text.TrimStart(PathSeparator)}";
+            }
             var error = kind == ColumnKind.Context ? Catalogs.EditSource(row, text, row.Id, row.IdPlural)
                 : form == 0 ? Catalogs.EditSource(row, row.Context, text, row.IdPlural)
                 : Catalogs.EditSource(row, row.Context, row.Id, string.IsNullOrEmpty(text) ? null : text);
@@ -743,7 +851,7 @@ public partial class TranslationTable : Tree {
 
     /// <summary>
     /// Gives a folder a new path: every key inside is renamed in every file, as one undo step.
-    /// Changing only the last part renames the folder, changing the rest moves it.
+    /// The cell editor passes the folder's parent with the name typed; code may move it anywhere.
     /// </summary>
     public void RenameFolder(string folder, string path, int column = -1) {
         path = (path ?? "").Replace("\r", "").Replace("\n", "").Trim().Trim(PathSeparator);
@@ -755,11 +863,13 @@ public partial class TranslationTable : Tree {
 
         var renames = Catalogs.Rows.Where(r => r.Id.StartsWith(folder + PathSeparator, StringComparison.Ordinal))
             .Select(r => (r, path + r.Id[folder.Length..])).ToList();
-        var error = Catalogs.RenameRows($"Rename folder {folder}{PathSeparator}", renames);
+        // A folder made here that is still empty has no key to rename.
+        var error = renames.Count == 0 ? null : Catalogs.RenameRows($"Rename folder {folder}{PathSeparator}", renames);
         if (error != null) {
             EmitSignal(SignalName.EditRejected, error);
             return;
         }
+        RepathEmptyFolders(folder, path);
 
         // Folded folders stay folded under their new name, the ones inside too.
         foreach (var old in _collapsed.Where(p => p == folder || p.StartsWith(folder + PathSeparator, StringComparison.Ordinal)).ToList()) {
@@ -768,12 +878,16 @@ public partial class TranslationTable : Tree {
         }
         Rebuild();
         SelectItem(GroupItem(path), column >= 0 ? column : ColumnOf(ColumnKind.Source));
-        EmitSignal(SignalName.Edited);
+        if (renames.Count > 0) EmitSignal(SignalName.Edited);
     }
 
-    /// <summary>Asks before deleting a folder, saying how many texts go with it.</summary>
+    /// <summary>Asks before deleting a folder, saying how many texts go with it. An empty one just goes.</summary>
     public void AskDeleteFolder(string folder) {
         var count = RowsIn(folder).Count;
+        if (count == 0) {
+            DeleteFolder(folder);
+            return;
+        }
         _pendingDelete = folder;
         _deleteDialog.DialogText = $"Delete {folder}{PathSeparator} and the {count} text{(count == 1 ? "" : "s")} in it from every file?\nUndo brings them back.";
         _deleteDialog.PopupCentered();
@@ -784,16 +898,17 @@ public partial class TranslationTable : Tree {
     /// <summary>Deletes every text in a folder, and the folders inside, from every file — one undo step.</summary>
     public void DeleteFolder(string folder) {
         var rows = RowsIn(folder);
-        if (rows.Count == 0) return;
-        var parent = FoldersOf(folder + PathSeparator + "x") is { Length: > 1 } folders ? folders[^2] : null;
+        if (rows.Count == 0 && !FolderExists(folder)) return;
+        var parent = ParentOf(folder);
         var column = GetSelectedColumn() >= 0 ? GetSelectedColumn() : ColumnOf(ColumnKind.Source);
 
-        Catalogs.DeleteRows($"Delete folder {folder}{PathSeparator}", rows);
+        if (rows.Count > 0) Catalogs.DeleteRows($"Delete folder {folder}{PathSeparator}", rows);
+        RepathEmptyFolders(folder, null);
         _collapsed.RemoveWhere(p => p == folder || p.StartsWith(folder + PathSeparator, StringComparison.Ordinal));
         Rebuild();
         // The folder it was in, if that is still there.
-        if (parent != null) SelectItem(GroupItem(parent), column);
-        EmitSignal(SignalName.Edited);
+        if (parent.Length > 0) SelectItem(GroupItem(parent), column);
+        if (rows.Count > 0) EmitSignal(SignalName.Edited);
     }
 
     List<CatalogRow> RowsIn(string folder) => [.. Catalogs.Rows.Where(r => r.Id.StartsWith(folder + PathSeparator, StringComparison.Ordinal))];
@@ -826,8 +941,11 @@ public partial class TranslationTable : Tree {
         var column = _editColumn;
         var key = item?.GetMetadata(0).AsString();
         var form = item?.GetMetadata(1).AsInt32() ?? 0;
+        var wasFolder = GroupPathOf(item) != null;
         CommitEdit();
         GrabFocus();
+        // A folder just named stays selected.
+        if (wasFolder) return;
 
         // The edit may have rebuilt the table; find the cell again by its message.
         var row = Catalogs?.Rows.FirstOrDefault(r => r.Key == key) ?? SelectedRow;
@@ -923,7 +1041,22 @@ public partial class TranslationTable : Tree {
         Rebuild();
     }
 
-    public enum MenuId { Edit, CopySource, ToggleFuzzy, Clear, MakePlural, MakeSingular, Delete, LanguageSettings, RenameFolder, ToggleFold, DeleteFolder }
+    public enum MenuId { Edit, CopySource, ToggleFuzzy, Clear, MakePlural, MakeSingular, Delete, LanguageSettings, RenameFolder, ToggleFold, DeleteFolder, NewFolder, NewTopFolder }
+
+    /// <summary>
+    /// A click below the rows lets go of the selection, so a new folder or text lands at the top;
+    /// a right-click there offers a new folder at the top.
+    /// </summary>
+    void OnEmptyClicked(Vector2 position, long mouseButton) {
+        DeselectAll();
+        if (mouseButton != (long) MouseButton.Right || !TreeView || Catalogs == null) return;
+
+        _menu.Clear();
+        _menu.AddItem("New folder", (int) MenuId.NewTopFolder);
+        _menu.Position = (Vector2I) (GetScreenPosition() + position);
+        _menu.ResetSize();
+        _menu.Popup();
+    }
 
     void OnItemMouseSelected(Vector2 position, int mouseButton) {
         if (mouseButton != (int) MouseButton.Right) return;
@@ -933,6 +1066,7 @@ public partial class TranslationTable : Tree {
         _menu.Clear();
 
         if (GroupPathOf(item) != null) {
+            _menu.AddItem("New folder inside", (int) MenuId.NewFolder);
             _menu.AddItem("Rename folder", (int) MenuId.RenameFolder);
             _menu.AddItem(item.Collapsed ? "Unfold" : "Fold", (int) MenuId.ToggleFold);
             _menu.AddSeparator();
@@ -965,12 +1099,17 @@ public partial class TranslationTable : Tree {
         if (row.IsPlural) _menu.AddItem("Make singular", (int) MenuId.MakeSingular);
         else _menu.AddItem("Make plural", (int) MenuId.MakePlural);
         _menu.AddItem("Delete message", (int) MenuId.Delete);
+        if (TreeView) _menu.AddItem("New folder here", (int) MenuId.NewFolder);
     }
 
     void OnMenuId(long id) => RunMenu((MenuId) id);
 
     /// <summary>What the cell menu does, on the selected cell. Public for the tests.</summary>
     public void RunMenu(MenuId id) {
+        if (id == MenuId.NewTopFolder) {
+            NewFolder("");
+            return;
+        }
         var item = GetSelected();
         var column = GetSelectedColumn();
         var row = RowOf(item);
@@ -981,6 +1120,8 @@ public partial class TranslationTable : Tree {
                 BeginEdit();
             } else if (id == MenuId.ToggleFold) {
                 item.Collapsed = !item.Collapsed;
+            } else if (id == MenuId.NewFolder) {
+                NewFolder(GroupPathOf(item));
             } else if (id == MenuId.DeleteFolder) {
                 AskDeleteFolder(GroupPathOf(item));
             }
@@ -1015,6 +1156,9 @@ public partial class TranslationTable : Tree {
                 error = Catalogs.MakeSingular(row);
                 Rebuild();
                 break;
+            case MenuId.NewFolder:
+                NewFolder(SelectedFolder()?.TrimEnd(PathSeparator) ?? "");
+                return;
             case MenuId.Delete:
                 Catalogs.DeleteRow(row);
                 Rebuild();

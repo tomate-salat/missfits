@@ -444,7 +444,7 @@ public partial class SpellEditorSelfTest : Node {
         var top = Children(table.GetRoot());
         Check("folders and loose keys at the top, in the order of the file", top.Select(i => i.GetText(0)).SequenceEqual(["%welcome", "%quest missing", "plain"]));
         var welcome = table.GroupItem("%welcome");
-        Check("a folder holds its texts and the folders below it", Children(welcome).Select(i => i.GetText(0)).SequenceEqual(["welcome", "option"])
+        Check("a folder holds the folders below it first, then its texts", Children(welcome).Select(i => i.GetText(0)).SequenceEqual(["option", "welcome"])
                                                                    && Children(table.GroupItem("%welcome/option")).Select(i => i.GetText(0)).SequenceEqual(["enter", "good bye"]));
         var enter = table.ItemOf(Row(set, "%welcome/option/enter"));
         Check("a text shows the last part of its key, the whole key on hover", enter.GetText(0) == "enter" && enter.GetTooltipText(0) == "%welcome/option/enter");
@@ -522,11 +522,11 @@ public partial class SpellEditorSelfTest : Node {
         var source = table.ColumnOf(TranslationTable.ColumnKind.Source);
         table.SelectItem(table.GroupItem("%welcome/option"), de);
         table._GuiInput(new InputEventKey { Pressed = true, Keycode = Key.F2 });
-        Check("F2 on a folder edits its whole path", table.IsEditing && table.GetNode<TextEdit>("CellEditor").Text == "%welcome/option");
+        Check("F2 on a folder edits just its name", table.IsEditing && table.GetNode<TextEdit>("CellEditor").Text == "option");
         table.CancelEdit();
 
         table.GroupItem("%welcome/option").Collapsed = true;
-        table.WriteCell(table.GroupItem("%welcome/option"), source, "%welcome/choices");
+        table.WriteCell(table.GroupItem("%welcome/option"), source, "choices");
         Check("renaming a folder renames every key inside, in every file", Row(set, "%welcome/choices/enter") != null && Row(set, "%welcome/choices/good bye") != null
                                                                           && Row(set, "%welcome/option/enter") == null
                                                                           && Language(set, "de").Find("%welcome/choices/enter")?.StringAt(0) == "Eintreten"
@@ -566,6 +566,69 @@ public partial class SpellEditorSelfTest : Node {
         Check("each delete is one undo step, translations and all", Row(set, "%welcome/option/enter") != null
                                                                     && Language(set, "de").Find("%welcome/option/enter")?.StringAt(0) == "Eintreten"
                                                                     && table.GroupItem("%welcome/option") != null);
+
+        // Keys are renamed like folders in the tree: just the name.
+        table.SelectCell(Row(set, "%welcome/option/enter"), 0, source);
+        table.BeginEdit();
+        Check("editing a key in the tree shows just its name", table.GetNode<TextEdit>("CellEditor").Text == "enter");
+        table.CancelEdit();
+        table.WriteCell(table.ItemOf(Row(set, "%welcome/option/enter")), source, "go in");
+        Check("and the new name stays in the key's folder", Row(set, "%welcome/option/go in") != null && Row(set, "go in") == null
+                                                            && table.SelectedRow?.Id == "%welcome/option/go in");
+        panel.Undo();
+
+        // Right-click below the rows: a new folder at the top.
+        table.SelectCell(Row(set, "%welcome/option/enter"), 0, source);
+        table.EmitSignal(Tree.SignalName.EmptyClicked, new Vector2(20, table.Size.Y - 5), (long) MouseButton.Right);
+        var menu = table.GetNode<PopupMenu>("CellMenu");
+        Check("a right-click below the rows lets go of the selection and offers a new folder", table.GetSelected() == null && menu.Visible
+                                                                                                && menu.ItemCount == 1 && menu.GetItemText(0) == "New folder");
+        menu.Hide();
+        table.RunMenu(TranslationTable.MenuId.NewTopFolder);
+        Check("which is made at the top", table.GroupItem("new folder") != null && table.GroupItem("new folder").GetParent() == table.GetRoot() && table.IsEditing);
+        table.CancelEdit();
+        table.DeleteFolder("new folder");
+        Check("with nothing selected, the folder of a new text is the top", table.SelectedFolder() == null);
+
+        // New folders: empty until a text goes in, and never saved as such.
+        table.SelectItem(table.GroupItem("%welcome"), de);
+        var made = table.NewFolder("%welcome");
+        Check("a new folder is made in the selected one, its name open for typing", made == "%welcome/new folder"
+                                                                                    && table.IsEditing && table.GetNode<TextEdit>("CellEditor").Text == "new folder");
+        table.GetNode<TextEdit>("CellEditor").Text = "rewards";
+        table.CommitEdit();
+        Check("typing names it", table.GroupItem("%welcome/rewards") != null && table.GroupItem("%welcome/new folder") == null
+                                 && table.GetSelected() == table.GroupItem("%welcome/rewards"));
+        Check("an empty folder is shown greyed, with no counts, and changes no file", table.IsEmptyFolder("%welcome/rewards")
+                                                                                     && table.GroupItem("%welcome/rewards").GetText(de) == "" && set.Files.All(f => f.Catalog.Entries.All(e => !e.Id.Contains("rewards"))));
+        Check("it sits with the folders, before the texts", Children(table.GroupItem("%welcome")).Select(i => i.GetText(0)).SequenceEqual(["option", "rewards", "welcome"]));
+        Check("a second new folder is named apart", table.NewFolder("%welcome") == "%welcome/new folder" && table.NewFolder("%welcome") == "%welcome/new folder 2");
+        table.CancelEdit();
+        table.DeleteFolder("%welcome/new folder");
+        table.AskDeleteFolder("%welcome/new folder 2");
+        Check("an empty folder is deleted without asking", table.GroupItem("%welcome/new folder") == null && table.GroupItem("%welcome/new folder 2") == null
+                                                           && !table.GetNode<ConfirmationDialog>("DeleteFolderDialog").Visible);
+
+        table.Rebuild();
+        Check("it lasts while the table is rebuilt", table.GroupItem("%welcome/rewards") != null);
+        table.Move(table.DragDataFor(table.ItemOf(Row(set, "%welcome/welcome"))), "%welcome/rewards");
+        Check("a text dropped in makes it a folder like any other", Row(set, "%welcome/rewards/welcome") != null && !table.IsEmptyFolder("%welcome/rewards")
+                                                                   && table.GroupItem("%welcome/rewards").GetText(de) == "1/1");
+        panel.Undo();
+        Check("once it had a text, an undo that takes the text out takes the folder too", Row(set, "%welcome/welcome") != null && table.GroupItem("%welcome/rewards") == null);
+
+        var empty = table.NewFolder("");
+        table.CancelEdit();
+        table.Move(table.DragDataFor(table.GroupItem(empty)), "%quest missing");
+        Check("an empty folder can be dragged into another", table.GroupItem("%quest missing/new folder") != null && table.GroupItem(empty) == null);
+        table.WriteCell(table.GroupItem("%quest missing/new folder"), source, "later");
+        Check("and renamed", table.GroupItem("%quest missing/later") != null && table.IsEmptyFolder("%quest missing/later"));
+        table.Search = "Willkommen";
+        table.Rebuild();
+        Check("a search hides empty folders", table.GroupItem("%quest missing/later") == null);
+        table.Search = "";
+        table.Rebuild();
+        table.DeleteFolder("%quest missing/later");
 
         panel.ShowAsTree(false);
         Check("without the tree nothing can be dragged", table.DragDataFor(table.ItemOf(Row(set, "plain"))) == null);

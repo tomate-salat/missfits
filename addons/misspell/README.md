@@ -61,18 +61,24 @@ fuzzy, clear, make a text plural or singular, delete it.
 sentences (`%welcome/option/enter`), the table shows them as a tree: one row per folder, which folds
 and unfolds, with per language how many of the texts inside are translated (`2/3` — green when
 all are, amber while some are, red while none is). A text shows only the last part of its key; hover for the whole key, and
-edit the source cell to rename it. Sets whose sources mostly contain a `/` open as a tree; the
-*Tree* button switches. Enter or a double-click folds a folder, folded folders stay folded, and
-*Text* starts a new key in the folder at hand.
+edit the key cell to rename it — the field holds just that last part too, and the key stays in its folder. Sets whose sources mostly contain a `/` open as a tree; the
+*Tree* button switches. In each folder the folders come first, then the texts. Enter or a
+double-click folds a folder, folded folders stay folded, and *Text* starts a new key in the folder
+at hand.
 
-**Renaming a folder:** F2 on it, typing on its name, or right-click → *Rename folder*. The editor
-holds the folder's whole path: change the last part to rename it (`%test` → `%arena`), the rest to
-move it (`%welcome/option` → `%menu/option`). Every key inside is renamed in every file, as one undo
-step; a rename that would give a key one that is already there is refused.
+**New folders:** *Folder* in the toolbar, right-click → *New folder inside* / *New folder here*, or right-click below the rows for one at the top (a click there lets go of the selection, so *Folder* and *Text* then work at the top as well).
+Its name opens for typing. A PO file only knows keys, so a folder without a text in it cannot be
+saved: it is shown with a grey icon and lasts until a text is put in it — drag one in, or start a
+*Text* there — or until the editor closes.
+
+**Renaming a folder:** F2 on it, typing on its name, or right-click → *Rename folder*. The field
+holds only the folder's name (`b` for `a/b`); a slash in what you type makes folders inside. To move
+a folder elsewhere, drag it. Every key inside is renamed in every file, as one undo step; a rename
+that would give a key one that is already there is refused.
 
 **Deleting a folder:** Delete on it, or right-click → *Delete folder…*. After asking — with how
 many texts go — every text in it and in the folders inside is removed from every file, as one undo
-step.
+step. An empty folder goes without asking.
 
 **Drag and drop** moves keys in the tree: drag a text or a whole folder onto a folder to move it
 in, onto a text to put it beside that one, or below the rows to move it to the top level. Every key
