@@ -116,10 +116,15 @@ number filled into `{n}`, `{count}` or `%d` — what the player will read.
 **Used in** lists where the selected text is used: every string in the project's `.tscn`, `.tres`,
 `.gd` and `.cs` files that is exactly its source, by file and line with the line of code below.
 A click opens it — a script at that line, a scene, a resource in the inspector. Comments, the
-`[node name="…"]` headers of scenes and folders with a `.gdignore` are left out. What is found is
-the string, not the call: the context of `Tr("Close", "menu")` is not compared yet, and an
-interpolated C# string like `$"shop/{item}"` is no use of anything (the strings in its holes are).
-Files are read again when they change.
+`[node name="…"]` headers of scenes and folders with a `.gdignore` are left out.
+
+Contexts count where a translation call names one: `Tr("Close", "menu")` is a use of *Close* in
+the context *menu* only, and `Tr("Close")` of *Close* without a context — the same for `TrN`,
+`tr`, `tr_n`, `atr`, `atr_n` and `TranslationServer`'s calls, with the context also as a named
+argument (`context: "menu"`). A string anywhere else — a scene's `text`, a constant — and a call
+whose context is not a plain string may mean the text in any context, so it is listed for each.
+An interpolated C# string like `$"shop/{item}"` is no use of anything (the strings in its holes
+are). Files are read again when they change.
 
 **Language and plural rule:** *Language* in the toolbar and right-clicking a language's title open the same
 dialog. Type the language (`de`, `pt_BR`, `pl` …) and its usual rule is filled in; the forms are

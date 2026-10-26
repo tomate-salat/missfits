@@ -189,9 +189,9 @@ public partial class EntryDetails : ScrollContainer {
         _updating = false;
     }
 
-    /// <summary>Every place in the scenes, resources and scripts with the source as a string, each a link with its line of code below.</summary>
+    /// <summary>Every place in the scenes, resources and scripts with the source as a string — in a translation call, with this context — each a link with its line of code below.</summary>
     void FillUsages() {
-        var usages = Usages.Of(_row.Id);
+        var usages = Usages.Of(_row.Id, _row.Context);
         var text = new System.Text.StringBuilder();
         if (usages.Count == 0) {
             text.Append($"[color=#ffffff80]Not found as a string in any {string.Join(", ", KeyUsages.Extensions.Select(e => "." + e))} file.[/color]");

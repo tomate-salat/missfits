@@ -695,6 +695,23 @@ public partial class SpellEditorSelfTest : Node {
         Check("GDScript: both quotes, raw and triple, no comments",
             Texts("tr(\"a\") # \"no\"\ntr('b\\'c')\nvar r = r\"d\\e\"\nvar t = \"\"\"multi\nline\"\"\"", "gd").SequenceEqual(["a", "b'c", "d\\e", "multi\nline"]));
 
+        string ContextOf(string source, string extension, string text) {
+            var literal = KeyUsages.Literals(source, extension).First(l => l.Text == text);
+            return literal.AnyContext ? "any" : literal.Context ?? "none";
+        }
+        Check("C#: a translation call gives its message the context", ContextOf("""Tr("Close", "menu");""", "cs", "Close") == "menu");
+        Check("C#: without one, the message has none", ContextOf("""Tr("Close");""", "cs", "Close") == "none" && ContextOf("""Tr("Close", "");""", "cs", "Close") == "none");
+        Check("C#: TrN's context is its fourth argument, or named",
+            ContextOf("""TrN("a coin", "{n} coins", n, "shop");""", "cs", "a coin") == "shop" && ContextOf("""TrN("a coin", "{n} coins", n, context: "bank");""", "cs", "a coin") == "bank");
+        Check("C#: a context that is no string may be any", ContextOf("""Tr("Close", where);""", "cs", "Close") == "any");
+        Check("C#: a string outside a call may be any", ContextOf("""var key = "Close";""", "cs", "Close") == "any" && ContextOf("""Tr("Close" + x);""", "cs", "Close") == "any");
+        Check("C#: calls inside interpolation holes and other calls count",
+            ContextOf("""Show($"{Tr("Close", "menu"),10} · {n}");""", "cs", "Close") == "menu" && ContextOf("""Show(Tr("Close", F(a, b)), "x");""", "cs", "Close") == "any");
+        Check("GDScript: tr and tr_n with contexts, StringNames too",
+            ContextOf("tr(\"Close\", \"door\")", "gd", "Close") == "door" && ContextOf("tr_n(&\"a coin\", \"coins\", n, &\"shop\")", "gd", "a coin") == "shop"
+            && ContextOf("tr(r\"Close\")", "gd", "Close") == "none");
+        Check("scenes: any context", ContextOf("text = \"Close\"", "tscn", "Close") == "any");
+
         Check("scenes: property strings, not the headers",
             Texts("[node name=\"Buy\" type=\"Button\"]\ntext = \"Buy\"\ntooltip_text = \"Say \\\"hi\\\"\nthere\"", "tscn").SequenceEqual(["Buy", "Say \"hi\"\nthere"]));
     }
@@ -709,18 +726,19 @@ public partial class SpellEditorSelfTest : Node {
         WriteAt($"{UsageFolder}/ignored/old.gd", "tr(\"Buy\")");
 
         var usages = new KeyUsages(UsageFolder);
-        var buy = usages.Of("Buy");
+        var buy = usages.Of("Buy", null);
         Check("a text is found in scenes and scripts, by file and line", buy.Select(u => u.Reference).SequenceEqual([$"{UsageFolder}/Shop.cs:3", $"{UsageFolder}/ui/shop.tscn:4"]));
         Check("with its line of code", buy[0].Code == "string Label => Tr(\"Buy\");");
         Check("a folder with .gdignore is left out", buy.All(u => !u.Path.Contains("ignored")));
-        Check("an unused text has no usages", usages.Of("Hello, {name}!").Count == 0);
+        Check("an unused text has no usages", usages.Of("Hello, {name}!", null).Count == 0);
+        Check("a call's context picks the text", usages.Of("Sell", "verb").Count == 1 && usages.Of("Sell", null).Count == 0 && usages.Of("Sell", "noun").Count == 0);
 
         WriteAt($"{UsageFolder}/shop.gd", "func _ready():\n\tpass\n\tprint(tr(\"Buy\"))\n");
         // In the same second as the first read: the modification time alone would not tell.
         DirAccess.RemoveAbsolute($"{UsageFolder}/Shop.cs");
         usages.Refresh();
-        Check("after changes the files are read again", usages.Of("Buy").Select(u => u.Reference).SequenceEqual([$"{UsageFolder}/shop.gd:3", $"{UsageFolder}/ui/shop.tscn:4"])
-                                                        && usages.Of("Sell").Count == 0);
+        Check("after changes the files are read again", usages.Of("Buy", null).Select(u => u.Reference).SequenceEqual([$"{UsageFolder}/shop.gd:3", $"{UsageFolder}/ui/shop.tscn:4"])
+                                                        && usages.Of("Sell", "verb").Count == 0);
 
         WriteFiles();
         var panel = new MisspellPanel();

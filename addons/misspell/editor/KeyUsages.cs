@@ -12,6 +12,11 @@ namespace Misspell.Editor;
 /// (<c>[node name="Buy"]</c> is a node, not a text). An interpolated C# string with holes is no
 /// exact use of anything; the strings inside its holes are.
 /// <para>
+/// The message of a translation call — <c>Tr("Close", "menu")</c>, <c>tr_n(one, many, n, context)</c>
+/// — is a use only of the text with that context, or with none when the call has none. Any other
+/// string, and a message whose context is not a string, may mean the text in any context.
+/// </para>
+/// <para>
 /// Plain C#. Files are read again only when they changed, and the project is looked through again
 /// at most every <see cref="RefreshAfterMs"/>, so asking for every selected row stays cheap.
 /// </para>
@@ -21,16 +26,36 @@ public sealed class KeyUsages {
     const ulong RefreshAfterMs = 2000;
     const int CodeLength = 80;
 
+    /// <summary>
+    /// Which argument of a translation call is the context, by the call's name: Godot's C# and
+    /// GDScript names alike. The message is always the first.
+    /// </summary>
+    static readonly Dictionary<string, int> ContextArgument = new() {
+        ["Tr"] = 1, ["Atr"] = 1, ["Translate"] = 1, ["TrN"] = 3, ["AtrN"] = 3, ["TranslatePlural"] = 3,
+        ["tr"] = 1, ["atr"] = 1, ["translate"] = 1, ["tr_n"] = 3, ["atr_n"] = 3, ["translate_plural"] = 3,
+    };
+
     /// <summary>One use: the file, the line the literal starts on (from 1), and that line of code.</summary>
-    public readonly record struct Usage(string Path, int Line, string Code) {
+    public readonly record struct Usage(string Path, int Line, string Code, Literal Literal) {
         public string Reference => $"{Path}:{Line}";
+    }
+
+    /// <summary>A string as written in a file, and — as the message of a translation call — the context it is asked for in.</summary>
+    public sealed class Literal(string text, int line) {
+        public readonly string Text = text;
+        public readonly int Line = line;
+        /// <summary>The call's context; null when it has none.</summary>
+        public string Context;
+        /// <summary>No call says which context: the text may be meant in any.</summary>
+        public bool AnyContext = true;
+
+        public bool Fits(string context) => AnyContext || Context == (string.IsNullOrEmpty(context) ? null : context);
     }
 
     sealed class ScannedFile {
         public ulong Modified;
         public ulong ReadAt;
         public List<Usage> Usages;
-        public List<string> Texts;
     }
 
     readonly string _root;
@@ -41,10 +66,10 @@ public sealed class KeyUsages {
 
     public KeyUsages(string root = "res://") => _root = root;
 
-    /// <summary>Every use of exactly this text, by file and line.</summary>
-    public IReadOnlyList<Usage> Of(string text) {
+    /// <summary>Every use of exactly this text in this context (null for none), by file and line.</summary>
+    public IReadOnlyList<Usage> Of(string text, string context) {
         if (!_walked || Time.GetTicksMsec() - _lastWalk > RefreshAfterMs) Refresh();
-        return text != null && _byText.TryGetValue(text, out var usages) ? usages : [];
+        return text != null && _byText.TryGetValue(text, out var usages) ? usages.Where(u => u.Literal.Fits(context)).ToList() : [];
     }
 
     /// <summary>Looks through the project now, reading only the files that changed.</summary>
@@ -59,9 +84,9 @@ public sealed class KeyUsages {
         if (changed || _byText == null) {
             _byText = [];
             foreach (var file in _files.OrderBy(f => f.Key, System.StringComparer.Ordinal).Select(f => f.Value)) {
-                for (var i = 0; i < file.Texts.Count; i++) {
-                    if (!_byText.TryGetValue(file.Texts[i], out var list)) _byText[file.Texts[i]] = list = [];
-                    list.Add(file.Usages[i]);
+                foreach (var usage in file.Usages) {
+                    if (!_byText.TryGetValue(usage.Literal.Text, out var list)) _byText[usage.Literal.Text] = list = [];
+                    list.Add(usage);
                 }
             }
         }
@@ -93,12 +118,10 @@ public sealed class KeyUsages {
     static ScannedFile Scan(string path, string extension, ulong modified) {
         var source = FileAccess.GetFileAsString(path);
         var lines = source.Split('\n');
-        var literals = Literals(source, extension);
         return new ScannedFile {
             Modified = modified,
             ReadAt = (ulong) Time.GetUnixTimeFromSystem(),
-            Texts = literals.Select(l => l.Text).ToList(),
-            Usages = literals.Select(l => new Usage(path, l.Line, CodeAt(lines, l.Line))).ToList(),
+            Usages = Literals(source, extension).Select(l => new Usage(path, l.Line, CodeAt(lines, l.Line), l)).ToList(),
         };
     }
 
@@ -109,19 +132,75 @@ public sealed class KeyUsages {
 
     // ---- literals ----------------------------------------------------------------------------
 
-    /// <summary>The string literals of a file's source, each with the line it starts on.</summary>
-    public static List<(string Text, int Line)> Literals(string source, string extension) {
-        var found = new List<(string, int)>();
-        var lexer = new Lexer(source.Replace("\r\n", "\n"), found);
+    /// <summary>The string literals of a file's source, each with the line it starts on and, in a script, the context it is translated in.</summary>
+    public static List<Literal> Literals(string source, string extension) {
+        var found = new List<Literal>();
+        var tokens = new List<Token>();
+        var lexer = new Lexer(source.Replace("\r\n", "\n"), found, tokens);
         switch (extension) {
             case "cs": lexer.CSharp(insideHole: false); break;
             case "gd": lexer.GdScript(); break;
             default: lexer.Resource(); break;
         }
+        ReadCalls(tokens, found);
         return found;
     }
 
-    sealed class Lexer(string s, List<(string, int)> found) {
+    enum TokenKind { Word, Open, Close, Comma, Colon, String, Other }
+
+    /// <summary>What calls are made of; a string refers to its <see cref="Literal"/> by index.</summary>
+    readonly record struct Token(TokenKind Kind, string Text, int Literal = -1);
+
+    /// <summary>Follows the brackets to find each call's arguments, and gives the message of every translation call its context.</summary>
+    static void ReadCalls(List<Token> tokens, List<Literal> found) {
+        var open = new Stack<(string Name, List<List<Token>> Arguments)>();
+        for (var t = 0; t < tokens.Count; t++) {
+            var token = tokens[t];
+            switch (token.Kind) {
+                case TokenKind.Open:
+                    var name = token.Text == "(" && t > 0 && tokens[t - 1].Kind == TokenKind.Word ? tokens[t - 1].Text : null;
+                    open.Push((name, [[]]));
+                    break;
+                case TokenKind.Close when open.Count > 0:
+                    var call = open.Pop();
+                    if (call.Name != null && ContextArgument.TryGetValue(call.Name, out var index)) GiveContext(call.Arguments, index, found);
+                    // A call is part of the argument it is written in, which is then no plain string.
+                    if (open.Count > 0) open.Peek().Arguments[^1].Add(token);
+                    break;
+                case TokenKind.Comma when open.Count > 0:
+                    open.Peek().Arguments.Add([]);
+                    break;
+                default:
+                    if (open.Count > 0) open.Peek().Arguments[^1].Add(token);
+                    break;
+            }
+        }
+    }
+
+    /// <summary>When the message is a plain string: the context it is asked for in, if that is a plain string or left out.</summary>
+    static void GiveContext(List<List<Token>> arguments, int contextIndex, List<Literal> found) {
+        var positional = new List<List<Token>>();
+        var named = new Dictionary<string, List<Token>>();
+        foreach (var argument in arguments) {
+            // C#'s named arguments: TrN(..., context: "menu").
+            if (argument.Count > 2 && argument[0].Kind == TokenKind.Word && argument[1].Kind == TokenKind.Colon) named[argument[0].Text] = argument.GetRange(2, argument.Count - 2);
+            else positional.Add(argument);
+        }
+        var message = named.GetValueOrDefault("message") ?? positional.ElementAtOrDefault(0);
+        if (message is not [{ Kind: TokenKind.String } literal]) return;
+
+        var context = named.GetValueOrDefault("context") ?? positional.ElementAtOrDefault(contextIndex);
+        var target = found[literal.Literal];
+        if (context == null) {
+            target.AnyContext = false;
+            target.Context = null;
+        } else if (context is [{ Kind: TokenKind.String } given]) {
+            target.AnyContext = false;
+            target.Context = found[given.Literal].Text is { Length: > 0 } text ? text : null;
+        }
+    }
+
+    sealed class Lexer(string s, List<Literal> found, List<Token> tokens) {
         int _i;
         int _line = 1;
 
@@ -195,7 +274,7 @@ public sealed class KeyUsages {
                         var line = _line;
                         _i++;
                         var text = Escaped('"', oneLine: false);
-                        if (!header) found.Add((text, line));
+                        if (!header) found.Add(new Literal(text, line));
                     } else {
                         _i++;
                     }
@@ -212,6 +291,8 @@ public sealed class KeyUsages {
                     while (_i < s.Length && s[_i] != '\n') _i++;
                 } else if (c is '"' or '\'') {
                     var raw = _i > 0 && s[_i - 1] == 'r' && (_i < 2 || !IsWordChar(s[_i - 2]));
+                    // r"…", &"…" (a StringName) and ^"…" (a NodePath) are one string, not a word or mark before it.
+                    if (_i > 0 && (raw || s[_i - 1] is '&' or '^') && tokens.Count > 0 && tokens[^1].Text == s[_i - 1].ToString()) tokens.RemoveAt(tokens.Count - 1);
                     var line = _line;
                     var triple = new string(c, 3);
                     string text;
@@ -222,11 +303,37 @@ public sealed class KeyUsages {
                         _i++;
                         text = raw ? Until(c.ToString(), oneLine: true) : Escaped(c, oneLine: true);
                     }
-                    found.Add((text, line));
+                    AddString(text, line);
                 } else {
-                    Step();
+                    CodeToken();
                 }
             }
+        }
+
+        void AddString(string text, int line) {
+            tokens.Add(new Token(TokenKind.String, "\"", found.Count));
+            found.Add(new Literal(text, line));
+        }
+
+        /// <summary>Anything in code that is no string or comment: a word, or one of the marks calls are made of.</summary>
+        void CodeToken() {
+            var c = s[_i];
+            if (IsWordChar(c)) {
+                var start = _i;
+                while (_i < s.Length && IsWordChar(s[_i])) _i++;
+                tokens.Add(new Token(TokenKind.Word, s[start.._i]));
+                return;
+            }
+            Step();
+            if (char.IsWhiteSpace(c)) return;
+            var kind = c switch {
+                '(' or '[' or '{' => TokenKind.Open,
+                ')' or ']' or '}' => TokenKind.Close,
+                ',' => TokenKind.Comma,
+                ':' => TokenKind.Colon,
+                _ => TokenKind.Other,
+            };
+            tokens.Add(new Token(kind, c.ToString()));
         }
 
         string EscapedUntil(string end) {
@@ -278,14 +385,15 @@ public sealed class KeyUsages {
                     if (At() == '\'') _i++;
                 } else if (c is '"' or '$' or '@' && StringStart() is { } start) {
                     CSharpString(start.Dollars, start.Verbatim, start.Quotes);
-                } else if (insideHole && c == '{') {
+                } else if (c == '{') {
                     depth++;
-                    _i++;
-                } else if (insideHole && c == '}') {
-                    if (depth-- == 0) return;
-                    _i++;
+                    CodeToken();
+                } else if (c == '}') {
+                    if (insideHole && depth == 0) return;
+                    depth--;
+                    CodeToken();
                 } else {
-                    Step();
+                    CodeToken();
                 }
             }
         }
@@ -316,6 +424,9 @@ public sealed class KeyUsages {
             var close = new string('"', quotes);
             var text = new StringBuilder();
             var holes = false;
+            // The string's token goes before its holes', which are known first.
+            var at = tokens.Count;
+            tokens.Add(new Token(TokenKind.Other, "$\""));
 
             while (_i < s.Length) {
                 if (raw ? StartsHere(close) : s[_i] == '"') {
@@ -338,7 +449,10 @@ public sealed class KeyUsages {
                         text.Append('{', literal);
                         _i += run;
                         holes = true;
+                        // In brackets of its own, so a hole's commas (alignment) are none of the call's.
+                        tokens.Add(new Token(TokenKind.Open, "{"));
                         CSharp(insideHole: true);
+                        tokens.Add(new Token(TokenKind.Close, "}"));
                         _i = System.Math.Min(s.Length, _i + (raw ? dollars : 1));
                         continue;
                     }
@@ -356,7 +470,8 @@ public sealed class KeyUsages {
             }
 
             if (holes) return;
-            found.Add((raw ? Dedent(text.ToString()) : text.ToString(), line));
+            tokens[at] = new Token(TokenKind.String, "\"", found.Count);
+            found.Add(new Literal(raw ? Dedent(text.ToString()) : text.ToString(), line));
         }
 
         /// <summary>A raw string over several lines loses its first and last line and the closing line's indentation.</summary>
