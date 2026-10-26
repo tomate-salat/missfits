@@ -11,8 +11,13 @@ config_version=5
 [application]
 
 config/name="Missfits"
+config/tags=PackedStringArray("addon")
 config/features=PackedStringArray("4.7", "C#", "Forward Plus")
 config/icon="res://icon.svg"
+
+[autoload]
+
+DialogueEvents="*uid://4ql10lf62su4"
 
 [display]
 
@@ -25,7 +30,11 @@ project/assembly_name="Missfits"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/missbehave/plugin.cfg", "res://addons/misspeak/plugin.cfg", "res://addons/misstate/plugin.cfg")
+enabled=PackedStringArray("res://addons/missbehave/plugin.cfg", "res://addons/misspeak/plugin.cfg", "res://addons/misspell/plugin.cfg", "res://addons/misstate/plugin.cfg")
+
+[internationalization]
+
+locale/translations=PackedStringArray("res://user_tests/i18n/my_stuff.de.po", "res://user_tests/i18n/my_stuff.en.po")
 
 [physics]
 
