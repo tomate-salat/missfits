@@ -42,6 +42,11 @@ public partial class EntryDetails : ScrollContainer {
     Label _problems;
     VBoxContainer _usageBox;
     RichTextLabel _usages;
+    VBoxContainer _guessBox;
+    RichTextLabel _guesses;
+    Label _sourceHeading;
+    /// <summary>The folder shown instead of a message, in the tree; null while a message is.</summary>
+    string _folder;
     bool _updating;
 
     public override void _Ready() {
@@ -61,7 +66,8 @@ public partial class EntryDetails : ScrollContainer {
         _source.AddThemeFontSizeOverride("font_size", 16);
         _plural = Wrapped();
         _plural.Modulate = new Color(1, 1, 1, 0.7f);
-        _box.AddChild(Heading("Source"));
+        _sourceHeading = Heading("Source");
+        _box.AddChild(_sourceHeading);
         _box.AddChild(_context);
         _box.AddChild(_source);
         _box.AddChild(_plural);
@@ -85,6 +91,17 @@ public partial class EntryDetails : ScrollContainer {
         _usages = new RichTextLabel { BbcodeEnabled = true, FitContent = true, ScrollActive = false, TooltipText = "Open where this text is used" };
         _usages.Connect(RichTextLabel.SignalName.MetaClicked, new Callable(this, MethodName.OnReferenceClicked));
         _usageBox.AddChild(_usages);
+
+        _guessBox = new VBoxContainer();
+        _guessBox.AddThemeConstantOverride("separation", 8);
+        _box.AddChild(_guessBox);
+        _guessBox.AddChild(Heading("Maybe used in"));
+        _guesses = new RichTextLabel {
+            BbcodeEnabled = true, FitContent = true, ScrollActive = false,
+            TooltipText = "Strings with holes that could make this text — what fills the holes is not known",
+        };
+        _guesses.Connect(RichTextLabel.SignalName.MetaClicked, new Callable(this, MethodName.OnReferenceClicked));
+        _guessBox.AddChild(_guesses);
 
         _box.AddChild(new HSeparator());
         _languageTitle = Heading("");
@@ -137,11 +154,24 @@ public partial class EntryDetails : ScrollContainer {
     /// <summary>Shows a message, and the language of the selected column (or the first one).</summary>
     public void ShowRow(CatalogRow row, CatalogFile file) {
         _row = row;
+        _folder = null;
         _file = file ?? Catalogs?.Languages.FirstOrDefault();
         Refresh();
     }
 
+    /// <summary>Shows a folder of the tree: where the texts in it are used, and the strings with holes that may make them.</summary>
+    public void ShowFolder(string path) {
+        _row = null;
+        _folder = path;
+        Refresh();
+    }
+
     public void Refresh() {
+        if (_folder != null) {
+            RefreshFolder();
+            return;
+        }
+        _sourceHeading.Text = "Source";
         if (Catalogs == null || _row == null || !Catalogs.Rows.Contains(_row)) {
             // After an undo the rows are new; find this one again by what identifies it.
             _row = _row == null ? null : Catalogs?.Rows.FirstOrDefault(r => r.Key == _row.Key);
@@ -191,18 +221,48 @@ public partial class EntryDetails : ScrollContainer {
 
     /// <summary>Every place in the scenes, resources and scripts with the source as a string — in a translation call, with this context — each a link with its line of code below.</summary>
     void FillUsages() {
-        var usages = Usages.Of(_row.Id, _row.Context);
+        _usages.Text = UsageList(Usages.Of(_row.Id, _row.Context).Select(u => (u, (string) null)).ToList(), NotFound);
+        var guesses = Usages.GuessesOf(_row.Id);
+        _guesses.Text = UsageList(guesses.Select(u => (u, (string) null)).ToList(), "");
+        _guessBox.Visible = guesses.Count > 0;
+    }
+
+    static string NotFound => $"Not found as a string in any {string.Join(", ", KeyUsages.Extensions.Select(e => "." + e))} file.";
+
+    /// <summary>
+    /// For a folder: its path and how many texts are in it, the uses of each of them — named by the
+    /// rest of its key — and the strings with holes that may make one.
+    /// </summary>
+    void RefreshFolder() {
+        ShowNothing();
+        if (Catalogs == null) return;
+        var inside = _folder + TranslationTable.PathSeparator;
+        var rows = Catalogs.Rows.Where(r => r.Id.StartsWith(inside, System.StringComparison.Ordinal)).ToList();
+
+        _sourceHeading.Text = "Folder";
+        _source.Text = inside;
+        _notes.Text = rows.Count == 1 ? "1 text" : $"{rows.Count} texts";
+        foreach (var control in new Control[] { _sourceHeading, _source, _notes, _usageBox }) control.Visible = true;
+
+        var usages = rows.SelectMany(r => Usages.Of(r.Id, r.Context).Select(u => (u, r.Id[inside.Length..]))).ToList();
+        _usages.Text = UsageList(usages, rows.Count == 0 ? "No texts in it yet." : "None of its texts found as a string.");
+        var guesses = Usages.GuessesIn(_folder, rows.Select(r => r.Id).ToList());
+        _guesses.Text = UsageList(guesses.Select(u => (u, (string) null)).ToList(), "");
+        _guessBox.Visible = guesses.Count > 0;
+    }
+
+    /// <summary>The uses as links, each with its line of code below and, when given, the text it is a use of before it.</summary>
+    static string UsageList(System.Collections.Generic.List<(KeyUsages.Usage Usage, string Text)> usages, string none) {
         var text = new System.Text.StringBuilder();
-        if (usages.Count == 0) {
-            text.Append($"[color=#ffffff80]Not found as a string in any {string.Join(", ", KeyUsages.Extensions.Select(e => "." + e))} file.[/color]");
-        }
-        foreach (var usage in usages.Take(ShownUsages)) {
+        if (usages.Count == 0) text.Append($"[color=#ffffff80]{Escape(none)}[/color]");
+        foreach (var (usage, of) in usages.Take(ShownUsages)) {
             if (text.Length > 0) text.Append('\n');
+            if (of != null) text.Append($"[b]{Escape(of)}[/b]  ");
             text.Append($"[url={usage.Reference}]{Escape(usage.Path.TrimPrefix("res://"))}:{usage.Line}[/url]");
             if (usage.Code.Length > 0) text.Append($"\n[indent][font_size=12][color=#ffffffa0]{Escape(usage.Code)}[/color][/font_size][/indent]");
         }
         if (usages.Count > ShownUsages) text.Append($"\n[color=#ffffff80]… and {usages.Count - ShownUsages} more[/color]");
-        _usages.Text = text.ToString();
+        return text.ToString();
     }
 
     static string Escape(string text) => text.Replace("[", "[lb]");

@@ -683,11 +683,12 @@ public partial class SpellEditorSelfTest : Node {
 
     void LiteralsAreRead() {
         List<string> Texts(string source, string extension) => KeyUsages.Literals(source, extension).Select(l => l.Text).ToList();
+        List<string> Plain(string source, string extension) => KeyUsages.Literals(source, extension).Where(l => !l.IsPattern).Select(l => l.Text).ToList();
 
         Check("C#: plain, escaped and verbatim strings", Texts("""Tr("Buy"); Tr("a\"b\n"); Tr(@"c""d");""", "cs").SequenceEqual(["Buy", "a\"b\n", "c\"d"]));
         Check("C#: comments and chars are no strings", Texts("// \"no\"\n/* \"no\" */ var c = '\"'; Tr(\"yes\");", "cs").SequenceEqual(["yes"]));
-        Check("C#: an interpolated string with holes is none, the strings in its holes are",
-            Texts("""var s = $"{Tr("Close", "menu")} · {n}"; var t = $"{{plain}}";""", "cs").SequenceEqual(["Close", "menu", "{plain}"]));
+        Check("C#: an interpolated string with holes is no plain string, the strings in its holes are",
+            Plain("""var s = $"{Tr("Close", "menu")} · {n}"; var t = $"{{plain}}";""", "cs").SequenceEqual(["Close", "menu", "{plain}"]));
         Check("C#: raw strings, over several lines without their indentation",
             Texts("var a = \"\"\"raw \"q\" \"\"\";\nvar b = \"\"\"\n    one\n      two\n    \"\"\";", "cs").SequenceEqual(["raw \"q\" ", "one\n  two"]));
         Check("C#: the line a string starts on", KeyUsages.Literals("a();\n\nTr(\"x\");", "cs").Single().Line == 3);
@@ -711,6 +712,13 @@ public partial class SpellEditorSelfTest : Node {
             ContextOf("tr(\"Close\", \"door\")", "gd", "Close") == "door" && ContextOf("tr_n(&\"a coin\", \"coins\", n, &\"shop\")", "gd", "a coin") == "shop"
             && ContextOf("tr(r\"Close\")", "gd", "Close") == "none");
         Check("scenes: any context", ContextOf("text = \"Close\"", "tscn", "Close") == "any");
+
+        List<string> PartsOf(string source, string extension) => KeyUsages.Literals(source, extension).FirstOrDefault(l => l.IsPattern)?.Parts;
+        Check("C#: an interpolated string is a pattern of its parts", PartsOf("""Tr($"shop/{item}/name");""", "cs")?.SequenceEqual(["shop/", "/name"]) == true);
+        Check("C#: string.Format's holes", PartsOf("""string.Format("x/{0:N2} {{y}}", v);""", "cs")?.SequenceEqual(["x/", " {y}"]) == true);
+        Check("GDScript: % and its escape", PartsOf("tr(\"a %s b %-3d%%\" % [x, y])", "gd")?.SequenceEqual(["a ", " b ", "%"]) == true);
+        Check("GDScript: format's holes", PartsOf("\"x/{name}\".format({\"name\": n})", "gd")?.SequenceEqual(["x/", ""]) == true);
+        Check("a string with a % but no format is plain", PartsOf("tr(\"100%\")", "gd") == null && PartsOf("""Tr("{0}");""", "cs") == null);
 
         Check("scenes: property strings, not the headers",
             Texts("[node name=\"Buy\" type=\"Button\"]\ntext = \"Buy\"\ntooltip_text = \"Say \\\"hi\\\"\nthere\"", "tscn").SequenceEqual(["Buy", "Say \"hi\"\nthere"]));
@@ -740,8 +748,45 @@ public partial class SpellEditorSelfTest : Node {
         Check("after changes the files are read again", usages.Of("Buy", null).Select(u => u.Reference).SequenceEqual([$"{UsageFolder}/shop.gd:3", $"{UsageFolder}/ui/shop.tscn:4"])
                                                         && usages.Of("Sell", "verb").Count == 0);
 
+        // Guesses: strings with holes, and folder names put before something.
+        WriteAt($"{UsageFolder}/Items.cs", "class Items {\n    string Name(string item) => Tr($\"shop/{item}\");\n    string Any(string a, string b) => $\"{a}/{b}\";\n}");
+        WriteAt($"{UsageFolder}/items.gd", "const MENU = \"menu/\"\nfunc price(item):\n\treturn tr(\"price/%s\" % item)\n");
+        usages.Refresh();
+        Check("a string with holes may make a text", usages.GuessesOf("shop/sword").Select(u => u.Reference).SequenceEqual([$"{UsageFolder}/Items.cs:2"]));
+        Check("one with marks only between its holes guesses nothing", usages.GuessesOf("x/y").Count == 0);
+        Check("% makes a pattern", usages.GuessesOf("price/sword").Select(u => u.Line).SequenceEqual([3]));
+        Check("a folder's guesses: what may make its texts", usages.GuessesIn("weapons", ["weapons/sword"]).Count == 0 && usages.GuessesIn("all", ["all/shop/sword"]).Count == 0
+                                                             && usages.GuessesIn("shop", ["shop/sword"]).Count == 1 && usages.GuessesIn("other", ["other/x"]).Count == 0);
+        Check("and what starts inside it, with or without texts", usages.GuessesIn("menu", []).Select(u => u.Line).SequenceEqual([1])
+                                                                 && usages.GuessesIn("menu", ["menu/close"]).Count == 1);
+        Check("a folder name with its separator is still a plain use too", usages.Of("menu/", null).Count == 1);
+
+        var keyFolder = "user://misspell_usage_keys";
+        DirAccess.MakeDirRecursiveAbsolute(keyFolder);
+        WriteAt($"{keyFolder}/keys.pot", "msgid \"\"\nmsgstr \"\"\n\nmsgid \"shop/sword\"\nmsgstr \"\"\n\nmsgid \"shop/shield\"\nmsgstr \"\"\n\nmsgid \"menu/close\"\nmsgstr \"\"\n");
+        WriteAt($"{keyFolder}/keys.de.po", "msgid \"\"\nmsgstr \"Language: de\\n\"\n");
+        WriteAt($"{UsageFolder}/Shield.cs", "class Shield {\n    string Name => Tr(\"shop/shield\");\n}");
+
         WriteFiles();
         var panel = new MisspellPanel();
+        AddChild(panel);
+        panel.Size = new Vector2(1400, 700);
+        await Settle();
+        panel.Open($"{keyFolder}/keys.pot");
+        panel.Details.Usages = new KeyUsages(UsageFolder);
+        panel.ShowAsTree(true);
+        await Settle();
+        panel.Table.GroupItem("shop")?.Select(0);
+        await Settle();
+        var folderTexts = panel.Details.FindChildren("*", nameof(RichTextLabel), true, false).OfType<RichTextLabel>().Where(l => l.IsVisibleInTree()).Select(l => l.Text).ToList();
+        var folderLabels = panel.Details.FindChildren("*", nameof(Label), true, false).OfType<Label>().Where(l => l.IsVisibleInTree()).Select(l => l.Text).ToList();
+        Check("a selected folder shows in the details", folderLabels.Contains("shop/") && folderLabels.Contains("2 texts"));
+        Check("with where its texts are used, by name", folderTexts.Any(t => t.Contains("[b]shield[/b]") && t.Contains($"[url={UsageFolder}/Shield.cs:2]")));
+        Check("and what may make them", folderTexts.Any(t => t.Contains($"[url={UsageFolder}/Items.cs:2]")));
+        panel.QueueFree();
+        await Settle();
+
+        panel = new MisspellPanel();
         AddChild(panel);
         panel.Size = new Vector2(1400, 700);
         await Settle();

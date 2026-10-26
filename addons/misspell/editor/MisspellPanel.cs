@@ -443,7 +443,10 @@ public partial class MisspellPanel : VBoxContainer {
 
     void OnCellSelected() => ShowDetails();
 
-    void ShowDetails() => Details.ShowRow(Table.SelectedRow, Table.SelectedFile);
+    void ShowDetails() {
+        if (TranslationTable.GroupPathOf(Table.GetSelected()) is { } folder) Details.ShowFolder(folder);
+        else Details.ShowRow(Table.SelectedRow, Table.SelectedFile);
+    }
 
     /// <summary>
     /// Keys the table did not take come up here, before the editor's own shortcuts see them: so

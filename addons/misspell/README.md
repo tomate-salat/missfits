@@ -123,8 +123,16 @@ the context *menu* only, and `Tr("Close")` of *Close* without a context — the 
 `tr`, `tr_n`, `atr`, `atr_n` and `TranslationServer`'s calls, with the context also as a named
 argument (`context: "menu"`). A string anywhere else — a scene's `text`, a constant — and a call
 whose context is not a plain string may mean the text in any context, so it is listed for each.
-An interpolated C# string like `$"shop/{item}"` is no use of anything (the strings in its holes
-are). Files are read again when they change.
+Files are read again when they change.
+
+**Maybe used in** lists guesses: strings with holes that could make the text, as what fills the
+holes is not known — `$"shop/{item}"` in C#, `"shop/%s" % item` and `"shop/{0}".format(…)` in
+GDScript, `string.Format("shop/{0}", …)`. Such a string is no use of its own text. Holes with only
+marks between them (`$"{a}/{b}"`) could make anything and are left out.
+
+**Folders** in the tree have details too: how many texts are in them, where each is used (named by
+the rest of its key), and the guesses that could make one of them or start inside the folder —
+including a plain `"shop/"`, which is usually put before something.
 
 **Language and plural rule:** *Language* in the toolbar and right-clicking a language's title open the same
 dialog. Type the language (`de`, `pt_BR`, `pl` …) and its usual rule is filled in; the forms are

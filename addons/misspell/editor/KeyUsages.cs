@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using Godot;
 
 namespace Misspell.Editor;
@@ -42,15 +43,42 @@ public sealed class KeyUsages {
 
     /// <summary>A string as written in a file, and — as the message of a translation call — the context it is asked for in.</summary>
     public sealed class Literal(string text, int line) {
-        public readonly string Text = text;
+        /// <summary>The string; for a pattern its parts with <c>{…}</c> for each hole.</summary>
+        public string Text = text;
         public readonly int Line = line;
         /// <summary>The call's context; null when it has none.</summary>
         public string Context;
         /// <summary>No call says which context: the text may be meant in any.</summary>
         public bool AnyContext = true;
+        /// <summary>
+        /// For a string with holes — <c>$"shop/{item}"</c>, <c>"shop/%s" % item</c>,
+        /// <c>"shop/{0}".format(…)</c>, <c>string.Format("shop/{0}", …)</c> — the text between them.
+        /// Null for a plain string.
+        /// </summary>
+        public List<string> Parts;
+        Regex _pattern;
+
+        public bool IsPattern => Parts != null;
 
         public bool Fits(string context) => AnyContext || Context == (string.IsNullOrEmpty(context) ? null : context);
+
+        internal void MakePattern(List<string> parts) {
+            Parts = parts;
+            Text = string.Join(Hole, parts);
+        }
+
+        /// <summary>Whether filling the holes could make this text.</summary>
+        public bool CouldMake(string text) {
+            if (!text.StartsWith(Parts[0], System.StringComparison.Ordinal) || !text.EndsWith(Parts[^1], System.StringComparison.Ordinal)) return false;
+            _pattern ??= new Regex($"^{string.Join(".*", Parts.Select(Regex.Escape))}$", RegexOptions.Singleline | RegexOptions.CultureInvariant);
+            return _pattern.IsMatch(text);
+        }
+
+        /// <summary>Enough fixed text to guess by: holes alone, or with only marks between them, could make anything.</summary>
+        internal bool Telling => Parts.Sum(p => p.Count(char.IsLetterOrDigit)) >= 2;
     }
+
+    public const string Hole = "{…}";
 
     sealed class ScannedFile {
         public ulong Modified;
@@ -61,6 +89,7 @@ public sealed class KeyUsages {
     readonly string _root;
     readonly Dictionary<string, ScannedFile> _files = [];
     Dictionary<string, List<Usage>> _byText;
+    List<Usage> _patterns;
     ulong _lastWalk;
     bool _walked;
 
@@ -68,8 +97,31 @@ public sealed class KeyUsages {
 
     /// <summary>Every use of exactly this text in this context (null for none), by file and line.</summary>
     public IReadOnlyList<Usage> Of(string text, string context) {
-        if (!_walked || Time.GetTicksMsec() - _lastWalk > RefreshAfterMs) Refresh();
+        RefreshIfStale();
         return text != null && _byText.TryGetValue(text, out var usages) ? usages.Where(u => u.Literal.Fits(context)).ToList() : [];
+    }
+
+    /// <summary>The strings with holes that could make this text — guesses, as what fills the holes is not known.</summary>
+    public IReadOnlyList<Usage> GuessesOf(string text) {
+        RefreshIfStale();
+        return text == null ? [] : _patterns.Where(u => u.Literal.CouldMake(text)).ToList();
+    }
+
+    /// <summary>
+    /// The strings with holes that could make a text in this folder (given as its texts' sources),
+    /// or that start inside it. A plain string naming the folder with its separator,
+    /// <c>"shop/"</c>, counts as one with a hole at the end: it is usually put before something.
+    /// </summary>
+    public IReadOnlyList<Usage> GuessesIn(string folder, IReadOnlyCollection<string> texts) {
+        RefreshIfStale();
+        var inside = folder + Separator;
+        return _patterns.Where(u => u.Literal.Parts[0].StartsWith(inside, System.StringComparison.Ordinal) || texts.Any(u.Literal.CouldMake)).ToList();
+    }
+
+    const char Separator = '/';
+
+    void RefreshIfStale() {
+        if (!_walked || Time.GetTicksMsec() - _lastWalk > RefreshAfterMs) Refresh();
     }
 
     /// <summary>Looks through the project now, reading only the files that changed.</summary>
@@ -83,16 +135,30 @@ public sealed class KeyUsages {
         }
         if (changed || _byText == null) {
             _byText = [];
+            _patterns = [];
             foreach (var file in _files.OrderBy(f => f.Key, System.StringComparer.Ordinal).Select(f => f.Value)) {
                 foreach (var usage in file.Usages) {
-                    if (!_byText.TryGetValue(usage.Literal.Text, out var list)) _byText[usage.Literal.Text] = list = [];
+                    var literal = usage.Literal;
+                    if (literal.IsPattern) {
+                        if (literal.Telling) _patterns.Add(usage);
+                        continue;
+                    }
+                    if (!_byText.TryGetValue(literal.Text, out var list)) _byText[literal.Text] = list = [];
                     list.Add(usage);
+                    if (IsFolderPrefix(literal.Text)) {
+                        var prefix = new Literal(literal.Text, literal.Line);
+                        prefix.MakePattern([literal.Text, ""]);
+                        _patterns.Add(usage with { Literal = prefix });
+                    }
                 }
             }
         }
         _lastWalk = Time.GetTicksMsec();
         _walked = true;
     }
+
+    /// <summary><c>"shop/"</c>, not <c>"/"</c> or <c>"res://ui/"</c>.</summary>
+    static bool IsFolderPrefix(string text) => text.Length > 1 && text[^1] == Separator && !text.Contains("://") && text.Count(char.IsLetterOrDigit) >= 2;
 
     void Walk(string folder, HashSet<string> seen, ref bool changed) {
         using var dir = DirAccess.Open(folder);
@@ -164,6 +230,8 @@ public sealed class KeyUsages {
                 case TokenKind.Close when open.Count > 0:
                     var call = open.Pop();
                     if (call.Name != null && ContextArgument.TryGetValue(call.Name, out var index)) GiveContext(call.Arguments, index, found);
+                    // string.Format("shop/{0}", item)
+                    if (call.Name == "Format" && call.Arguments[0] is [{ Kind: TokenKind.String } format] && call.Arguments.Count > 1) MakePattern(found[format.Literal], BracedParts);
                     // A call is part of the argument it is written in, which is then no plain string.
                     if (open.Count > 0) open.Peek().Arguments[^1].Add(token);
                     break;
@@ -174,7 +242,47 @@ public sealed class KeyUsages {
                     if (open.Count > 0) open.Peek().Arguments[^1].Add(token);
                     break;
             }
+
+            // GDScript: "shop/%s" % item, "shop/{0}".format([item])
+            if (token.Kind != TokenKind.String) continue;
+            if (Next(1) is { Kind: TokenKind.Other, Text: "%" }) MakePattern(found[token.Literal], PercentParts);
+            else if (Next(1) is { Text: "." } && Next(2) is { Kind: TokenKind.Word, Text: "format" } && Next(3) is { Text: "(" }) MakePattern(found[token.Literal], BracedParts);
+
+            Token? Next(int offset) => t + offset < tokens.Count ? tokens[t + offset] : null;
         }
+    }
+
+    /// <summary>Makes a string a pattern when the format it is used with finds holes in it.</summary>
+    static void MakePattern(Literal literal, System.Func<string, List<string>> split) {
+        var parts = split(literal.Text);
+        if (parts.Count > 1) literal.MakePattern(parts);
+    }
+
+    static readonly Regex PercentHole = new(@"%%|%[-+ 0#]*(\*|\d+)?(\.(\*|\d+))?[sdifxXcov]");
+    static readonly Regex BracedHole = new(@"\{\{|\}\}|\{[^{}]*\}");
+
+    static List<string> PercentParts(string text) => Split(text, PercentHole, "%%", "%");
+
+    static List<string> BracedParts(string text) => Split(text, BracedHole, null, null);
+
+    /// <summary>The text between the holes; an escaped mark (<c>%%</c>, <c>{{</c>) is text.</summary>
+    static List<string> Split(string text, Regex holes, string escape, string escaped) {
+        var parts = new List<string>();
+        var part = new StringBuilder();
+        var at = 0;
+        foreach (Match hole in holes.Matches(text)) {
+            part.Append(text, at, hole.Index - at);
+            at = hole.Index + hole.Length;
+            if (hole.Value == escape) part.Append(escaped);
+            else if (hole.Value is "{{" or "}}") part.Append(hole.Value[0]);
+            else {
+                parts.Add(part.ToString());
+                part.Clear();
+            }
+        }
+        part.Append(text, at, text.Length - at);
+        parts.Add(part.ToString());
+        return parts;
     }
 
     /// <summary>When the message is a plain string: the context it is asked for in, if that is a plain string or left out.</summary>
@@ -424,6 +532,7 @@ public sealed class KeyUsages {
             var close = new string('"', quotes);
             var text = new StringBuilder();
             var holes = false;
+            var parts = new List<string>();
             // The string's token goes before its holes', which are known first.
             var at = tokens.Count;
             tokens.Add(new Token(TokenKind.Other, "$\""));
@@ -449,6 +558,8 @@ public sealed class KeyUsages {
                         text.Append('{', literal);
                         _i += run;
                         holes = true;
+                        parts.Add(text.ToString());
+                        text.Clear();
                         // In brackets of its own, so a hole's commas (alignment) are none of the call's.
                         tokens.Add(new Token(TokenKind.Open, "{"));
                         CSharp(insideHole: true);
@@ -469,7 +580,14 @@ public sealed class KeyUsages {
                 Step();
             }
 
-            if (holes) return;
+            if (holes) {
+                // No string the call could be given as it is, but one to guess by.
+                parts.Add(text.ToString());
+                var pattern = new Literal("", line);
+                pattern.MakePattern(parts);
+                found.Add(pattern);
+                return;
+            }
             tokens[at] = new Token(TokenKind.String, "\"", found.Count);
             found.Add(new Literal(raw ? Dedent(text.ToString()) : text.ToString(), line));
         }
