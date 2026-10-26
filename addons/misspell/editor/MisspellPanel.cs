@@ -58,6 +58,14 @@ public partial class MisspellPanel : VBoxContainer {
     Label _status;
     LanguageDialog _languageDialog;
     ConfirmationDialog _messageDialog;
+    ConfirmationDialog _codeDialog;
+    Label _codeSummary;
+    Tree _codeTree;
+    Label _codeCheckTitle;
+    RichTextLabel _codeCheck;
+    /// <summary>The uses a rename would change, while the dialog asks; plain C#, gone after a reload like the question.</summary>
+    List<CodeRename.Change> _codeChanges;
+    object _codeStep;
     LineEdit _newContext;
     LineEdit _newSource;
     LineEdit _newPlural;
@@ -101,6 +109,7 @@ public partial class MisspellPanel : VBoxContainer {
         _languageDialog.Connect(LanguageDialog.SignalName.Chosen, new Callable(this, MethodName.OnLanguageChosen));
         AddChild(_languageDialog);
         AddChild(BuildMessageDialog());
+        AddChild(BuildCodeDialog());
 
         _openDialog = new FileDialog {
             FileMode = FileDialog.FileModeEnum.OpenFile,
@@ -229,6 +238,172 @@ public partial class MisspellPanel : VBoxContainer {
         _messageDialog.RegisterTextEnter(_newSource);
         _messageDialog.Connect(AcceptDialog.SignalName.Confirmed, new Callable(this, MethodName.OnMessageConfirmed));
         return _messageDialog;
+    }
+
+    /// <summary>
+    /// Asked after a rename when the old texts are used in the code: one row per use, ticked, under
+    /// its file — and below, the strings with holes that may make an old text, to check by hand.
+    /// </summary>
+    Window BuildCodeDialog() {
+        _codeDialog = new ConfirmationDialog {
+            Name = "CodeDialog", Title = "Change the code too?", OkButtonText = "Change code", CancelButtonText = "Leave the code",
+        };
+        // The third way out: take the rename back, texts and all.
+        _codeDialog.AddButton("Cancel the rename", right: false, action: CancelRenameAction);
+        _codeDialog.Connect(AcceptDialog.SignalName.CustomAction, new Callable(this, MethodName.OnCodeCustomAction));
+        var box = new VBoxContainer();
+        box.AddThemeConstantOverride("separation", 8);
+        _codeDialog.AddChild(box);
+        // Wrapping text needs a width of its own: without one, the dialog grows as tall as the
+        // text would be with one word per line.
+        _codeSummary = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart, CustomMinimumSize = new Vector2(600, 0) };
+        box.AddChild(_codeSummary);
+        _codeTree = new Tree { Columns = 2, HideRoot = true, ColumnTitlesVisible = true, SizeFlagsVertical = SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(0, 220) };
+        _codeTree.SetColumnTitle(0, "Use");
+        _codeTree.SetColumnTitle(1, "Becomes");
+        _codeTree.SetColumnExpandRatio(0, 3);
+        _codeTree.Connect(Tree.SignalName.ItemEdited, new Callable(this, MethodName.OnCodeItemEdited));
+        box.AddChild(_codeTree);
+        _codeCheckTitle = new Label { Text = "Check by hand — strings with holes that may make an old text:" };
+        box.AddChild(_codeCheckTitle);
+        // Scrolls in a fixed height, however many there are.
+        _codeCheck = new RichTextLabel { BbcodeEnabled = true, MetaUnderlined = false, TooltipText = "Open it", CustomMinimumSize = new Vector2(600, 72) };
+        _codeCheck.Connect(RichTextLabel.SignalName.MetaClicked, new Callable(this, MethodName.OnCodeCheckClicked));
+        box.AddChild(_codeCheck);
+        _codeDialog.Connect(AcceptDialog.SignalName.Confirmed, new Callable(this, MethodName.OnCodeConfirmed));
+        _codeDialog.Connect(AcceptDialog.SignalName.Canceled, new Callable(this, MethodName.OnCodeCanceled));
+        return _codeDialog;
+    }
+
+    /// <summary>After a rename: when the old texts are used in the code, asks whether to change those uses too. Every time.</summary>
+    void OfferCodeRename() {
+        if (_set?.TakeRenames() is not { } taken) return;
+        var changes = CodeRename.Plan(Usages, taken.Renames);
+        var check = CodeRename.ToCheck(Usages, taken.Renames);
+        if (changes.Count == 0) {
+            if (check.Count > 0) SetStatus($"{check.Count} string{(check.Count == 1 ? "" : "s")} with holes may make the old text — see “Maybe used in”", warning: true);
+            return;
+        }
+        _codeChanges = changes;
+        _codeStep = taken.Step;
+
+        var files = changes.Select(c => c.Usage.Path).Distinct().Count();
+        _codeSummary.Text = $"{changes.Count} use{(changes.Count == 1 ? "" : "s")} of the old text{(taken.Renames.Count == 1 ? "" : "s")} in {files} file{(files == 1 ? "" : "s")}. "
+                            + "The ticked ones are written anew; Undo puts the code back along with the texts.";
+        _codeTree.Clear();
+        var root = _codeTree.CreateItem();
+        for (var i = 0; i < changes.Count; i++) {
+            var change = changes[i];
+            var parent = root.GetChildren().LastOrDefault(f => f.GetMetadata(0).AsString() == change.Usage.Path);
+            if (parent == null) {
+                parent = _codeTree.CreateItem(root);
+                parent.SetCellMode(0, TreeItem.TreeCellMode.Check);
+                parent.SetChecked(0, true);
+                parent.SetEditable(0, true);
+                parent.SetText(0, change.Usage.Path.TrimPrefix("res://"));
+                parent.SetMetadata(0, change.Usage.Path);
+                parent.SetMetadata(1, -1);
+            }
+            var item = _codeTree.CreateItem(parent);
+            item.SetCellMode(0, TreeItem.TreeCellMode.Check);
+            item.SetChecked(0, true);
+            item.SetEditable(0, true);
+            item.SetText(0, $"{change.Usage.Line}   {change.Usage.Code}");
+            item.SetTooltipText(0, $"{change.Usage.Reference}\n{change.Usage.Code}");
+            item.SetText(1, change.Rename.NewId);
+            item.SetTooltipText(1, $"{change.Rename.OldId}\n→ {change.Rename.NewId}");
+            item.SetMetadata(0, change.Usage.Path);
+            item.SetMetadata(1, i);
+        }
+
+        _codeCheckTitle.Visible = _codeCheck.Visible = check.Count > 0;
+        _codeCheck.Text = string.Join("\n", check.Select(u => $"[url={u.Reference}]{u.Path.TrimPrefix("res://")}:{u.Line}[/url]   {u.Code.Replace("[", "[lb]")}"));
+        // A set size, scaled like the editor and never beyond the window.
+        var scale = Engine.IsEditorHint() ? EditorInterface.Singleton.GetEditorScale() : 1f;
+        _codeDialog.PopupCenteredClamped(new Vector2I((int) (780 * scale), (int) (480 * scale)), 0.85f);
+    }
+
+    static readonly StringName CancelRenameAction = "cancel_rename";
+
+    void OnCodeCustomAction(StringName action) {
+        if (action == CancelRenameAction) CancelRename();
+    }
+
+    /// <summary>Takes the rename back, texts and all, as Undo would; the code was never touched.</summary>
+    internal void CancelRename() {
+        _codeDialog.Hide();
+        if (_codeChanges == null) return;
+        var step = _codeStep;
+        _codeChanges = null;
+        _codeStep = null;
+        if (_set == null || !_set.IsLastStep(step)) {
+            SetStatus("The rename could not be taken back: something else was changed since", warning: true);
+            return;
+        }
+        var name = _set.UndoName;
+        _set.Undo();
+        AfterReplay($"Cancelled: {name}");
+    }
+
+    /// <summary>Ticking a file ticks its uses; ticking a use keeps its file's tick in step.</summary>
+    void OnCodeItemEdited() {
+        var item = _codeTree.GetEdited();
+        if (item == null || _codeChanges == null) return;
+        var on = item.IsChecked(0);
+        if (item.GetMetadata(1).AsInt32() < 0) {
+            foreach (var child in item.GetChildren()) {
+                child.SetChecked(0, on);
+                _codeChanges[child.GetMetadata(1).AsInt32()].Wanted = on;
+            }
+            return;
+        }
+        _codeChanges[item.GetMetadata(1).AsInt32()].Wanted = on;
+        var parent = item.GetParent();
+        var all = parent.GetChildren().All(c => c.IsChecked(0));
+        var none = parent.GetChildren().All(c => !c.IsChecked(0));
+        parent.SetChecked(0, all);
+        parent.SetIndeterminate(0, !all && !none);
+    }
+
+    void OnCodeCheckClicked(Variant meta) {
+        _codeDialog.Hide();
+        Details.OpenReference(meta.AsString());
+    }
+
+    /// <summary>The uses the dialog would change, as ticked; a test unticks and confirms through these.</summary>
+    internal List<CodeRename.Change> PendingCodeChanges => _codeChanges;
+
+    internal void ConfirmCodeRename() {
+        _codeDialog.Hide();
+        OnCodeConfirmed();
+    }
+
+    void OnCodeConfirmed() {
+        if (_codeChanges == null) return;
+        var problems = new List<string>();
+        var done = CodeRename.Apply(_codeChanges, problems);
+        _set?.AttachCode(_codeStep, done);
+        var changed = _codeChanges.Count(c => c.Wanted);
+        _codeChanges = null;
+        _codeStep = null;
+        Usages.Refresh();
+        Table.Rebuild();
+        ShowDetails();
+        if (problems.Count == 0) {
+            SetStatus($"Code changed: {changed} use{(changed == 1 ? "" : "s")} in {done.Count} file{(done.Count == 1 ? "" : "s")}");
+            return;
+        }
+        foreach (var problem in problems) GD.PushWarning($"Misspell: {problem}");
+        var more = problems.Count > 1 ? $" (and {problems.Count - 1} more, see Output)" : "";
+        SetStatus(done.Count == 0 ? $"Code not changed: {problems[0]}{more}"
+                                  : $"Code changed in {done.Count} file{(done.Count == 1 ? "" : "s")}, but not everywhere: {problems[0]}{more}", warning: true);
+    }
+
+    void OnCodeCanceled() {
+        if (_codeChanges == null) return;
+        SetStatus($"Code left as it was: {_codeChanges.Count} use{(_codeChanges.Count == 1 ? "" : "s")} still say{(_codeChanges.Count == 1 ? "s" : "")} the old text", warning: true);
+        _codeChanges = null;
+        _codeStep = null;
     }
 
     // ---- opening -----------------------------------------------------------------------------
@@ -437,6 +612,7 @@ public partial class MisspellPanel : VBoxContainer {
     void OnEdited() {
         AfterChange();
         ShowDetails();
+        OfferCodeRename();
     }
 
     void OnDetailsEdited() {
@@ -491,20 +667,29 @@ public partial class MisspellPanel : VBoxContainer {
         if (Catalogs == null || !_set.CanUndo) return;
         var name = _set.UndoName;
         _set.Undo();
+        AfterReplay($"Undo: {name}");
+    }
+
+    /// <summary>After undo or redo: the table, and whether the code that went with the step could follow.</summary>
+    void AfterReplay(string done) {
+        // The step may have put code back.
+        Usages.Refresh();
         Table.Rebuild();
         AfterChange();
         ShowDetails();
-        SetStatus($"Undo: {name}");
+        if (_set.CodeProblems.Count == 0) {
+            SetStatus(done);
+            return;
+        }
+        foreach (var problem in _set.CodeProblems) GD.PushWarning($"Misspell: {problem}");
+        SetStatus($"{done} — the code not everywhere: {_set.CodeProblems[0]}", warning: true);
     }
 
     public void Redo() {
         if (Catalogs == null || !_set.CanRedo) return;
         var name = _set.RedoName;
         _set.Redo();
-        Table.Rebuild();
-        AfterChange();
-        ShowDetails();
-        SetStatus($"Redo: {name}");
+        AfterReplay($"Redo: {name}");
     }
 
     void MergePressed() {

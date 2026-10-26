@@ -101,6 +101,9 @@ public partial class SpellEditorSelfTest : Node {
             await KeysLaidOutAsPathsShowAsATree();
             LiteralsAreRead();
             await UsagesAreFound();
+            StringsAreWrittenAnew();
+            await RenamesChangeTheCode();
+            FilesKeepTheirBytes();
         } catch (System.Exception e) {
             // Without this, a crash would leave the headless run waiting forever.
             _failures.Add($"crashed: {e}");
@@ -297,6 +300,8 @@ public partial class SpellEditorSelfTest : Node {
         WriteFiles();
         var panel = new MisspellPanel();
         AddChild(panel);
+        // Not the project: its scripts, this test among them, would be offered for renames.
+        panel.Details.Usages = new KeyUsages(NoCode);
         panel.Size = new Vector2(1400, 700);
         await Settle();
 
@@ -432,6 +437,8 @@ public partial class SpellEditorSelfTest : Node {
 
         var panel = new MisspellPanel();
         AddChild(panel);
+        // Not the project: its scripts, this test among them, would be offered for renames.
+        panel.Details.Usages = new KeyUsages(NoCode);
         panel.Size = new Vector2(1400, 700);
         await Settle();
         panel.Open($"{keys}/arena.pot");
@@ -449,7 +456,7 @@ public partial class SpellEditorSelfTest : Node {
         Check("a folder holds the folders below it first, then its texts", Children(welcome).Select(i => i.GetText(0)).SequenceEqual(["option", "welcome"])
                                                                    && Children(table.GroupItem("%welcome/option")).Select(i => i.GetText(0)).SequenceEqual(["enter", "good bye"]));
         var enter = table.ItemOf(Row(set, "%welcome/option/enter"));
-        Check("a text shows the last part of its key, the whole key on hover", enter.GetText(0) == "enter" && enter.GetTooltipText(0) == "%welcome/option/enter");
+        Check("a text shows the last part of its key, the whole key on hover", enter.GetText(0) == "enter" && enter.GetTooltipText(0).Split('\n')[0] == "%welcome/option/enter");
         var de = table.ColumnOf(Language(set, "de"));
         Check("a folder counts what is translated inside it", welcome.GetText(de) == "2/3" && table.GroupItem("%welcome/option").GetText(de) == "1/2"
                                                               && table.GroupItem("%quest missing").GetText(de) == "1/1");
@@ -680,6 +687,8 @@ public partial class SpellEditorSelfTest : Node {
     // ---- usages ------------------------------------------------------------------------------
 
     const string UsageFolder = "user://misspell_usages";
+    /// <summary>A folder with no code at all (it need not even be there).</summary>
+    const string NoCode = "user://misspell_no_code";
 
     void LiteralsAreRead() {
         List<string> Texts(string source, string extension) => KeyUsages.Literals(source, extension).Select(l => l.Text).ToList();
@@ -825,6 +834,146 @@ public partial class SpellEditorSelfTest : Node {
         Check("and say when it is used nowhere", shown.Any(t => t.Contains(TranslationTable.UnusedTip)));
         panel.QueueFree();
         await Settle();
+    }
+
+    // ---- renaming in the code ----------------------------------------------------------------
+
+    void StringsAreWrittenAnew() {
+        string Rewrite(string source, string extension, int line, string old, string @new, string context = null) {
+            var usage = new KeyUsages.Usage("x", line, "", null);
+            return CodeRename.Rewrite(source, extension, [new CodeRename.Change(usage, new CodeRename.Rename(old, context, @new))], []);
+        }
+
+        Check("C#: escapes kept", Rewrite("Tr(\"a\");", "cs", 1, "a", "say \"hi\"\\now") == "Tr(\"say \\\"hi\\\"\\\\now\");");
+        Check("C#: verbatim doubles its quotes", Rewrite("Tr(@\"a\");", "cs", 1, "a", "b\"c") == "Tr(@\"b\"\"c\");");
+        Check("C#: an interpolated string without holes doubles braces", Rewrite("Tr($\"a\");", "cs", 1, "a", "{b}") == "Tr($\"{{b}}\");");
+        Check("C#: raw stays raw", Rewrite("Tr(\"\"\"a\"\"\");", "cs", 1, "a", "b/c") == "Tr(\"\"\"b/c\"\"\");");
+        var problems = new List<string>();
+        var unchanged = CodeRename.Rewrite("Tr(\"\"\"a\"\"\");", "cs", [new CodeRename.Change(new KeyUsages.Usage("x", 1, "", null), new CodeRename.Rename("a", null, "\"\"\"x"))], problems);
+        Check("C#: a text a raw string cannot hold is left, and said why", unchanged == "Tr(\"\"\"a\"\"\");" && problems.Count == 1 && problems[0].Contains("by hand"));
+        Check("C#: only the string on that line, exactly that text, not in comments",
+            Rewrite("Tr(\"a\"); // \"a\"\nTr(\"a\");\nTr(\"ab\");", "cs", 1, "a", "b") == "Tr(\"b\"); // \"a\"\nTr(\"a\");\nTr(\"ab\");");
+        Check("C#: only the call in the renamed context", Rewrite("Tr(\"Close\", \"menu\"); Tr(\"Close\", \"door\");", "cs", 1, "Close", "Shut", "menu")
+                                                          == "Tr(\"Shut\", \"menu\"); Tr(\"Close\", \"door\");");
+        Check("Windows line breaks stay", Rewrite("a();\r\nTr(\"a\");\r\n", "cs", 2, "a", "b") == "a();\r\nTr(\"b\");\r\n");
+        Check("GDScript: its own quote is escaped", Rewrite("tr('a')", "gd", 1, "a", "it's") == "tr('it\\'s')");
+        Check("GDScript: StringNames too", Rewrite("tr(&\"a\")", "gd", 1, "a", "b") == "tr(&\"b\")");
+        Check("scenes: the property, never the header", Rewrite("[node name=\"a\"]\ntext = \"a\"", "tscn", 2, "a", "b\nc") == "[node name=\"a\"]\ntext = \"b\nc\"");
+    }
+
+    async System.Threading.Tasks.Task RenamesChangeTheCode() {
+        const string root = "user://misspell_refactor";
+        DirAccess.MakeDirRecursiveAbsolute(root);
+        using (var dir = DirAccess.Open(root)) {
+            foreach (var file in dir.GetFiles()) dir.Remove(file);
+        }
+        WriteAt($"{root}/keys.pot", "msgid \"\"\nmsgstr \"\"\n\nmsgid \"shop/sword\"\nmsgstr \"\"\n\nmsgid \"shop/shield\"\nmsgstr \"\"\n\n"
+                                    + "msgctxt \"menu\"\nmsgid \"Close\"\nmsgstr \"\"\n\nmsgctxt \"door\"\nmsgid \"Close\"\nmsgstr \"\"\n\nmsgid \"unused\"\nmsgstr \"\"\n");
+        WriteAt($"{root}/Code.cs", "class Code {\n    string A => Tr(\"shop/sword\");\n    string B => Tr(@\"shop/shield\");\n    string C => Tr(\"Close\", \"menu\");\n"
+                                   + "    string D => Tr(\"Close\", \"door\");\n    string E(string x) => Tr($\"shop/{x}\");\n}\n");
+        WriteAt($"{root}/code.gd", "func f():\n\treturn tr('shop/sword')\n");
+        WriteAt($"{root}/scene.tscn", "[node name=\"shop/sword\" type=\"Label\"]\ntext = \"shop/sword\"\n");
+        string Read(string name) => FileAccess.GetFileAsString($"{root}/{name}");
+
+        var panel = new MisspellPanel();
+        AddChild(panel);
+        panel.Size = new Vector2(1400, 700);
+        await Settle();
+        panel.Open($"{root}/keys.pot");
+        panel.Usages = new KeyUsages(root);
+        panel.ShowAsTree(true);
+        var table = panel.Table;
+        var source = table.ColumnOf(TranslationTable.ColumnKind.Source);
+
+        // A key renamed in its cell: every exact use is offered, ticked.
+        table.WriteCell(table.ItemOf(Row(panel.Catalogs, "shop/sword")), source, "blade");
+        var pending = panel.PendingCodeChanges;
+        Check("a rename offers to change its uses in the code", pending?.Count == 3 && pending.All(c => c.Wanted && c.Rename.NewId == "shop/blade"));
+        pending.First(c => c.Usage.Path.EndsWith(".tscn")).Wanted = false;
+        panel.ConfirmCodeRename();
+        Check("the ticked uses are written anew", Read("Code.cs").Contains("Tr(\"shop/blade\")") && Read("code.gd").Contains("tr('shop/blade')"));
+        Check("an unticked one is left", Read("scene.tscn") == "[node name=\"shop/sword\" type=\"Label\"]\ntext = \"shop/sword\"\n");
+
+        panel.Undo();
+        Check("undo puts the code back with the text", Read("Code.cs").Contains("Tr(\"shop/sword\")") && Read("code.gd").Contains("tr('shop/sword')") && Row(panel.Catalogs, "shop/sword") != null);
+        panel.Redo();
+        Check("and redo writes it again", Read("Code.cs").Contains("Tr(\"shop/blade\")") && Row(panel.Catalogs, "shop/blade") != null);
+
+        // A folder renamed: all its keys, each written its own way; strings with holes only to check.
+        table.WriteCell(table.GroupItem("shop"), source, "store");
+        Check("a folder rename offers every key in it", panel.PendingCodeChanges?.Count == 3);
+        Check("strings with holes are listed to check by hand", CodeRename.ToCheck(panel.Usages, [new CodeRename.Rename("shop/blade", null, "store/blade")]).Count == 1);
+        panel.ConfirmCodeRename();
+        Check("and changes them", Read("Code.cs").Contains("Tr(\"store/blade\")") && Read("Code.cs").Contains("Tr(@\"store/shield\")") && Read("Code.cs").Contains("Tr($\"shop/{x}\")"));
+
+        // A text with a context: only the calls asking for that context.
+        var menu = panel.Catalogs.Rows.First(r => r.Id == "Close" && r.Context == "menu");
+        table.WriteCell(table.ItemOf(menu), source, "Shut");
+        Check("a rename in a context offers only that context's uses", panel.PendingCodeChanges?.Count == 1);
+        panel.ConfirmCodeRename();
+        Check("and leaves the other context", Read("Code.cs").Contains("Tr(\"Shut\", \"menu\")") && Read("Code.cs").Contains("Tr(\"Close\", \"door\")"));
+
+        // The third way out: cancel the rename itself.
+        var door = panel.Catalogs.Rows.First(r => r.Id == "Close" && r.Context == "door");
+        table.WriteCell(table.ItemOf(door), source, "Open");
+        Check("cancelling is offered too", panel.PendingCodeChanges?.Count == 1);
+        panel.CancelRename();
+        Check("and takes the rename back, the code untouched", panel.Catalogs.Rows.Any(r => r.Id == "Close" && r.Context == "door") && Row(panel.Catalogs, "Open") == null
+                                                                && Read("Code.cs").Contains("Tr(\"Close\", \"door\")") && panel.StatusText.StartsWith("Cancelled") && panel.PendingCodeChanges == null);
+
+        // Nothing to offer for a text the code does not use.
+        table.WriteCell(table.ItemOf(Row(panel.Catalogs, "unused")), source, "still unused");
+        Check("an unused text is renamed without asking", panel.PendingCodeChanges == null);
+
+        // Deleting warns while a text is used; an unused one just goes.
+        await Settle();
+        var used = panel.Catalogs.Rows.First(r => r.Id == "Close" && r.Context == "door");
+        Check("deleting a used text warns, naming where", table.UseWarning([used])?.Contains($"{root.TrimPrefix("res://")}/Code.cs:5") == true);
+        table.AskDeleteRow(used);
+        Check("and asks before", panel.Catalogs.Rows.Contains(used) || Row(panel.Catalogs, "Close") != null);
+        table.AskDeleteRow(Row(panel.Catalogs, "still unused"));
+        Check("an unused one is deleted at once", Row(panel.Catalogs, "still unused") == null);
+        Check("a folder's delete names the uses inside", table.UseWarning([.. panel.Catalogs.Rows.Where(r => r.Id.StartsWith("store/"))])?.Contains("Still used") == true);
+
+        panel.QueueFree();
+        await Settle();
+    }
+
+    /// <summary>A rename changes the strings and nothing else: line breaks, byte order marks and encodings stay.</summary>
+    void FilesKeepTheirBytes() {
+        const string root = "user://misspell_bytes";
+        DirAccess.MakeDirRecursiveAbsolute(root);
+        var latin1 = System.Text.Encoding.Latin1;
+        var utf8 = new System.Text.UTF8Encoding(false);
+        var utf16 = new System.Text.UnicodeEncoding(false, false);
+        byte[] Bom(byte[] mark, byte[] body) => [.. mark, .. body];
+        var files = new Dictionary<string, (System.Text.Encoding Encoding, byte[] Mark, string Text)> {
+            ["bom.cs"] = (utf8, [0xEF, 0xBB, 0xBF], "class A {\r\n    string X => Tr(\"old\");\r\n}\r\n"),
+            ["mixed.cs"] = (utf8, [], "a();\nTr(\"old\");\r\nb(); // ü\n"),
+            ["latin.gd"] = (latin1, [], "# Grüße\nfunc f():\n\treturn tr(\"old\")\n"),
+            ["wide.gd"] = (utf16, [0xFF, 0xFE], "tr(\"old\")\r\n"),
+        };
+        foreach (var (name, (encoding, mark, text)) in files) System.IO.File.WriteAllBytes(ProjectSettings.GlobalizePath($"{root}/{name}"), Bom(mark, encoding.GetBytes(text)));
+
+        var usages = new KeyUsages(root);
+        var problems = new List<string>();
+        var done = CodeRename.Apply(CodeRename.Plan(usages, [new CodeRename.Rename("old", null, "neu")]), problems);
+        Check("every file is changed", done.Count == 4 && problems.Count == 0);
+        foreach (var (name, (encoding, mark, text)) in files) {
+            var expected = Bom(mark, encoding.GetBytes(text.Replace("\"old\"", "\"neu\"")));
+            Check($"{name}: only the string changes, line breaks and encoding stay",
+                System.IO.File.ReadAllBytes(ProjectSettings.GlobalizePath($"{root}/{name}")).SequenceEqual(expected));
+        }
+
+        usages.Refresh();
+        problems.Clear();
+        done = CodeRename.Apply(CodeRename.Plan(usages, [new CodeRename.Rename("neu", null, "€uro")]), problems);
+        Check("a text the file's encoding cannot hold is left there, and said why",
+            done.Count == 3 && problems.Count == 1 && problems[0].Contains("latin.gd") && problems[0].Contains("encoding")
+            && System.IO.File.ReadAllBytes(ProjectSettings.GlobalizePath($"{root}/latin.gd")).SequenceEqual(latin1.GetBytes(files["latin.gd"].Text.Replace("\"old\"", "\"neu\""))));
+        CodeRename.Replay(done, undo: true, problems);
+        Check("undo writes the old bytes back", System.IO.File.ReadAllBytes(ProjectSettings.GlobalizePath($"{root}/bom.cs"))
+                                                    .SequenceEqual(Bom([0xEF, 0xBB, 0xBF], utf8.GetBytes(files["bom.cs"].Text.Replace("\"old\"", "\"neu\"")))));
     }
 
     static void WriteAt(string path, string text) {

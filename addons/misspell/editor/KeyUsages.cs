@@ -77,6 +77,46 @@ public sealed class KeyUsages {
 
         /// <summary>Enough fixed text to guess by: holes alone, or with only marks between them, could make anything.</summary>
         internal bool Telling => Parts.Sum(p => p.Count(char.IsLetterOrDigit)) >= 2;
+
+        /// <summary>Where the string's content lies in the source (line breaks as <c>\n</c>), between its quotes.</summary>
+        public int Start = -1, End = -1;
+        /// <summary>How it is written, to write another text the same way; null when that cannot be done safely.</summary>
+        public Spelling Spelling;
+    }
+
+    /// <summary>
+    /// How a string literal is written: which quote closes it, whether backslashes escape, whether a
+    /// line break may stand as it is, and the rules of verbatim, interpolated and raw strings.
+    /// </summary>
+    public sealed record Spelling(char Quote, bool Escapes, bool LineBreaks = false, bool Verbatim = false, bool Braces = false, int RawQuotes = 0, bool Raw = false) {
+        /// <summary>The text as this literal's content, or null when it cannot be written so.</summary>
+        public string Write(string text) {
+            if (Raw) {
+                // As written: no escapes, so no quote, line break or closing backslash fits in.
+                if (text.Contains(Quote) || text.Contains('\n') || text.EndsWith('\\')) return null;
+                return text;
+            }
+            if (RawQuotes > 0) {
+                if (text.Contains('\n') || text.Contains(new string('"', RawQuotes)) || text.StartsWith('"') || text.EndsWith('"') || Braces && (text.Contains('{') || text.Contains('}'))) return null;
+                return text;
+            }
+            var written = new StringBuilder();
+            foreach (var c in text) {
+                switch (c) {
+                    case '{' or '}' when Braces: written.Append(c, 2); break;
+                    case '"' when Verbatim: written.Append("\"\""); break;
+                    case '\\' when Escapes: written.Append("\\\\"); break;
+                    case '\n' when !LineBreaks && !Verbatim: written.Append("\\n"); break;
+                    case '\t' when Escapes && !LineBreaks: written.Append("\\t"); break;
+                    case '\r' when Escapes: written.Append("\\r"); break;
+                    default:
+                        if (c == Quote && Escapes) written.Append('\\');
+                        written.Append(c);
+                        break;
+                }
+            }
+            return written.ToString();
+        }
     }
 
     public const string Hole = "{…}";
@@ -229,7 +269,8 @@ public sealed class KeyUsages {
     }
 
     static ScannedFile Scan(string path, string extension, ulong modified) {
-        var source = FileAccess.GetFileAsString(path);
+        // Read as the rename writes it: by its byte order mark or encoding, so positions agree.
+        var source = CodeRename.ReadStored(path)?.Text ?? "";
         var lines = source.Split('\n');
         return new ScannedFile {
             Modified = modified,
@@ -245,11 +286,15 @@ public sealed class KeyUsages {
 
     // ---- literals ----------------------------------------------------------------------------
 
-    /// <summary>The string literals of a file's source, each with the line it starts on and, in a script, the context it is translated in.</summary>
-    public static List<Literal> Literals(string source, string extension) {
+    /// <summary>
+    /// The string literals of a file's source, each with the line it starts on and, in a script,
+    /// the context it is translated in. Windows line breaks are read as plain ones — unless
+    /// <paramref name="asWritten"/>, for positions in the source exactly as it is (to write into it).
+    /// </summary>
+    public static List<Literal> Literals(string source, string extension, bool asWritten = false) {
         var found = new List<Literal>();
         var tokens = new List<Token>();
-        var lexer = new Lexer(source.Replace("\r\n", "\n"), found, tokens);
+        var lexer = new Lexer(asWritten ? source : source.Replace("\r\n", "\n"), found, tokens);
         switch (extension) {
             case "cs": lexer.CSharp(insideHole: false); break;
             case "gd": lexer.GdScript(); break;
@@ -358,6 +403,8 @@ public sealed class KeyUsages {
     sealed class Lexer(string s, List<Literal> found, List<Token> tokens) {
         int _i;
         int _line = 1;
+        /// <summary>Where the last string's content ended, before its closing quote; -1 when it was not closed.</summary>
+        int _end = -1;
 
         char At(int offset = 0) => _i + offset < s.Length ? s[_i + offset] : '\0';
         bool StartsHere(string text) => string.CompareOrdinal(s, _i, text, 0, text.Length) == 0;
@@ -384,7 +431,7 @@ public sealed class KeyUsages {
                 text.Append(s[_i]);
                 Step();
             }
-            if (_i < s.Length && s[_i] == quote) _i++;
+            _end = _i < s.Length && s[_i] == quote ? _i++ : -1;
             return text.ToString();
         }
 
@@ -427,9 +474,9 @@ public sealed class KeyUsages {
                     lineStart = false;
                     if (c == '"') {
                         var line = _line;
-                        _i++;
+                        var start = ++_i;
                         var text = Escaped('"', oneLine: false);
-                        if (!header) found.Add(new Literal(text, line));
+                        if (!header) found.Add(new Literal(text, line) { Start = start, End = _end, Spelling = new Spelling('"', Escapes: true, LineBreaks: true) });
                     } else {
                         _i++;
                     }
@@ -451,23 +498,21 @@ public sealed class KeyUsages {
                     var line = _line;
                     var triple = new string(c, 3);
                     string text;
-                    if (StartsHere(triple)) {
-                        _i += 3;
-                        text = raw ? Until(triple) : EscapedUntil(triple);
-                    } else {
-                        _i++;
-                        text = raw ? Until(c.ToString(), oneLine: true) : Escaped(c, oneLine: true);
-                    }
-                    AddString(text, line);
+                    var isTriple = StartsHere(triple);
+                    _i += isTriple ? 3 : 1;
+                    var start = _i;
+                    if (isTriple) text = raw ? Until(triple) : EscapedUntil(triple);
+                    else text = raw ? Until(c.ToString(), oneLine: true) : Escaped(c, oneLine: true);
+                    AddString(new Literal(text, line) { Start = start, End = _end, Spelling = new Spelling(c, Escapes: !raw, LineBreaks: isTriple, Raw: raw) });
                 } else {
                     CodeToken();
                 }
             }
         }
 
-        void AddString(string text, int line) {
+        void AddString(Literal literal) {
             tokens.Add(new Token(TokenKind.String, "\"", found.Count));
-            found.Add(new Literal(text, line));
+            found.Add(literal);
         }
 
         /// <summary>Anything in code that is no string or comment: a word, or one of the marks calls are made of.</summary>
@@ -502,6 +547,7 @@ public sealed class KeyUsages {
                 text.Append(s[_i]);
                 Step();
             }
+            _end = StartsHere(end) ? _i : -1;
             _i = System.Math.Min(s.Length, _i + end.Length);
             return text.ToString();
         }
@@ -514,7 +560,8 @@ public sealed class KeyUsages {
                 Step();
             }
             var text = s[start.._i];
-            if (StartsHere(end)) _i += end.Length;
+            _end = StartsHere(end) ? _i : -1;
+            if (_end >= 0) _i += end.Length;
             return text;
         }
 
@@ -575,6 +622,8 @@ public sealed class KeyUsages {
         void CSharpString(int dollars, bool verbatim, int quotes) {
             var line = _line;
             _i += quotes;
+            var start = _i;
+            _end = -1;
             var raw = quotes >= 3;
             var close = new string('"', quotes);
             var text = new StringBuilder();
@@ -591,6 +640,7 @@ public sealed class KeyUsages {
                         _i += 2;
                         continue;
                     }
+                    _end = _i;
                     _i += quotes;
                     break;
                 }
@@ -636,7 +686,11 @@ public sealed class KeyUsages {
                 return;
             }
             tokens[at] = new Token(TokenKind.String, "\"", found.Count);
-            found.Add(new Literal(raw ? Dedent(text.ToString()) : text.ToString(), line));
+            var content = text.ToString();
+            // A raw string over several lines is not written anew: its indentation is part of it.
+            var spelling = raw ? content.Contains('\n') ? null : new Spelling('"', Escapes: false, RawQuotes: quotes, Braces: dollars > 0)
+                         : new Spelling('"', Escapes: !verbatim, Verbatim: verbatim, Braces: dollars > 0);
+            found.Add(new Literal(raw ? Dedent(content) : content, line) { Start = start, End = _end, Spelling = spelling });
         }
 
         /// <summary>A raw string over several lines loses its first and last line and the closing line's indentation.</summary>

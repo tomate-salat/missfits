@@ -379,7 +379,7 @@ public partial class EntryDetails : ScrollContainer {
     /// </summary>
     void OnReferenceClicked(Variant meta) => OpenReference(meta.AsString());
 
-    void OpenReference(string reference) {
+    public void OpenReference(string reference) {
         if (!Engine.IsEditorHint()) return;
         var path = reference;
         var line = -1;

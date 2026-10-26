@@ -181,7 +181,7 @@ public sealed class CatalogSet {
 
     // ---- undo --------------------------------------------------------------------------------
 
-    sealed record Step(string Name, CatalogFile[] Files, PoCatalog[] Before, PoCatalog[] After, bool Structural);
+    sealed record Step(string Name, CatalogFile[] Files, PoCatalog[] Before, PoCatalog[] After, bool Structural, CodeRename.FileChange[] Code = null);
 
     readonly List<Step> _undo = [];
     readonly List<Step> _redo = [];
@@ -198,6 +198,7 @@ public sealed class CatalogSet {
     /// </summary>
     void Change(string name, IEnumerable<CatalogFile> files, Action edit, bool structural = false) {
         var touched = files.Distinct().ToArray();
+        _renames.Clear();
         var before = touched.Select(f => f.Catalog.Clone()).ToArray();
         edit();
         var after = touched.Select(f => f.Catalog.Clone()).ToArray();
@@ -211,11 +212,12 @@ public sealed class CatalogSet {
     }
 
     /// <summary>Undoes the last step; returns whether the rows were rebuilt by it.</summary>
-    public bool Undo() => Replay(_undo, _redo, s => s.Before);
+    public bool Undo() => Replay(_undo, _redo, s => s.Before, undo: true);
 
-    public bool Redo() => Replay(_redo, _undo, s => s.After);
+    public bool Redo() => Replay(_redo, _undo, s => s.After, undo: false);
 
-    bool Replay(List<Step> from, List<Step> to, Func<Step, PoCatalog[]> state) {
+    bool Replay(List<Step> from, List<Step> to, Func<Step, PoCatalog[]> state, bool undo) {
+        CodeProblems.Clear();
         if (from.Count == 0) return false;
         var step = from[^1];
         from.RemoveAt(from.Count - 1);
@@ -236,7 +238,41 @@ public sealed class CatalogSet {
         }
         SortFiles();
         RebuildRows();
+        // The code changed along with a rename goes back and forth with it.
+        if (step.Code != null) CodeRename.Replay(step.Code, undo, CodeProblems);
         return true;
+    }
+
+    /// <summary>What could not be put back in the code by the last undo or redo.</summary>
+    public List<string> CodeProblems { get; } = [];
+
+    readonly List<CodeRename.Rename> _renames = [];
+    Step _renameStep;
+
+    /// <summary>
+    /// The sources the last edit renamed, once: the panel offers to change the code with them.
+    /// Null when it renamed none. Undo and redo rename nothing here — they bring their code along.
+    /// </summary>
+    public (List<CodeRename.Rename> Renames, object Step)? TakeRenames() {
+        if (_renames.Count == 0) return null;
+        var taken = (new List<CodeRename.Rename>(_renames), (object) _renameStep);
+        _renames.Clear();
+        return taken;
+    }
+
+    void NoteRenames(IEnumerable<CodeRename.Rename> renames) {
+        _renames.Clear();
+        _renames.AddRange(renames.Where(r => r.OldId != r.NewId));
+        _renameStep = _undo.Count > 0 ? _undo[^1] : null;
+    }
+
+    /// <summary>Whether a step from <see cref="TakeRenames"/> is still the one Undo would take back.</summary>
+    public bool IsLastStep(object step) => _undo.Count > 0 && ReferenceEquals(_undo[^1], step);
+
+    /// <summary>Makes the code changed after a rename part of its undo step, while that is still the last one.</summary>
+    public void AttachCode(object step, List<CodeRename.FileChange> code) {
+        if (code.Count == 0 || _undo.Count == 0 || !ReferenceEquals(_undo[^1], step)) return;
+        _undo[^1] = _undo[^1] with { Code = [.. code] };
     }
 
     /// <summary>Forgets every step, as after reloading from disk.</summary>
@@ -330,6 +366,8 @@ public sealed class CatalogSet {
                 if (wasPlural != entry.IsPlural) entry.FitForms(file.IsTemplate ? 2 : file.Catalog.Plurals.Count);
             }
         }, structural: true);
+        // A new context is no rename of the text the code asks for; a new source is.
+        if (context == row.Context) NoteRenames([new CodeRename.Rename(row.Id, row.Context, id)]);
         return null;
     }
 
@@ -359,6 +397,7 @@ public sealed class CatalogSet {
                 }
             }
         }, structural: true);
+        NoteRenames(renames.Select(r => new CodeRename.Rename(r.Row.Id, r.Row.Context, r.Id)));
         return null;
     }
 

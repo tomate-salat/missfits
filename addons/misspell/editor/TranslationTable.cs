@@ -88,6 +88,7 @@ public partial class TranslationTable : Tree {
     PopupMenu _menu;
     ConfirmationDialog _deleteDialog;
     string _pendingDelete = "";
+    CatalogRow _pendingDeleteRow;
 
     // Colours of the cells, kept faint so text stays readable in light and dark themes.
     static readonly Color Missing = new(1f, 0.35f, 0.3f, 0.13f);
@@ -933,11 +934,57 @@ public partial class TranslationTable : Tree {
             return;
         }
         _pendingDelete = folder;
-        _deleteDialog.DialogText = $"Delete {folder}{PathSeparator} and the {count} text{(count == 1 ? "" : "s")} in it from every file?\nUndo brings them back.";
+        _pendingDeleteRow = null;
+        var warning = UseWarning(RowsIn(folder));
+        _deleteDialog.Title = "Delete folder";
+        _deleteDialog.DialogText = $"Delete {folder}{PathSeparator} and the {count} text{(count == 1 ? "" : "s")} in it from every file?"
+                                   + (warning != null ? $"\n\n{warning}\n" : "\n") + "Undo brings them back.";
         _deleteDialog.PopupCentered();
     }
 
-    void OnDeleteConfirmed() => DeleteFolder(_pendingDelete);
+    /// <summary>Deletes a text — after asking, when it is still used in the project.</summary>
+    public void AskDeleteRow(CatalogRow row) {
+        if (row == null) return;
+        if (UseWarning([row]) is not { } warning) {
+            DeleteRow(row);
+            return;
+        }
+        _pendingDeleteRow = row;
+        _pendingDelete = null;
+        _deleteDialog.Title = "Delete text";
+        _deleteDialog.DialogText = $"Delete “{row.Id}” from every file?\n\n{warning}\nUndo brings it back.";
+        _deleteDialog.PopupCentered();
+    }
+
+    void DeleteRow(CatalogRow row) {
+        Catalogs.DeleteRow(row);
+        Rebuild();
+        EmitSignal(SignalName.Edited);
+    }
+
+    /// <summary>For a delete: where the texts are still used, as lines of the question; null when nowhere.</summary>
+    public string UseWarning(IReadOnlyCollection<CatalogRow> rows) {
+        if (Usages == null) return null;
+        var uses = rows.SelectMany(r => Usages.Of(r.Id, r.Context)).ToList();
+        var guesses = rows.SelectMany(r => Usages.GuessesOf(r.Id)).Distinct().Count();
+        if (uses.Count == 0 && guesses == 0) return null;
+        var lines = new List<string>();
+        if (uses.Count > 0) {
+            lines.Add($"⚠ Still used in the project, {uses.Count} time{(uses.Count == 1 ? "" : "s")}:");
+            lines.AddRange(uses.Take(ShownUses).Select(u => $"      {u.Path.TrimPrefix("res://")}:{u.Line}"));
+            if (uses.Count > ShownUses) lines.Add($"      … and {uses.Count - ShownUses} more");
+        }
+        if (guesses > 0) lines.Add($"⚠ {guesses} string{(guesses == 1 ? "" : "s")} with holes may make {(rows.Count == 1 ? "it" : "them")}.");
+        return string.Join("\n", lines);
+    }
+
+    const int ShownUses = 8;
+
+    void OnDeleteConfirmed() {
+        if (_pendingDeleteRow != null) DeleteRow(Catalogs.Rows.FirstOrDefault(r => r.Key == _pendingDeleteRow.Key) ?? _pendingDeleteRow);
+        else DeleteFolder(_pendingDelete);
+        _pendingDeleteRow = null;
+    }
 
     /// <summary>Deletes every text in a folder, and the folders inside, from every file — one undo step.</summary>
     public void DeleteFolder(string folder) {
@@ -1213,9 +1260,8 @@ public partial class TranslationTable : Tree {
                 NewFolder(SelectedFolder()?.TrimEnd(PathSeparator) ?? "");
                 return;
             case MenuId.Delete:
-                Catalogs.DeleteRow(row);
-                Rebuild();
-                break;
+                AskDeleteRow(row);
+                return;
         }
         if (error != null) EmitSignal(SignalName.EditRejected, error);
         EmitSignal(SignalName.Edited);

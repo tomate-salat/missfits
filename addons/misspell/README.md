@@ -78,7 +78,8 @@ that would give a key one that is already there is refused.
 
 **Deleting a folder:** Delete on it, or right-click → *Delete folder…*. After asking — with how
 many texts go — every text in it and in the folders inside is removed from every file, as one undo
-step. An empty folder goes without asking.
+step. An empty folder goes without asking. When texts in it are still used in the project, the
+question says where.
 
 **Drag and drop** moves keys in the tree: drag a text or a whole folder onto a folder to move it
 in, onto a text to put it beside that one, or below the rows to move it to the top level. Every key
@@ -140,6 +141,25 @@ why: not even a part of the key is found — no use of it, no string with holes 
 and none of its folders named anywhere (as `"a/b"`, `"a/"` or at the start of `$"a/b/{x}"`). Such a
 text is most likely left over. A folder whose texts are all probably unused is greyed out too, and
 the filter *Probably unused* shows only those.
+
+**Renaming in the code too.** After a text, a folder or a dragged key gets a new source, and the old
+one is used in the project, Misspell asks — every time — whether to change those uses as well. The
+dialog lists each use under its file, ticked; untick what should stay — or *Cancel the rename* to
+take the rename back altogether. Each string is written the
+way it was: escapes, `@"…"` and raw strings in C#, both quotes and `r"…"` in GDScript, a scene's or
+resource's own escaping — and nothing else in the file changes: line breaks (Windows, Unix or
+mixed), a byte order mark and the encoding (UTF-8, UTF-16, or anything else byte for byte) stay as
+they were. Only the call in the renamed context changes (`Tr("Close", "menu")`, not
+`Tr("Close", "door")`), and strings with holes are never changed — they are listed below to check by
+hand. Undo and redo put the code back and forth along with the texts, each file only while it is
+still as the rename left it.
+
+A scene open in the editor is changed and read again; a script open in the script editor gets the
+new text there too. What is left alone, with the reason in the status line (and every one in the
+Output panel): an open scene or script with unsaved changes (save it first), a file changed since,
+and a new text a string cannot hold (a raw string without room for its quotes, say). A renamed context is not carried into the code.
+
+**Deleting a text** that is still used asks first, saying where; an unused one goes at once.
 
 **Language and plural rule:** *Language* in the toolbar and right-clicking a language's title open the same
 dialog. Type the language (`de`, `pt_BR`, `pl` …) and its usual rule is filled in; the forms are
