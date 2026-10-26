@@ -763,16 +763,24 @@ public partial class SpellEditorSelfTest : Node {
 
         var keyFolder = "user://misspell_usage_keys";
         DirAccess.MakeDirRecursiveAbsolute(keyFolder);
-        WriteAt($"{keyFolder}/keys.pot", "msgid \"\"\nmsgstr \"\"\n\nmsgid \"shop/sword\"\nmsgstr \"\"\n\nmsgid \"shop/shield\"\nmsgstr \"\"\n\nmsgid \"menu/close\"\nmsgstr \"\"\n");
+        WriteAt($"{keyFolder}/keys.pot", "msgid \"\"\nmsgstr \"\"\n\nmsgid \"shop/sword\"\nmsgstr \"\"\n\nmsgid \"shop/shield\"\nmsgstr \"\"\n\nmsgid \"menu/close\"\nmsgstr \"\"\n\nmsgid \"gone/old\"\nmsgstr \"\"\n");
         WriteAt($"{UsageFolder}/Shield.cs", "class Shield {\n    string Name => Tr(\"shop/shield\");\n    string Other => Tr(\"shop/sword\");\n}");
 
+        // Probably unused: not even a part of the key found.
+        WriteAt($"{UsageFolder}/Sections.cs", "class Sections {\n    const string Section = \"quests/main\";\n    string Deep(string x) => Tr($\"deep/a/{x}/end\");\n}");
+        usages.Refresh();
+        Check("a used text is not unused", !usages.ProbablyUnused("shop/sword", null));
+        Check("nor one a string with holes may make", !usages.ProbablyUnused("shop/axe", null) && !usages.ProbablyUnused("menu/sub/x", null));
+        Check("nor one whose folder is named as a string", !usages.ProbablyUnused("quests/main/intro", null));
+        Check("nor one whose folder a string with holes starts in", !usages.ProbablyUnused("deep/a/b/other", null) && !usages.ProbablyUnused("deep/elsewhere", null));
+        Check("one with nothing of its key found is", usages.ProbablyUnused("gone/old", null) && usages.ProbablyUnused("lonely", null) && usages.ProbablyUnused("questsx/main/intro", null));
         WriteFiles();
         var panel = new MisspellPanel();
         AddChild(panel);
         panel.Size = new Vector2(1400, 700);
         await Settle();
         panel.Open($"{keyFolder}/keys.pot");
-        panel.Details.Usages = new KeyUsages(UsageFolder);
+        panel.Usages = new KeyUsages(UsageFolder);
         panel.ShowAsTree(true);
         await Settle();
         panel.Table.GroupItem("shop")?.Select(0);
@@ -780,6 +788,21 @@ public partial class SpellEditorSelfTest : Node {
         var folderTexts = panel.Details.FindChildren("*", nameof(RichTextLabel), true, false).OfType<RichTextLabel>().Where(l => l.IsVisibleInTree()).Select(l => l.Text).ToList();
         var folderLabels = panel.Details.FindChildren("*", nameof(Label), true, false).OfType<Label>().Where(l => l.IsVisibleInTree()).Select(l => l.Text).ToList();
         Check("a selected folder shows in the details", folderLabels.Contains("shop/") && folderLabels.Contains("2 texts"));
+
+        var table = panel.Table;
+        Check("the tree marks a folder of only unused texts", table.GroupItem("gone")?.GetTooltipText(table.ColumnOf(TranslationTable.ColumnKind.Source)).Contains("Probably unused") == true
+                                                              && table.GroupItem("shop")?.GetTooltipText(table.ColumnOf(TranslationTable.ColumnKind.Source)).Contains("Probably unused") == false);
+        var gone = Row(panel.Catalogs, "gone/old");
+        Check("and the unused text, in its tooltip", table.ItemOf(gone)?.GetTooltipText(table.ColumnOf(TranslationTable.ColumnKind.Source)).Contains(TranslationTable.UnusedTip) == true);
+        table.ShowOnly = TranslationTable.Filter.Unused;
+        table.Rebuild();
+        Check("the filter shows only the probably unused", table.ItemOf(gone) != null && table.ItemOf(Row(panel.Catalogs, "shop/sword")) == null && table.ItemOf(Row(panel.Catalogs, "menu/close")) == null);
+        table.ShowOnly = TranslationTable.Filter.All;
+        table.Rebuild();
+        panel.Details.ShowRow(gone, null);
+        Check("the details say it plainly", panel.Details.FindChildren("*", nameof(RichTextLabel), true, false).OfType<RichTextLabel>().Any(l => l.Text.Contains("Probably unused")));
+        table.GroupItem("shop")?.Select(0);
+        await Settle();
         Check("with where its texts are used, by name", folderTexts.Any(t => t.Contains("[b]shield[/b]") && t.IndexOf("[b]shield[/b]") < t.IndexOf("[b]sword[/b]") && t.Contains($"[url={UsageFolder}/Shield.cs:2]")));
         Check("grouped by file: its name once, then a row per use", folderTexts.Any(t => t.Split("[b]Shield.cs[/b]").Length == 2 && t.Contains($"[url={UsageFolder}/Shield.cs:3]")));
         Check("and what may make them", folderTexts.Any(t => t.Contains($"[url={UsageFolder}/Items.cs:2]")));
@@ -791,7 +814,7 @@ public partial class SpellEditorSelfTest : Node {
         panel.Size = new Vector2(1400, 700);
         await Settle();
         panel.Open($"{Folder}/de.po");
-        panel.Details.Usages = new KeyUsages(UsageFolder);
+        panel.Usages = new KeyUsages(UsageFolder);
         panel.Details.ShowRow(Row(panel.Catalogs, "Buy"), null);
         await Settle();
         var shown = panel.Details.FindChildren("*", nameof(RichTextLabel), true, false).OfType<RichTextLabel>().Select(l => l.Text).ToList();
@@ -799,7 +822,7 @@ public partial class SpellEditorSelfTest : Node {
         Check("with the string marked in its line of code", shown.Any(t => System.Text.RegularExpressions.Regex.IsMatch(t, @"\[color=#[0-9a-f]+\]Buy\[/color\]")));
         panel.Details.ShowRow(Row(panel.Catalogs, "Hello, {name}!"), null);
         shown = panel.Details.FindChildren("*", nameof(RichTextLabel), true, false).OfType<RichTextLabel>().Select(l => l.Text).ToList();
-        Check("and say when it is used nowhere", shown.Any(t => t.Contains("Not found as a string")));
+        Check("and say when it is used nowhere", shown.Any(t => t.Contains(TranslationTable.UnusedTip)));
         panel.QueueFree();
         await Settle();
     }

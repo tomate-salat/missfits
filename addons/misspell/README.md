@@ -135,6 +135,12 @@ marks between them (`$"{a}/{b}"`) could make anything and are left out.
 the rest of its key), and the guesses that could make one of them or start inside the folder —
 including a plain `"shop/"`, which is usually put before something.
 
+**Probably unused** texts are greyed out in the table, with an unlinked icon and a tooltip saying
+why: not even a part of the key is found — no use of it, no string with holes that could make it,
+and none of its folders named anywhere (as `"a/b"`, `"a/"` or at the start of `$"a/b/{x}"`). Such a
+text is most likely left over. A folder whose texts are all probably unused is greyed out too, and
+the filter *Probably unused* shows only those.
+
 **Language and plural rule:** *Language* in the toolbar and right-clicking a language's title open the same
 dialog. Type the language (`de`, `pt_BR`, `pl` …) and its usual rule is filled in; the forms are
 listed with their numbers as you type, and a rule that is broken, leaves a form unused, or differs

@@ -121,6 +121,47 @@ public sealed class KeyUsages {
 
     const char Separator = '/';
 
+    /// <summary>
+    /// Whether not even a part of the text's key is found: no use of it, no string with holes that
+    /// could make it, and none of its folders named anywhere — neither as a plain string
+    /// (<c>"a/b"</c>, <c>"a/"</c>) nor at the start of one with holes (<c>$"a/b/{x}"</c>).
+    /// Such a text is most likely left over.
+    /// </summary>
+    public bool ProbablyUnused(string text, string context) {
+        RefreshIfStale();
+        // Asked for every row of the table at each rebuild: kept until something else is found.
+        if (_unusedVersion != Version) {
+            _unused.Clear();
+            _unusedVersion = Version;
+        }
+        var key = PoEntry.KeyOf(context, text);
+        if (_unused.TryGetValue(key, out var known)) return known;
+        return _unused[key] = Unused(text, context);
+    }
+
+    bool Unused(string text, string context) {
+        if (Of(text, context).Count > 0 || GuessesOf(text).Count > 0) return false;
+        var parts = text.Split(Separator);
+        var folder = "";
+        for (var i = 0; i < parts.Length - 1; i++) {
+            folder = i == 0 ? parts[0] : folder + Separator + parts[i];
+            if (_namedFolders.Contains(folder) || _byText.ContainsKey(folder)) return false;
+        }
+        return true;
+    }
+
+    readonly Dictionary<string, bool> _unused = [];
+    int _unusedVersion = -1;
+
+    /// <summary>
+    /// The folders a string with holes starts inside: <c>"a/b/{…}"</c> names <c>a</c> and <c>a/b</c>,
+    /// and so does a plain <c>"a/b/"</c>.
+    /// </summary>
+    HashSet<string> _namedFolders = [];
+
+    /// <summary>Counts up whenever what was found changes, so answers derived from it can be kept until then.</summary>
+    public int Version { get; private set; }
+
     void RefreshIfStale() {
         if (!_walked || Time.GetTicksMsec() - _lastWalk > RefreshAfterMs) Refresh();
     }
@@ -153,6 +194,11 @@ public sealed class KeyUsages {
                     }
                 }
             }
+            _namedFolders = [];
+            foreach (var start in _patterns.Select(u => u.Literal.Parts[0])) {
+                for (var at = start.IndexOf(Separator); at > 0; at = start.IndexOf(Separator, at + 1)) _namedFolders.Add(start[..at]);
+            }
+            Version++;
         }
         _lastWalk = Time.GetTicksMsec();
         _walked = true;

@@ -222,7 +222,8 @@ public partial class EntryDetails : ScrollContainer {
 
     /// <summary>Every place in the scenes, resources and scripts with the source as a string — in a translation call, with this context — each a link with its line of code below.</summary>
     void FillUsages() {
-        _usages.Text = UsageList(Usages.Of(_row.Id, _row.Context).Select(u => (u, (string) null)).ToList(), NotFound);
+        var none = Usages.ProbablyUnused(_row.Id, _row.Context) ? TranslationTable.UnusedTip : NotFound;
+        _usages.Text = UsageList(Usages.Of(_row.Id, _row.Context).Select(u => (u, (string) null)).ToList(), none);
         var guesses = Usages.GuessesOf(_row.Id);
         _guesses.Text = UsageList(guesses.Select(u => (u, (string) null)).ToList(), "");
         _guessBox.Visible = guesses.Count > 0;
@@ -246,7 +247,10 @@ public partial class EntryDetails : ScrollContainer {
         foreach (var control in new Control[] { _sourceHeading, _source, _notes, _usageBox }) control.Visible = true;
 
         var usages = rows.SelectMany(r => Usages.Of(r.Id, r.Context).Select(u => (u, r.Id[inside.Length..]))).ToList();
-        _usages.Text = UsageList(usages, rows.Count == 0 ? "No texts in it yet." : "None of its texts found as a string.");
+        var none = rows.Count == 0 ? "No texts in it yet."
+                 : rows.All(r => Usages.ProbablyUnused(r.Id, r.Context)) ? "Probably unused: not even a part of the keys inside is found in the project."
+                 : "None of its texts found as a string.";
+        _usages.Text = UsageList(usages, none);
         var guesses = Usages.GuessesIn(_folder, rows.Select(r => r.Id).ToList());
         _guesses.Text = UsageList(guesses.Select(u => (u, (string) null)).ToList(), "");
         _guessBox.Visible = guesses.Count > 0;

@@ -155,6 +155,8 @@ public partial class MisspellPanel : VBoxContainer {
         _filter.AddItem("Fuzzy", (int) TranslationTable.Filter.Fuzzy);
         _filter.AddItem("With problems", (int) TranslationTable.Filter.Problems);
         _filter.AddItem("Plural", (int) TranslationTable.Filter.Plural);
+        _filter.AddItem("Probably unused", (int) TranslationTable.Filter.Unused);
+        _filter.SetItemTooltip(_filter.ItemCount - 1, TranslationTable.UnusedTip);
         _filter.Connect(OptionButton.SignalName.ItemSelected, new Callable(this, MethodName.OnFilterPicked));
         bar.AddChild(_filter);
         bar.AddChild(Gap());
@@ -269,6 +271,16 @@ public partial class MisspellPanel : VBoxContainer {
     void HandOver() {
         Table.Catalogs = _set;
         Details.Catalogs = _set;
+        Table.Usages = Details.Usages;
+    }
+
+    /// <summary>Where texts are used, shared by the table and the details; a test points it at a folder of its own.</summary>
+    public KeyUsages Usages {
+        get => Details.Usages;
+        set {
+            Details.Usages = Table.Usages = value;
+            Table.Rebuild();
+        }
     }
 
     /// <summary>After an assembly reload: the set again from disk, with the unsaved text laid over it.</summary>

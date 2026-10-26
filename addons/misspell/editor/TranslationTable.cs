@@ -34,12 +34,14 @@ public partial class TranslationTable : Tree {
     [Signal]
     public delegate void NewTextRequestedEventHandler();
 
-    public enum Filter { All, Untranslated, Fuzzy, Problems, Plural }
+    public enum Filter { All, Untranslated, Fuzzy, Problems, Plural, Unused }
 
     public enum ColumnKind { None, Context, Source, Language }
 
     /// <summary>Plain C#, so gone after an assembly reload; the panel hands it over again.</summary>
     public CatalogSet Catalogs;
+    /// <summary>Where texts are used, for the hint on those that probably are not; handed over like <see cref="Catalogs"/>. None, no hint.</summary>
+    public KeyUsages Usages;
 
     public string Search = "";
     public Filter ShowOnly = Filter.All;
@@ -326,9 +328,17 @@ public partial class TranslationTable : Tree {
         }
 
         var source = ColumnOf(ColumnKind.Source);
+        // A folder of only left-over texts is most likely left over as a whole.
+        var unused = rows.Count > 0 && rows.All(ProbablyUnused);
+        if (unused && source >= 0) {
+            item.SetCustomColor(source, GetThemeColor("font_placeholder_color", "LineEdit"));
+            item.SetTooltipText(source, $"{item.GetTooltipText(source)}\nProbably unused: not even a part of the keys inside is found in the project.");
+        }
         if (problems > 0) {
             SetIcon(item, source, "StatusWarning", GetThemeColor("warning_color", "Editor"));
             item.SetTooltipText(source, $"{item.GetTooltipText(source)}\n{problems} problem{(problems == 1 ? "" : "s")} inside");
+        } else if (unused) {
+            SetIcon(item, source, UnusedIcon, GetThemeColor("font_placeholder_color", "LineEdit"));
         } else if (rows.Count == 0) {
             SetIcon(item, source, "Folder", new Color(0.6f, 0.6f, 0.6f, 0.6f));
         } else {
@@ -556,6 +566,8 @@ public partial class TranslationTable : Tree {
                 return Catalogs.Languages.Any(f => Catalogs.ProblemsOf(row, f).Count > 0);
             case Filter.Plural:
                 return row.IsPlural;
+            case Filter.Unused:
+                return ProbablyUnused(row);
             default:
                 return true;
         }
@@ -625,9 +637,21 @@ public partial class TranslationTable : Tree {
         if (row.IsPlural) tips.Add("Plural: one row per plural form below");
         if (fuzzy.Count > 0) tips.Add($"Fuzzy in {string.Join(", ", fuzzy)}");
         tips.AddRange(problems);
+        var unused = ProbablyUnused(row);
+        if (unused) {
+            tips.Add(UnusedTip);
+            item.SetCustomColor(column, hint);
+        }
         item.SetTooltipText(column, string.Join("\n", tips));
         if (problems.Count > 0) SetIcon(item, column, "StatusWarning", GetThemeColor("warning_color", "Editor"));
+        else if (unused) SetIcon(item, column, UnusedIcon, hint);
     }
+
+    public const string UnusedTip = "Probably unused: not even a part of its key is found in the project's scenes, resources or scripts.";
+    const string UnusedIcon = "Unlinked";
+
+    /// <summary>Whether not even a part of the text's key is found in the project — see <see cref="KeyUsages.ProbablyUnused"/>.</summary>
+    public bool ProbablyUnused(CatalogRow row) => Usages?.ProbablyUnused(row.Id, row.Context) == true;
 
     /// <summary>The colour contexts are written in, so they stand apart from the text.</summary>
     Color Accent => HasThemeColor("accent_color", "Editor") ? GetThemeColor("accent_color", "Editor") : new Color(0.55f, 0.7f, 1f);
