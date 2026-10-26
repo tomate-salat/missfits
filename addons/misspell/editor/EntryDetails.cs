@@ -17,6 +17,13 @@ public partial class EntryDetails : ScrollContainer {
 
     /// <summary>Plain C#, handed over by the panel again after an assembly reload.</summary>
     public CatalogSet Catalogs;
+    /// <summary>Where texts are used in the project; plain C# as well, so made again after a reload.</summary>
+    public KeyUsages Usages {
+        get => _usageIndex ??= new KeyUsages();
+        set => _usageIndex = value;
+    }
+    KeyUsages _usageIndex;
+    const int ShownUsages = 50;
     CatalogRow _row;
     CatalogFile _file;
 
@@ -33,6 +40,8 @@ public partial class EntryDetails : ScrollContainer {
     SpinBox _number;
     VBoxContainer _forms;
     Label _problems;
+    VBoxContainer _usageBox;
+    RichTextLabel _usages;
     bool _updating;
 
     public override void _Ready() {
@@ -67,6 +76,15 @@ public partial class EntryDetails : ScrollContainer {
         _problems = Wrapped();
         _problems.AddThemeColorOverride("font_color", new Color(1f, 0.7f, 0.3f));
         _box.AddChild(_problems);
+
+        _usageBox = new VBoxContainer();
+        _usageBox.AddThemeConstantOverride("separation", 8);
+        _box.AddChild(_usageBox);
+        _usageBox.AddChild(new HSeparator());
+        _usageBox.AddChild(Heading("Used in"));
+        _usages = new RichTextLabel { BbcodeEnabled = true, FitContent = true, ScrollActive = false, TooltipText = "Open where this text is used" };
+        _usages.Connect(RichTextLabel.SignalName.MetaClicked, new Callable(this, MethodName.OnReferenceClicked));
+        _usageBox.AddChild(_usages);
 
         _box.AddChild(new HSeparator());
         _languageTitle = Heading("");
@@ -156,6 +174,8 @@ public partial class EntryDetails : ScrollContainer {
         _problems.Text = string.Join("\n", problems);
         _problems.Visible = problems.Count > 0;
 
+        FillUsages();
+
         var entry = _file == null ? null : Catalogs.EntryOf(_row, _file);
         _languageTitle.Text = _file == null ? "No language yet" : $"{_file.Label} — {LocaleName(_file.Locale)}";
         _fuzzy.Visible = _comment.Visible = _file != null;
@@ -168,6 +188,24 @@ public partial class EntryDetails : ScrollContainer {
         if (_row.IsPlural) FillForms();
         _updating = false;
     }
+
+    /// <summary>Every place in the scenes, resources and scripts with the source as a string, each a link with its line of code below.</summary>
+    void FillUsages() {
+        var usages = Usages.Of(_row.Id);
+        var text = new System.Text.StringBuilder();
+        if (usages.Count == 0) {
+            text.Append($"[color=#ffffff80]Not found as a string in any {string.Join(", ", KeyUsages.Extensions.Select(e => "." + e))} file.[/color]");
+        }
+        foreach (var usage in usages.Take(ShownUsages)) {
+            if (text.Length > 0) text.Append('\n');
+            text.Append($"[url={usage.Reference}]{Escape(usage.Path.TrimPrefix("res://"))}:{usage.Line}[/url]");
+            if (usage.Code.Length > 0) text.Append($"\n[indent][font_size=12][color=#ffffffa0]{Escape(usage.Code)}[/color][/font_size][/indent]");
+        }
+        if (usages.Count > ShownUsages) text.Append($"\n[color=#ffffff80]… and {usages.Count - ShownUsages} more[/color]");
+        _usages.Text = text.ToString();
+    }
+
+    static string Escape(string text) => text.Replace("[", "[lb]");
 
     /// <summary>One block per language: each form's name, the numbers it is for, and its text; the form for the tried number is marked.</summary>
     void FillForms() {
@@ -233,7 +271,7 @@ public partial class EntryDetails : ScrollContainer {
 
     /// <summary>
     /// <c>res://ui/shop.tscn</c> opens the scene, <c>res://shop.gd:12</c> the script at that line;
-    /// anything else is shown in the FileSystem dock.
+    /// a resource opens in the inspector; anything else is shown in the FileSystem dock.
     /// </summary>
     void OnReferenceClicked(Variant meta) => OpenReference(meta.AsString());
 
@@ -252,6 +290,7 @@ public partial class EntryDetails : ScrollContainer {
         var editor = EditorInterface.Singleton;
         if (path.EndsWith(".tscn") || path.EndsWith(".scn")) editor.OpenSceneFromPath(path);
         else if (ResourceLoader.Load(path) is Script script) editor.EditScript(script, line);
+        else if (path.EndsWith(".tres") || path.EndsWith(".res")) editor.EditResource(ResourceLoader.Load(path));
         else editor.SelectFile(path);
     }
 }

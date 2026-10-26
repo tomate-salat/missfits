@@ -99,6 +99,8 @@ public partial class SpellEditorSelfTest : Node {
             SavingWritesTheFiles();
             await TheTableShowsPluralsAsRows();
             await KeysLaidOutAsPathsShowAsATree();
+            LiteralsAreRead();
+            await UsagesAreFound();
         } catch (System.Exception e) {
             // Without this, a crash would leave the headless run waiting forever.
             _failures.Add($"crashed: {e}");
@@ -673,6 +675,74 @@ public partial class SpellEditorSelfTest : Node {
         var rows = new List<string>();
         for (var item = table.GetRoot()?.GetFirstChild(); item != null; item = item.GetNext()) rows.Add(table.RowOf(item).Id);
         return rows;
+    }
+
+    // ---- usages ------------------------------------------------------------------------------
+
+    const string UsageFolder = "user://misspell_usages";
+
+    void LiteralsAreRead() {
+        List<string> Texts(string source, string extension) => KeyUsages.Literals(source, extension).Select(l => l.Text).ToList();
+
+        Check("C#: plain, escaped and verbatim strings", Texts("""Tr("Buy"); Tr("a\"b\n"); Tr(@"c""d");""", "cs").SequenceEqual(["Buy", "a\"b\n", "c\"d"]));
+        Check("C#: comments and chars are no strings", Texts("// \"no\"\n/* \"no\" */ var c = '\"'; Tr(\"yes\");", "cs").SequenceEqual(["yes"]));
+        Check("C#: an interpolated string with holes is none, the strings in its holes are",
+            Texts("""var s = $"{Tr("Close", "menu")} · {n}"; var t = $"{{plain}}";""", "cs").SequenceEqual(["Close", "menu", "{plain}"]));
+        Check("C#: raw strings, over several lines without their indentation",
+            Texts("var a = \"\"\"raw \"q\" \"\"\";\nvar b = \"\"\"\n    one\n      two\n    \"\"\";", "cs").SequenceEqual(["raw \"q\" ", "one\n  two"]));
+        Check("C#: the line a string starts on", KeyUsages.Literals("a();\n\nTr(\"x\");", "cs").Single().Line == 3);
+
+        Check("GDScript: both quotes, raw and triple, no comments",
+            Texts("tr(\"a\") # \"no\"\ntr('b\\'c')\nvar r = r\"d\\e\"\nvar t = \"\"\"multi\nline\"\"\"", "gd").SequenceEqual(["a", "b'c", "d\\e", "multi\nline"]));
+
+        Check("scenes: property strings, not the headers",
+            Texts("[node name=\"Buy\" type=\"Button\"]\ntext = \"Buy\"\ntooltip_text = \"Say \\\"hi\\\"\nthere\"", "tscn").SequenceEqual(["Buy", "Say \"hi\"\nthere"]));
+    }
+
+    async System.Threading.Tasks.Task UsagesAreFound() {
+        DirAccess.MakeDirRecursiveAbsolute($"{UsageFolder}/ui");
+        DirAccess.MakeDirRecursiveAbsolute($"{UsageFolder}/ignored");
+        WriteAt($"{UsageFolder}/ui/shop.tscn", "[gd_scene format=3]\n\n[node name=\"Buy\" type=\"Button\"]\ntext = \"Buy\"\n");
+        WriteAt($"{UsageFolder}/Shop.cs", "class Shop {\n    // Tr(\"Buy\") in a comment\n    string Label => Tr(\"Buy\");\n}");
+        WriteAt($"{UsageFolder}/shop.gd", "func _ready():\n\tprint(tr(\"Sell\", \"verb\"))\n");
+        WriteAt($"{UsageFolder}/ignored/.gdignore", "");
+        WriteAt($"{UsageFolder}/ignored/old.gd", "tr(\"Buy\")");
+
+        var usages = new KeyUsages(UsageFolder);
+        var buy = usages.Of("Buy");
+        Check("a text is found in scenes and scripts, by file and line", buy.Select(u => u.Reference).SequenceEqual([$"{UsageFolder}/Shop.cs:3", $"{UsageFolder}/ui/shop.tscn:4"]));
+        Check("with its line of code", buy[0].Code == "string Label => Tr(\"Buy\");");
+        Check("a folder with .gdignore is left out", buy.All(u => !u.Path.Contains("ignored")));
+        Check("an unused text has no usages", usages.Of("Hello, {name}!").Count == 0);
+
+        WriteAt($"{UsageFolder}/shop.gd", "func _ready():\n\tpass\n\tprint(tr(\"Buy\"))\n");
+        // In the same second as the first read: the modification time alone would not tell.
+        DirAccess.RemoveAbsolute($"{UsageFolder}/Shop.cs");
+        usages.Refresh();
+        Check("after changes the files are read again", usages.Of("Buy").Select(u => u.Reference).SequenceEqual([$"{UsageFolder}/shop.gd:3", $"{UsageFolder}/ui/shop.tscn:4"])
+                                                        && usages.Of("Sell").Count == 0);
+
+        WriteFiles();
+        var panel = new MisspellPanel();
+        AddChild(panel);
+        panel.Size = new Vector2(1400, 700);
+        await Settle();
+        panel.Open($"{Folder}/de.po");
+        panel.Details.Usages = new KeyUsages(UsageFolder);
+        panel.Details.ShowRow(Row(panel.Catalogs, "Buy"), null);
+        await Settle();
+        var shown = panel.Details.FindChildren("*", nameof(RichTextLabel), true, false).OfType<RichTextLabel>().Select(l => l.Text).ToList();
+        Check("the details link where the text is used", shown.Any(t => t.Contains($"[url={UsageFolder}/ui/shop.tscn:4]") && t.Contains("text = \"Buy\"")));
+        panel.Details.ShowRow(Row(panel.Catalogs, "Hello, {name}!"), null);
+        shown = panel.Details.FindChildren("*", nameof(RichTextLabel), true, false).OfType<RichTextLabel>().Select(l => l.Text).ToList();
+        Check("and say when it is used nowhere", shown.Any(t => t.Contains("Not found as a string")));
+        panel.QueueFree();
+        await Settle();
+    }
+
+    static void WriteAt(string path, string text) {
+        using var file = FileAccess.Open(path, FileAccess.ModeFlags.Write);
+        file.StoreString(text);
     }
 
     // ---- helpers -----------------------------------------------------------------------------

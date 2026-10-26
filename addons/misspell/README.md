@@ -113,6 +113,14 @@ The **details** beside the table show, for the selected text, every language's f
 numbers and texts. *Try n* picks a number and marks the form each language uses for it, with the
 number filled into `{n}`, `{count}` or `%d` — what the player will read.
 
+**Used in** lists where the selected text is used: every string in the project's `.tscn`, `.tres`,
+`.gd` and `.cs` files that is exactly its source, by file and line with the line of code below.
+A click opens it — a script at that line, a scene, a resource in the inspector. Comments, the
+`[node name="…"]` headers of scenes and folders with a `.gdignore` are left out. What is found is
+the string, not the call: the context of `Tr("Close", "menu")` is not compared yet, and an
+interpolated C# string like `$"shop/{item}"` is no use of anything (the strings in its holes are).
+Files are read again when they change.
+
 **Language and plural rule:** *Language* in the toolbar and right-clicking a language's title open the same
 dialog. Type the language (`de`, `pt_BR`, `pl` …) and its usual rule is filled in; the forms are
 listed with their numbers as you type, and a rule that is broken, leaves a form unused, or differs
