@@ -56,6 +56,12 @@ public partial class TranslationTable : Tree {
     /// <summary>Marks the metadata of a folder's row, so no message's key is ever mistaken for it.</summary>
     const string GroupMark = "\u0001";
 
+    /// <summary>
+    /// The plural form a row shows, kept on the item rather than in a column's metadata: a
+    /// template alone in the tree has only one column.
+    /// </summary>
+    static readonly StringName FormMeta = "misspell_form";
+
     readonly List<ColumnKind> _kinds = [];
     readonly List<CatalogFile> _columnFiles = [];
     readonly Dictionary<string, TreeItem> _items = [];
@@ -268,7 +274,7 @@ public partial class TranslationTable : Tree {
             foreach (var path in folders) {
                 var group = CreateItem(parent);
                 group.SetMetadata(0, GroupMark + path);
-                group.SetMetadata(1, 0);
+                group.SetMeta(FormMeta, 0);
                 group.Collapsed = _collapsed.Contains(path);
                 _groups[path] = group;
                 Add(group, nodes[path]);
@@ -569,7 +575,7 @@ public partial class TranslationTable : Tree {
     /// <summary>Writes the cells of one row of the table: a message, or one of its further plural forms.</summary>
     void Fill(TreeItem item, CatalogRow row, int form) {
         item.SetMetadata(0, row.Key);
-        item.SetMetadata(1, form);
+        item.SetMeta(FormMeta, form);
         var hint = GetThemeColor("font_placeholder_color", "LineEdit");
 
         for (var c = 0; c < _kinds.Count; c++) {
@@ -682,7 +688,7 @@ public partial class TranslationTable : Tree {
     /// <summary>The message and plural form of the selected row, or nulls.</summary>
     public CatalogRow SelectedRow => RowOf(GetSelected());
 
-    public int SelectedForm => GetSelected()?.GetMetadata(1).AsInt32() ?? 0;
+    public int SelectedForm => GetSelected()?.GetMeta(FormMeta, 0).AsInt32() ?? 0;
 
     public CatalogFile SelectedFile => GetSelected() == null ? null : FileOf(GetSelectedColumn());
 
@@ -694,7 +700,7 @@ public partial class TranslationTable : Tree {
 
     (string Key, int Form, int Column) SelectedCellKey() {
         var item = GetSelected();
-        return item == null ? (null, 0, -1) : (item.GetMetadata(0).AsString(), item.GetMetadata(1).AsInt32(), GetSelectedColumn());
+        return item == null ? (null, 0, -1) : (item.GetMetadata(0).AsString(), item.GetMeta(FormMeta, 0).AsInt32(), GetSelectedColumn());
     }
 
     public TreeItem ItemOf(CatalogRow row, int form = 0) {
@@ -742,7 +748,7 @@ public partial class TranslationTable : Tree {
         if (GroupPathOf(item) != null) return KindOf(column) == ColumnKind.Source;
         var row = RowOf(item);
         if (row == null) return false;
-        var form = item.GetMetadata(1).AsInt32();
+        var form = item.GetMeta(FormMeta, 0).AsInt32();
         return KindOf(column) switch {
             ColumnKind.Context => form == 0,
             ColumnKind.Source => form <= 1,
@@ -757,7 +763,7 @@ public partial class TranslationTable : Tree {
         if (GroupPathOf(item) is { } folder) return KindOf(column) == ColumnKind.Source ? NameOf(folder) : "";
         var row = RowOf(item);
         if (row == null) return "";
-        var form = item.GetMetadata(1).AsInt32();
+        var form = item.GetMeta(FormMeta, 0).AsInt32();
         return KindOf(column) switch {
             ColumnKind.Context => row.Context ?? "",
             // In the tree a key is edited like a folder: its name, without the folders above it.
@@ -773,7 +779,7 @@ public partial class TranslationTable : Tree {
     /// </summary>
     public string CopyText(TreeItem item, int column) {
         if (GroupPathOf(item) is { } folder) return folder;
-        if (KindOf(column) == ColumnKind.Source && item.GetMetadata(1).AsInt32() == 0 && RowOf(item) is { } row) return row.Id;
+        if (KindOf(column) == ColumnKind.Source && item.GetMeta(FormMeta, 0).AsInt32() == 0 && RowOf(item) is { } row) return row.Id;
         return CellText(item, column);
     }
 
@@ -837,7 +843,7 @@ public partial class TranslationTable : Tree {
         }
         var row = RowOf(item);
         if (row == null || !CanEdit(item, column)) return;
-        var form = item.GetMetadata(1).AsInt32();
+        var form = item.GetMeta(FormMeta, 0).AsInt32();
         var kind = KindOf(column);
 
         if (kind == ColumnKind.Language) {
@@ -954,7 +960,7 @@ public partial class TranslationTable : Tree {
         var item = _editItem;
         var column = _editColumn;
         var key = item?.GetMetadata(0).AsString();
-        var form = item?.GetMetadata(1).AsInt32() ?? 0;
+        var form = item?.GetMeta(FormMeta, 0).AsInt32() ?? 0;
         var wasFolder = GroupPathOf(item) != null;
         CommitEdit();
         GrabFocus();

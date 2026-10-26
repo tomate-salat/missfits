@@ -114,8 +114,9 @@ numbers and texts. *Try n* picks a number and marks the form each language uses 
 number filled into `{n}`, `{count}` or `%d` — what the player will read.
 
 **Used in** lists where the selected text is used: every string in the project's `.tscn`, `.tres`,
-`.gd` and `.cs` files that is exactly its source, by file and line with the line of code below.
-A click opens it — a script at that line, a scene, a resource in the inspector. Comments, the
+`.gd` and `.cs` files that is exactly its source, grouped by file: the file's name with its folder,
+then one row per use with the line number and the line of code, the string in it marked. A click
+opens it — a script at that line, a scene, a resource in the inspector. Comments, the
 `[node name="…"]` headers of scenes and folders with a `.gdignore` are left out.
 
 Contexts count where a translation call names one: `Tr("Close", "menu")` is a use of *Close* in

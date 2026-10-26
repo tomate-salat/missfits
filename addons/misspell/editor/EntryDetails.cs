@@ -88,16 +88,17 @@ public partial class EntryDetails : ScrollContainer {
         _box.AddChild(_usageBox);
         _usageBox.AddChild(new HSeparator());
         _usageBox.AddChild(Heading("Used in"));
-        _usages = new RichTextLabel { BbcodeEnabled = true, FitContent = true, ScrollActive = false, TooltipText = "Open where this text is used" };
+        _usages = new RichTextLabel { BbcodeEnabled = true, FitContent = true, ScrollActive = false, MetaUnderlined = false, TooltipText = "Open where this text is used" };
         _usages.Connect(RichTextLabel.SignalName.MetaClicked, new Callable(this, MethodName.OnReferenceClicked));
         _usageBox.AddChild(_usages);
 
         _guessBox = new VBoxContainer();
         _guessBox.AddThemeConstantOverride("separation", 8);
         _box.AddChild(_guessBox);
+        _guessBox.AddChild(new HSeparator());
         _guessBox.AddChild(Heading("Maybe used in"));
         _guesses = new RichTextLabel {
-            BbcodeEnabled = true, FitContent = true, ScrollActive = false,
+            BbcodeEnabled = true, FitContent = true, ScrollActive = false, MetaUnderlined = false,
             TooltipText = "Strings with holes that could make this text — what fills the holes is not known",
         };
         _guesses.Connect(RichTextLabel.SignalName.MetaClicked, new Callable(this, MethodName.OnReferenceClicked));
@@ -251,19 +252,58 @@ public partial class EntryDetails : ScrollContainer {
         _guessBox.Visible = guesses.Count > 0;
     }
 
-    /// <summary>The uses as links, each with its line of code below and, when given, the text it is a use of before it.</summary>
-    static string UsageList(System.Collections.Generic.List<(KeyUsages.Usage Usage, string Text)> usages, string none) {
+    /// <summary>
+    /// The uses grouped by file: the file's name (a link to it) with its folder dimmed after it, then
+    /// one row per use — the line number and the line of code, the string in it marked, both
+    /// opening the file at that line. When given, the text a use is of stands above its code.
+    /// </summary>
+    string UsageList(System.Collections.Generic.List<(KeyUsages.Usage Usage, string Text)> usages, string none) {
+        var dim = Html(DimColor);
         var text = new System.Text.StringBuilder();
-        if (usages.Count == 0) text.Append($"[color=#ffffff80]{Escape(none)}[/color]");
-        foreach (var (usage, of) in usages.Take(ShownUsages)) {
-            if (text.Length > 0) text.Append('\n');
-            if (of != null) text.Append($"[b]{Escape(of)}[/b]  ");
-            text.Append($"[url={usage.Reference}]{Escape(usage.Path.TrimPrefix("res://"))}:{usage.Line}[/url]");
-            if (usage.Code.Length > 0) text.Append($"\n[indent][font_size=12][color=#ffffffa0]{Escape(usage.Code)}[/color][/font_size][/indent]");
+        if (usages.Count == 0) text.Append($"[color={dim}]{Escape(none)}[/color]");
+
+        var shown = usages.Take(ShownUsages).ToList();
+        foreach (var file in shown.GroupBy(u => u.Usage.Path)) {
+            if (text.Length > 0) text.Append("\n[font_size=6] [/font_size]\n");
+            var path = file.Key.TrimPrefix("res://");
+            var folder = path.GetBaseDir();
+            text.Append($"[url={file.Key}][b]{Escape(path.GetFile())}[/b][/url]");
+            if (folder.Length > 0) text.Append($"  [font_size=11][color={dim}]{Escape(folder)}/[/color][/font_size]");
+            text.Append("\n[table=2]");
+            foreach (var (usage, of) in file.OrderBy(u => u.Usage.Line)) {
+                var link = $"[url={usage.Reference}]";
+                text.Append($"[cell padding=0,2,8,2]{link}[color={Html(Accent)}]{usage.Line}[/color][/url][/cell][cell expand=1 padding=0,2,0,2]");
+                if (of != null) text.Append($"[font_size=13][b]{Escape(of)}[/b][/font_size]\n");
+                text.Append($"{link}[font_size=12][code]{Marked(usage)}[/code][/font_size][/url][/cell]");
+            }
+            text.Append("[/table]");
         }
-        if (usages.Count > ShownUsages) text.Append($"\n[color=#ffffff80]… and {usages.Count - ShownUsages} more[/color]");
+        if (usages.Count > ShownUsages) text.Append($"\n[color={dim}]… and {usages.Count - ShownUsages} more[/color]");
         return text.ToString();
     }
+
+    const int ExcerptLength = 60;
+
+    /// <summary>The use's line of code, cut around its string when long, with the string in the accent colour.</summary>
+    string Marked(KeyUsages.Usage usage) {
+        var code = usage.Code;
+        var literal = usage.Literal.IsPattern ? "" : usage.Literal.Text;
+        var at = literal.Length > 0 ? code.IndexOf(literal, System.StringComparison.Ordinal) : -1;
+        if (code.Length > ExcerptLength) {
+            var start = System.Math.Clamp(at < 0 ? 0 : at - 16, 0, code.Length - ExcerptLength);
+            var excerpt = code.Substring(start, ExcerptLength);
+            code = (start > 0 ? "…" : "") + excerpt + (start + ExcerptLength < code.Length ? "…" : "");
+            at = at < 0 ? -1 : code.IndexOf(literal, System.StringComparison.Ordinal);
+        }
+        var dim = Html(DimColor);
+        if (at < 0) return $"[color={dim}]{Escape(code)}[/color]";
+        var end = System.Math.Min(code.Length, at + literal.Length);
+        return $"[color={dim}]{Escape(code[..at])}[/color][color={Html(Accent)}]{Escape(code[at..end])}[/color][color={dim}]{Escape(code[end..])}[/color]";
+    }
+
+    Color DimColor => (HasThemeColor("font_color", "Label") ? GetThemeColor("font_color", "Label") : Colors.White) with { A = 0.6f };
+
+    static string Html(Color color) => "#" + color.ToHtml();
 
     static string Escape(string text) => text.Replace("[", "[lb]");
 

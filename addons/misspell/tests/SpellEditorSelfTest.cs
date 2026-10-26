@@ -764,8 +764,7 @@ public partial class SpellEditorSelfTest : Node {
         var keyFolder = "user://misspell_usage_keys";
         DirAccess.MakeDirRecursiveAbsolute(keyFolder);
         WriteAt($"{keyFolder}/keys.pot", "msgid \"\"\nmsgstr \"\"\n\nmsgid \"shop/sword\"\nmsgstr \"\"\n\nmsgid \"shop/shield\"\nmsgstr \"\"\n\nmsgid \"menu/close\"\nmsgstr \"\"\n");
-        WriteAt($"{keyFolder}/keys.de.po", "msgid \"\"\nmsgstr \"Language: de\\n\"\n");
-        WriteAt($"{UsageFolder}/Shield.cs", "class Shield {\n    string Name => Tr(\"shop/shield\");\n}");
+        WriteAt($"{UsageFolder}/Shield.cs", "class Shield {\n    string Name => Tr(\"shop/shield\");\n    string Other => Tr(\"shop/sword\");\n}");
 
         WriteFiles();
         var panel = new MisspellPanel();
@@ -781,7 +780,8 @@ public partial class SpellEditorSelfTest : Node {
         var folderTexts = panel.Details.FindChildren("*", nameof(RichTextLabel), true, false).OfType<RichTextLabel>().Where(l => l.IsVisibleInTree()).Select(l => l.Text).ToList();
         var folderLabels = panel.Details.FindChildren("*", nameof(Label), true, false).OfType<Label>().Where(l => l.IsVisibleInTree()).Select(l => l.Text).ToList();
         Check("a selected folder shows in the details", folderLabels.Contains("shop/") && folderLabels.Contains("2 texts"));
-        Check("with where its texts are used, by name", folderTexts.Any(t => t.Contains("[b]shield[/b]") && t.Contains($"[url={UsageFolder}/Shield.cs:2]")));
+        Check("with where its texts are used, by name", folderTexts.Any(t => t.Contains("[b]shield[/b]") && t.IndexOf("[b]shield[/b]") < t.IndexOf("[b]sword[/b]") && t.Contains($"[url={UsageFolder}/Shield.cs:2]")));
+        Check("grouped by file: its name once, then a row per use", folderTexts.Any(t => t.Split("[b]Shield.cs[/b]").Length == 2 && t.Contains($"[url={UsageFolder}/Shield.cs:3]")));
         Check("and what may make them", folderTexts.Any(t => t.Contains($"[url={UsageFolder}/Items.cs:2]")));
         panel.QueueFree();
         await Settle();
@@ -795,7 +795,8 @@ public partial class SpellEditorSelfTest : Node {
         panel.Details.ShowRow(Row(panel.Catalogs, "Buy"), null);
         await Settle();
         var shown = panel.Details.FindChildren("*", nameof(RichTextLabel), true, false).OfType<RichTextLabel>().Select(l => l.Text).ToList();
-        Check("the details link where the text is used", shown.Any(t => t.Contains($"[url={UsageFolder}/ui/shop.tscn:4]") && t.Contains("text = \"Buy\"")));
+        Check("the details link where the text is used", shown.Any(t => t.Contains($"[url={UsageFolder}/ui/shop.tscn:4]") && t.Contains("text = \"[/color]")));
+        Check("with the string marked in its line of code", shown.Any(t => System.Text.RegularExpressions.Regex.IsMatch(t, @"\[color=#[0-9a-f]+\]Buy\[/color\]")));
         panel.Details.ShowRow(Row(panel.Catalogs, "Hello, {name}!"), null);
         shown = panel.Details.FindChildren("*", nameof(RichTextLabel), true, false).OfType<RichTextLabel>().Select(l => l.Text).ToList();
         Check("and say when it is used nowhere", shown.Any(t => t.Contains("Not found as a string")));

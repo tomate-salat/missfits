@@ -25,7 +25,8 @@ namespace Misspell.Editor;
 public sealed class KeyUsages {
     public static readonly string[] Extensions = ["tscn", "tres", "gd", "cs"];
     const ulong RefreshAfterMs = 2000;
-    const int CodeLength = 80;
+    /// <summary>Longer lines are cut; the details show a part around the string anyway.</summary>
+    const int CodeLength = 300;
 
     /// <summary>
     /// Which argument of a translation call is the context, by the call's name: Godot's C# and
