@@ -53,6 +53,7 @@ public partial class MisswireGraphEdit : MissGraphEdit {
     internal const int MenuFollowChanges = 15;
     internal const int MenuValuePort = 16;
     internal const int MenuAddConstant = 17;
+    internal const int MenuHideUnused = 18;
 
     /// <summary>How far apart boxes added side by side are: room for a binding in between.</summary>
     const float ColumnWidth = 520;
@@ -65,6 +66,11 @@ public partial class MisswireGraphEdit : MissGraphEdit {
 
     PopupMenu _menu;
     GodotObject _members;
+    GodotObject _dash;
+    readonly List<DashedWire> _dashed = [];
+
+    /// <summary>Draws the wires misswire found by itself, dashed; see <see cref="WireDashOverlay"/>.</summary>
+    public WireDashOverlay DashOverlay => ReloadSafe.Get<WireDashOverlay>(ref _dash);
 
     /// <summary>The window "Add a member..." opens.</summary>
     public WireMemberDialog Members => ReloadSafe.Get<WireMemberDialog>(ref _members);
@@ -106,11 +112,21 @@ public partial class MisswireGraphEdit : MissGraphEdit {
         Wire(GraphEdit.SignalName.NodeSelected, MethodName.OnNodeSelected);
         Wire(GraphEdit.SignalName.GraphElementsLinkedToFrameRequest, MethodName.OnLinkedToFrame);
         Wire(GraphEdit.SignalName.DuplicateNodesRequest, MethodName.DuplicateSelected);
+
+        var dash = new WireDashOverlay();
+        _dash = dash;
+        AddChild(dash);
+        PlaceDashOverlay();
     }
 
     /// <summary>Ctrl+A adds members to the one selected box. (Ctrl+D is GraphEdit's own duplicate request.)</summary>
     public override void _GuiInput(InputEvent @event) {
         base._GuiInput(@event);
+        // Delete with a step picked takes the step, not the whole binding GraphEdit would delete.
+        if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Delete } && DeletePickedStep()) {
+            AcceptEvent();
+            return;
+        }
         if (@event is not InputEventKey { Pressed: true, Echo: false, Keycode: Key.A } key || !key.IsCommandOrControlPressed()) return;
         var selected = NodeBoxes().Where(b => b.Selected).ToList();
         if (selected.Count == 1) OpenMembers(selected[0]);
@@ -150,7 +166,7 @@ public partial class MisswireGraphEdit : MissGraphEdit {
                         g.Bindings.Add(twin);
                         break;
                     case WireConstantBox constantBox when g.Constants.FirstOrDefault(c => c != null && c.Id == constantBox.ConstantId) is { } constant:
-                        g.Constants.Add(new MissGraphConstant { Value = constant.Value, GraphPosition = constantBox.PositionOffset + offset });
+                        g.Constants.Add(new MissGraphConstant { Value = constant.Value, HoldsResource = constant.HoldsResource, GraphPosition = constantBox.PositionOffset + offset });
                         break;
                 }
             }
@@ -232,6 +248,28 @@ public partial class MisswireGraphEdit : MissGraphEdit {
 
     static string ConstantBoxName(string constantId) => "C" + constantId;
 
+    /// <summary>
+    /// The change signal a property binding follows by its name, and the box whose row it leaves:
+    /// the box the source wire leaves, or for a property inside a resource the node's main box.
+    /// Null when there is none, or the binding does not follow changes.
+    /// </summary>
+    static (BoxRef Box, string Signal)? ImplicitTrigger(Node mediator, MissBindingGraph graph, MissBinding binding) {
+        if (binding.Kind != MissSourceKind.Property || binding.Source.IsEmpty || !binding.FollowChanges) return null;
+        var changed = MissWiring.ChangeSignalOf(MissWiring.SourceNode(mediator, binding), binding);
+        if (changed.IsEmpty) return null;
+        var (box, _, _) = SourceOf(graph, binding);
+        return (box.Property == "" ? box : box.Main with { Property = "" }, changed.ToString());
+    }
+
+    /// <summary>Keeps the dashed wires right above the plain ones and the live overlay, beneath the boxes.</summary>
+    void PlaceDashOverlay() {
+        var dash = DashOverlay;
+        var layer = GetChildren().FirstOrDefault(c => c.Name == "_connection_layer");
+        if (dash == null || layer == null || dash.GetParent() != this) return;
+        var at = Math.Min(layer.GetIndex() + 2, GetChildCount() - 1);
+        if (dash.GetIndex() != at) MoveChild(dash, at);
+    }
+
     static MissGraphBoxInfo InfoOf(MissBindingGraph graph, BoxRef box) => graph.Boxes.FirstOrDefault(i => i != null && (box.Id != ""
         ? i.Id == box.Id
         : i.Id == "" && i.Node.ToString() == box.Node && i.Property.ToString() == box.Property));
@@ -290,7 +328,9 @@ public partial class MisswireGraphEdit : MissGraphEdit {
         var graph = Graph;
         _builtGraph = graph;
         _builtShape = Shape(graph);
+        _dashed.Clear();
         if (mediator != null && graph != null) Build(mediator, graph);
+        DashOverlay?.ShowWires(_dashed);
 
         UpdateFlips();
         foreach (var element in GetChildren().OfType<GraphElement>()) element.Selected = selected.Contains(element.Name);
@@ -309,7 +349,7 @@ public partial class MisswireGraphEdit : MissGraphEdit {
             }
             text.Append('\n');
         }
-        foreach (var c in graph.Constants.Where(c => c != null)) text.Append($"{c.Id}|{c.Value.VariantType}|{GD.VarToStr(c.Value)}|{c.GraphPosition}\n");
+        foreach (var c in graph.Constants.Where(c => c != null)) text.Append($"{c.Id}|{c.Value.VariantType}|{GD.VarToStr(c.Value)}|{c.GraphPosition}|{c.HoldsResource}\n");
         foreach (var i in graph.Boxes.Where(i => i != null)) text.Append($"{i.Id}|{i.Node}|{i.Property}|{i.Position}|{i.ShowDeclared}|{string.Join(",", i.Rows)}\n");
         foreach (var g in graph.Groups.Where(g => g != null)) text.Append($"{g.Id}|{g.Title}|{g.Color}|{string.Join(",", g.Members)}\n");
         return text.ToString();
@@ -337,6 +377,7 @@ public partial class MisswireGraphEdit : MissGraphEdit {
             }
         }
         foreach (var binding in graph.Bindings.Where(b => b != null && !b.Source.IsEmpty)) {
+            if (ImplicitTrigger(mediator, graph, binding) is var (signalBox, changed)) Use(signalBox, WireMember.Signal, changed);
             foreach (var trigger in binding.Kind == MissSourceKind.Property ? binding.Triggers : []) {
                 if (trigger.GetSubNameCount() > 0) Use(new BoxRef(MissWiring.NodePart(trigger).ToString(), "", ""), WireMember.Signal, trigger.GetConcatenatedSubNames());
             }
@@ -370,6 +411,7 @@ public partial class MisswireGraphEdit : MissGraphEdit {
             box.Build(constant, ConstantNode(mediator, constant)?.Name.ToString() ?? "");
             box.Connect(WireConstantBox.SignalName.ValueEdited, new Callable(this, MethodName.SetConstant));
             box.Connect(WireConstantBox.SignalName.NodePicked, new Callable(this, MethodName.PickConstantNode));
+            box.Connect(WireConstantBox.SignalName.ResourcePicked, new Callable(this, MethodName.SetConstantResource));
             box.Connect(WireBox.SignalName.RowMenuRequested, new Callable(this, MethodName.OnRowMenu));
             TrackMoves(box);
             box.PositionOffset = constant.GraphPosition;
@@ -389,6 +431,10 @@ public partial class MisswireGraphEdit : MissGraphEdit {
 
         foreach (var binding in graph.Bindings.Where(b => b != null)) {
             var box = BindingBox(binding.Id);
+            if (ImplicitTrigger(mediator, graph, binding) is var (signalBox, changed) && BoxNamed(signalBox.Name) is { } changer
+                && changer.OutputPort(WireMember.Signal, changed) is var changePort and >= 0) {
+                _dashed.Add(new DashedWire(changer.Name, changePort, box.Name, box.InputPort(WireBindingBox.Trigger, "")));
+            }
             foreach (var trigger in binding.Kind == MissSourceKind.Property ? binding.Triggers : []) {
                 if (BoxNamed(new BoxRef(MissWiring.NodePart(trigger).ToString(), "", "").Name) is { } emitter
                     && emitter.OutputPort(WireMember.Signal, trigger.GetConcatenatedSubNames()) is var port and >= 0) {
@@ -427,6 +473,7 @@ public partial class MisswireGraphEdit : MissGraphEdit {
             foreach (var member in members) AttachGraphElementToFrame(member, frame.Name);
         }
         PlaceWireOverlay();
+        PlaceDashOverlay();
     }
 
     void BuildNodeBox(WireNodeBox box, BoxRef reference, bool showDeclared, List<(string Kind, string Name)> used) {
@@ -525,6 +572,7 @@ public partial class MisswireGraphEdit : MissGraphEdit {
         }
         if (step.ValueConstant != "") {
             if (graph?.Constants.FirstOrDefault(c => c != null && c.Id == step.ValueConstant) is not { } constant) return ("?", false);
+            if (constant.HoldsResource) return (ResourceName(constant.Value.AsGodotObject() as Resource), false);
             return constant.Value.VariantType == Variant.Type.NodePath ? (ConstantNode(mediator, constant)?.Name.ToString() ?? "?", false) : (GD.VarToStr(constant.Value), false);
         }
         if (step.ValueSource.IsEmpty) return ("?", false);
@@ -566,6 +614,9 @@ public partial class MisswireGraphEdit : MissGraphEdit {
         var wanted = parameters[0];
         if (step.ValueFrom == MissStepValue.Port) {
             if (step.ValueConstant != "") {
+                if (graph?.Constants.FirstOrDefault(c => c != null && c.Id == step.ValueConstant) is { HoldsResource: true } resource) {
+                    return resource.Value.AsGodotObject() is Resource ? Mismatch(new WireParameter("", Variant.Type.Object, "", null), wanted) : "its constant has no resource yet";
+                }
                 return graph?.Constants.FirstOrDefault(c => c != null && c.Id == step.ValueConstant) is { } constant
                     ? Mismatch(constant.Value.VariantType == Variant.Type.NodePath
                         ? new WireParameter("", Variant.Type.Object, ConstantNode(mediator, constant)?.GetClass() ?? "", null)
@@ -625,11 +676,31 @@ public partial class MisswireGraphEdit : MissGraphEdit {
     // ---- picking -----------------------------------------------------------------------------
 
     void OnNodeSelected(Node node) {
-        if (_rebuilding || node is not (WireBindingBox or WireGroupFrame) || _pickedBox == node.Name) return;
-        Pick(node.Name, "", "");
+        if (_rebuilding || _pickedBox == node.Name) return;
+        if (node is WireBindingBox or WireGroupFrame) Pick(node.Name, "", "");
+        // Another box selected: a step picked before is no longer what Delete means.
+        else if (_pickedKind == WireBindingBox.Step) _pickedKind = "";
     }
 
-    void OnRowPicked(StringName boxName, string kind, string id) => Pick(boxName, kind, id);
+    /// <summary>
+    /// A click on a row selects its box too, and that box alone, so that Delete and Ctrl+D act on
+    /// what was just clicked. The graph takes the keyboard focus for them.
+    /// </summary>
+    void OnRowPicked(StringName boxName, string kind, string id) {
+        foreach (var element in GetChildren().OfType<GraphElement>()) element.Selected = element.Name == boxName;
+        GrabFocus();
+        Pick(boxName, kind, id);
+    }
+
+    /// <returns>Whether a step was picked, alone in its selected box, and is now deleted.</returns>
+    internal bool DeletePickedStep() {
+        if (_pickedKind != WireBindingBox.Step || !int.TryParse(_pickedId, out var index)) return false;
+        if (GetNodeOrNull<WireBindingBox>(_pickedBox?.ToString() ?? "") is not { Selected: true } box) return false;
+        if (GetChildren().OfType<GraphElement>().Any(e => e.Selected && e != box)) return false;
+        _pickedKind = "";
+        EditStep(box.BindingId, index, MenuDeleteStep);
+        return true;
+    }
 
     void Pick(StringName boxName, string kind, string id) {
         _pickedBox = boxName;
@@ -939,8 +1010,20 @@ public partial class MisswireGraphEdit : MissGraphEdit {
         SetConstant(constantId, mediator.GetPathTo(node));
     }
 
+    /// <summary>Makes a constant a resource: this one, or none yet.</summary>
+    internal void SetConstantResource(string constantId, Resource resource) => Commit("Misswire: constant resource", graph => {
+        if (graph.Constants.FirstOrDefault(c => c != null && c.Id == constantId) is { } constant) {
+            (constant.Value, constant.HoldsResource) = (resource, true);
+        }
+    });
+
+    /// <summary>How a step's line names a resource: its file, or its class for one saved in the scene.</summary>
+    static string ResourceName(Resource resource) =>
+        resource == null ? "?" : !string.IsNullOrEmpty(resource.ResourcePath) && !resource.ResourcePath.Contains("::")
+            ? resource.ResourcePath.GetFile() : TypeName(resource);
+
     internal void SetConstant(string constantId, Variant value) => Commit("Misswire: constant value", graph => {
-        if (graph.Constants.FirstOrDefault(c => c != null && c.Id == constantId) is { } constant) constant.Value = value;
+        if (graph.Constants.FirstOrDefault(c => c != null && c.Id == constantId) is { } constant) (constant.Value, constant.HoldsResource) = (value, false);
     });
 
     static void DeleteConstant(MissBindingGraph graph, string constantId) {
@@ -990,7 +1073,7 @@ public partial class MisswireGraphEdit : MissGraphEdit {
             var offset = 0;
             foreach (var (path, another) in paths) {
                 graph.Boxes.Add(new MissGraphBoxInfo {
-                    Id = another ? BlackboardEntry.NewId() : "", Node = path, ShowDeclared = !another,
+                    Id = another ? BlackboardEntry.NewId() : "", Node = path,
                     Position = at + new Vector2(ColumnWidth * offset, 0),
                 });
                 offset++;
@@ -1010,14 +1093,29 @@ public partial class MisswireGraphEdit : MissGraphEdit {
         Commit($"Misswire: show {path.Replace(':', '.')}", graph => graph.Boxes.Add(new MissGraphBoxInfo { Node = holder.Node, Property = path, Position = at }));
     }
 
-    /// <summary>A further box of the same node or resource, starting empty, to wire from or to somewhere else in the graph.</summary>
+    /// <summary>A further box of the same node or resource, showing what the first one does, to wire from or to somewhere else in the graph.</summary>
     public void DuplicateBox(BoxRef box) {
         var from = BoxNamed(box.Name);
         var at = (from?.PositionOffset ?? Vector2.Zero) + new Vector2(0, (from?.Size.Y ?? 120) + 30);
         Commit("Misswire: another box", graph => graph.Boxes.Add(new MissGraphBoxInfo {
-            Id = BlackboardEntry.NewId(), Node = box.Node, Property = box.Property, Position = at, ShowDeclared = false,
+            Id = BlackboardEntry.NewId(), Node = box.Node, Property = box.Property, Position = at,
         }));
     }
+
+    /// <summary>
+    /// Shows every member of a box again, or hides those no wire uses — members added by hand
+    /// included. What a binding uses always stays.
+    /// </summary>
+    public void ShowUnused(BoxRef box, bool show) => Commit(show ? "Misswire: show all members" : "Misswire: hide unused members", graph => {
+        var info = InfoOf(graph, box);
+        if (info == null) {
+            graph.Boxes.Add(info = new MissGraphBoxInfo {
+                Id = box.Id, Node = box.Node, Property = box.Property, Position = BoxNamed(box.Name)?.PositionOffset ?? Vector2.Zero,
+            });
+        }
+        info.ShowDeclared = show;
+        if (!show) info.Rows.Clear();
+    });
 
     public void AddRowToBox(BoxRef box, string kind, string name) => AddRowsToBox(box, [$"{kind}:{name}"]);
 
@@ -1146,6 +1244,8 @@ public partial class MisswireGraphEdit : MissGraphEdit {
                 }
                 _menu.AddItem("Add a member...", MenuAddMember);
                 _menu.AddItem("Another box of this", MenuDuplicateBox);
+                var shown = graph == null || (InfoOf(graph, RefOf(box))?.ShowDeclared ?? true);
+                _menu.AddItem(shown ? "Hide unused members" : "Show all members", MenuHideUnused);
                 _menu.AddItem("Remove box", MenuRemoveBox);
                 _menu.SetItemDisabled(_menu.ItemCount - 1, graph == null || InUse(graph, box.Name));
                 break;
@@ -1215,6 +1315,9 @@ public partial class MisswireGraphEdit : MissGraphEdit {
             case MenuAddMember when element is WireNodeBox box:
                 OpenMembers(box);
                 break;
+            case MenuHideUnused when element is WireNodeBox box:
+                ShowUnused(RefOf(box), !(InfoOf(Graph, RefOf(box))?.ShowDeclared ?? true));
+                break;
             case MenuDuplicateBox when element is WireNodeBox box:
                 DuplicateBox(RefOf(box));
                 break;
@@ -1279,6 +1382,8 @@ public partial class MisswireGraphEdit : MissGraphEdit {
     void OnDeleteNodesRequest(Godot.Collections.Array<StringName> names) {
         var graph = Graph;
         if (graph == null) return;
+        // GraphEdit asks to delete the binding whose step was picked; the step is what is meant.
+        if (names.Count == 1 && names[0] == _pickedBox && DeletePickedStep()) return;
         var bindings = names.Select(n => GetNodeOrNull<WireBindingBox>(n.ToString())).Where(b => b != null).Select(b => b.BindingId).ToList();
         var boxes = names.Select(n => GetNodeOrNull<WireNodeBox>(n.ToString())).Where(b => b != null).Select(RefOf).ToList();
         var groups = names.Select(n => GetNodeOrNull<WireGroupFrame>(n.ToString())).Where(f => f != null).Select(f => f.GroupId).ToList();

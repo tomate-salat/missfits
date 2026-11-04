@@ -24,6 +24,7 @@ public partial class WireConstantBox : WireBox {
         ("Yes / no", Variant.Type.Bool),
         ("Colour", Variant.Type.Color),
         ("Node", Variant.Type.NodePath),
+        ("Resource", Variant.Type.Object),
     ];
 
     public string ConstantId { get; private set; } = "";
@@ -35,11 +36,18 @@ public partial class WireConstantBox : WireBox {
     [Signal]
     public delegate void NodePickedEventHandler(string constantId, NodePath path);
 
+    /// <summary>The constant is to be a resource: this one, or none yet when the type was just chosen.</summary>
+    [Signal]
+    public delegate void ResourcePickedEventHandler(string constantId, Resource resource);
+
+    bool _holdsResource;
+
     string _nodeName = "";
 
     /// <param name="nodeName">For a constant of type Node, the name of the node it points to, or empty.</param>
     public void Build(MissGraphConstant constant, string nodeName = "") {
         _nodeName = nodeName;
+        _holdsResource = constant.HoldsResource;
         ConstantId = constant.Id;
         _value = constant.Value;
         BuildFrame("Constant", "", "", PropertyColor);
@@ -49,7 +57,7 @@ public partial class WireConstantBox : WireBox {
         var type = new OptionButton { Name = "Type", FocusMode = FocusModeEnum.None, FitToLongestItem = false, CustomMinimumSize = new Vector2(70, 0) };
         type.AddThemeFontSizeOverride("font_size", 11);
         for (var i = 0; i < Types.Length; i++) type.AddItem(Types[i].Label, i);
-        var index = System.Array.FindIndex(Types, t => t.Type == _value.VariantType);
+        var index = System.Array.FindIndex(Types, t => t.Type == (_holdsResource ? Variant.Type.Object : _value.VariantType));
         if (index >= 0) type.Select(index);
         type.Connect(OptionButton.SignalName.ItemSelected, new Callable(this, MethodName.OnTypeSelected));
         line.AddChild(type);
@@ -64,6 +72,16 @@ public partial class WireConstantBox : WireBox {
     public Control ValueEditor => _editor;
 
     Control Editor() {
+        if (_holdsResource) {
+            // Godot's own resource field: new, load, drag in from the FileSystem, edit.
+            var picker = new EditorResourcePicker {
+                Name = "Value", BaseType = "Resource", EditedResource = _value.AsGodotObject() as Resource,
+                CustomMinimumSize = new Vector2(150, 0), SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            };
+            picker.Connect(EditorResourcePicker.SignalName.ResourceChanged, new Callable(this, MethodName.OnResourceChanged));
+            picker.Connect(EditorResourcePicker.SignalName.ResourceSelected, new Callable(this, MethodName.OnResourceSelected));
+            return picker;
+        }
         switch (_value.VariantType) {
             case Variant.Type.Bool:
                 var check = new CheckBox { Name = "Value", ButtonPressed = _value.AsBool(), FocusMode = FocusModeEnum.None };
@@ -95,7 +113,18 @@ public partial class WireConstantBox : WireBox {
         }
     }
 
+    void OnResourceChanged(Resource resource) => EmitSignal(SignalName.ResourcePicked, ConstantId, resource);
+
+    /// <summary>A click on the picked resource opens it in the Inspector, as in Godot's own field.</summary>
+    void OnResourceSelected(Resource resource, bool inspect) {
+        if (resource != null) EditorInterface.Singleton.EditResource(resource);
+    }
+
     void OnTypeSelected(long index) {
+        if (Types[index].Type == Variant.Type.Object) {
+            if (!_holdsResource) EmitSignal(SignalName.ResourcePicked, ConstantId, (Resource) null);
+            return;
+        }
         Variant start = Types[index].Type switch {
             Variant.Type.Int => (long) _value.AsDouble(),
             Variant.Type.Float => _value.AsDouble(),
@@ -125,7 +154,7 @@ public partial class WireConstantBox : WireBox {
     }
 
     void Emit(Variant value) {
-        if (value.VariantType == _value.VariantType && GD.VarToStr(value) == GD.VarToStr(_value)) return;
+        if (!_holdsResource && value.VariantType == _value.VariantType && GD.VarToStr(value) == GD.VarToStr(_value)) return;
         EmitSignal(SignalName.ValueEdited, ConstantId, value);
     }
 }

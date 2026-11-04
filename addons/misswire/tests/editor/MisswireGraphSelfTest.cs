@@ -53,6 +53,7 @@ public partial class MisswireGraphSelfTest : Node {
         await NodesGetABoxWithTheirMembers(root);
         await AWireFromAPropertyToAMethodMakesABinding();
         await UndoAndRedoTakeTheBindingAwayAndBack();
+        await TheImplicitTriggerIsADashedWire();
         await TheSparePortAddsAStep();
         await StepsAreReorderedAndDeleted();
         await WiresAreTakenOffAndLedElsewhere();
@@ -67,8 +68,10 @@ public partial class MisswireGraphSelfTest : Node {
         await BoxesAreGrouped();
         await TheMemberWindowGroupsByClass();
         await DraggingAShownNodeInAgainAddsAnotherBox();
+        await DeleteTakesThePickedStep();
         await ValuesComeFromTheBindingOrAPort();
         await AConstantCanBeANodeOfTheScene();
+        await AConstantCanBeAResource();
         await ShortcutsDuplicateAndAddMembers();
         TheGraphIsSavedWithTheScene(root);
         await Screenshot();
@@ -113,6 +116,20 @@ public partial class MisswireGraphSelfTest : Node {
         Check("a property binding is active in the editor right away", binding is { EditorActive: true, PushInitial: true });
         Check("the binding has a box, wired on both sides", _graph.BindingBox(binding?.Id) != null && _graph.GetConnectionList().Count == 2);
         Check("and runs in the editor at once", _controller.Applies == applies + 1);
+    }
+
+    async Task TheImplicitTriggerIsADashedWire() {
+        var binding = Data.Bindings[0];
+        bool Dashed() => _graph.DashOverlay.Wires.Any(w => w.From == Box("Model").Name && w.To == _graph.BindingBox(binding.Id).Name
+            && w.FromPort == Box("Model").OutputPort(WireMember.Signal, "OutfitChanged")
+            && w.ToPort == _graph.BindingBox(binding.Id).InputPort(WireBindingBox.Trigger, ""));
+        Check("the change signal found by its name is a dashed wire into the triggers", Dashed());
+        _graph.EditBinding(binding.Id, MisswireGraphEdit.MenuFollowChanges);
+        await Frames(3);
+        Check("not following changes, the dashed wire is gone", !Dashed() && _graph.DashOverlay.Wires.Count == 0);
+        _graph.EditBinding(binding.Id, MisswireGraphEdit.MenuFollowChanges);
+        await Frames(3);
+        Check("and back again", Dashed());
     }
 
     async Task UndoAndRedoTakeTheBindingAwayAndBack() {
@@ -298,7 +315,14 @@ public partial class MisswireGraphSelfTest : Node {
         _graph.DuplicateBox(new MisswireGraphEdit.BoxRef("../Controller", "", ""));
         await Frames(3);
         var copy = _graph.NodeBoxes().FirstOrDefault(b => b.Path == "../Controller" && b.InfoId != "");
-        Check("another box of a node starts empty", copy != null && !copy.Rows().Any());
+        var declared = WireMembers.Declared(_controller).Count;
+        Check("another box of a node shows its members, as the first one does", copy != null && copy.Rows().Count() == declared);
+
+        _graph.ShowUnused(new MisswireGraphEdit.BoxRef("../Controller", "", copy?.InfoId ?? ""), false);
+        await Frames(3);
+        copy = _graph.NodeBoxes().First(b => b.Path == "../Controller" && b.InfoId != "");
+        Check("hiding unused members leaves a box nothing uses empty", !copy.Rows().Any());
+        Check("and leaves the other box of the node alone", Box("Controller").Rows().Count() >= declared);
 
         _graph.AddRowToBox(new MisswireGraphEdit.BoxRef("../Controller", "", copy?.InfoId ?? ""), WireMember.Method, "Note");
         await Frames(3);
@@ -371,12 +395,32 @@ public partial class MisswireGraphSelfTest : Node {
         await Frames(3);
         var copies = _graph.NodeBoxes().Where(b => b.Path == "../Controller").ToList();
         Check("dragging in a node that has a box adds another one", copies.Count == before + 1 && copies.Count(b => b.InfoId != "") == before);
+        Check("and it shows its members, like the first", copies.Last(b => b.InfoId != "").Rows().Count() >= WireMembers.Declared(_controller).Count);
     }
 
     async Task ValuesComeFromTheBindingOrAPort() {
         var controller = Box("Controller");
-        Check("a method that needs two values is not offered", controller.InputPort(WireMember.Method, "Greet") < 0
+        Check("a method that needs two values is not offered", controller.InputPort(WireMember.Method, "Pair") < 0
             && controller.InputPort(WireMember.Method, "Welcome") >= 0);
+        Check("one whose further values have C# defaults is, with the defaults shown",
+            controller.Rows().FirstOrDefault(r => r.Id == "Greet")?.Text == "Greet(name: String, times: int = 1)");
+
+        Drag(Box("Model"), WireMember.Property, "Health", Box("Controller"), WireMember.Method, "Greet");
+        await Frames(4);
+        var greet = Data.Bindings.Last().Id;
+        _graph.SetValueFrom(greet, 0, MissStepValue.Port);
+        var name = _graph.AddConstant(new Vector2(40, 1400));
+        await Frames(3);
+        _graph.SetConstant(name, "Bob");
+        await Frames(3);
+        var greetBox = _graph.BindingBox(greet);
+        _graph.EmitSignal(GraphEdit.SignalName.ConnectionRequest, "C" + name, 0, greetBox.Name, greetBox.InputPort(WireBindingBox.Value, "0"));
+        await Frames(4);
+        Check("a step into it gives the one value and no warning", _graph.BindingBox(greet).Rows().First(r => r.Kind == WireBindingBox.Step).Warning == "");
+        SetProperty(_model, "Health", 90);
+        await Frames(4);
+        Check("and the C# default fills in the rest when it runs", _controller.Greeting == "Bob x1");
+        _controller.Greeting = "";
 
         Drag(Box("Model"), WireMember.Property, "Health", Box("Controller"), WireMember.Method, "Note");
         await Frames(4);
@@ -484,6 +528,38 @@ public partial class MisswireGraphSelfTest : Node {
         Check("and gets the node itself when it runs", _controller.LastNote.AsGodotObject() == _controller);
     }
 
+    async Task AConstantCanBeAResource() {
+        Drag(Box("Model"), WireMember.Property, "Health", Box("Controller"), WireMember.Property, "Outfit");
+        await Frames(4);
+        var id = Data.Bindings.Last().Id;
+        _graph.SetValueFrom(id, 0, MissStepValue.Port);
+        var constantId = _graph.AddConstant(new Vector2(40, 1500));
+        await Frames(3);
+        WireConstantBox Constant() => _graph.GetNodeOrNull<WireConstantBox>("C" + constantId);
+        GraphRow Row() => _graph.BindingBox(id).Rows().First(r => r.Kind == WireBindingBox.Step);
+        var type = Constant().GetNode<OptionButton>("Line/Type");
+        var resource = Enumerable.Range(0, type.ItemCount).First(i => type.GetItemText(i) == "Resource");
+        type.Select(resource);
+        type.EmitSignal(OptionButton.SignalName.ItemSelected, resource);
+        await Frames(3);
+        Check("a constant of type Resource is picked with Godot's resource field", Constant().ValueEditor is EditorResourcePicker
+            && Data.Constants.First(c => c.Id == constantId).HoldsResource);
+
+        var box = _graph.BindingBox(id);
+        _graph.EmitSignal(GraphEdit.SignalName.ConnectionRequest, Constant().Name, 0, box.Name, box.InputPort(WireBindingBox.Value, "0"));
+        await Frames(4);
+        Check("without a resource picked the step says so", Row().Warning.Contains("no resource yet"));
+
+        var cape = new EditorProbeOutfit { Hair = "cape" };
+        _graph.SetConstantResource(constantId, cape);
+        await Frames(3);
+        Check("a picked resource shows in the field and in the step", Constant().ValueEditor is EditorResourcePicker { EditedResource: EditorProbeOutfit }
+            && Row().Text.EndsWith("Outfit = EditorProbeOutfit") && Row().Warning == "");
+        SetProperty(_model, "Health", 95);
+        await Frames(4);
+        Check("and the step gets the resource itself", _controller.Outfit?.Hair == "cape");
+    }
+
     async Task ShortcutsDuplicateAndAddMembers() {
         foreach (var element in _graph.GetChildren().OfType<GraphElement>()) element.Selected = false;
         var controller = Box("Controller");
@@ -513,6 +589,28 @@ public partial class MisswireGraphSelfTest : Node {
         history.AddDoProperty(target, property, value);
         history.AddUndoProperty(target, property, target.Get(property));
         history.CommitAction();
+    }
+
+    async Task DeleteTakesThePickedStep() {
+        var binding = Data.Bindings.First(b => b.Steps.Count >= 1);
+        var steps = binding.Steps.Count;
+        var count = Data.Bindings.Count;
+        var box = _graph.BindingBox(binding.Id);
+        box.EmitSignal(WireBox.SignalName.RowPicked, box.Name, WireBindingBox.Step, "0");
+        await Frames(2);
+        Check("clicking a step selects its box alone", _graph.BindingBox(binding.Id).Selected
+            && _graph.GetChildren().OfType<GraphElement>().Count(e => e.Selected) == 1);
+        _graph._GuiInput(new InputEventKey { Keycode = Key.Delete, Pressed = true });
+        await Frames(3);
+        Check("Delete takes the picked step, not the binding", Data.Bindings.Count == count
+            && Data.Bindings.First(b => b.Id == binding.Id).Steps.Count == steps - 1);
+
+        box = _graph.BindingBox(binding.Id);
+        foreach (var element in _graph.GetChildren().OfType<GraphElement>()) element.Selected = element == box;
+        _graph.EmitSignal(GraphEdit.SignalName.NodeSelected, box);
+        _graph.EmitSignal(GraphEdit.SignalName.DeleteNodesRequest, new Godot.Collections.Array<StringName> { box.Name });
+        await Frames(3);
+        Check("with the box itself picked, Delete takes the binding", Data.Bindings.Count == count - 1);
     }
 
     async Task<GodotObject> PickFrame(GraphFrame frame) {
@@ -547,7 +645,8 @@ public partial class MisswireGraphSelfTest : Node {
         var welcomeBox = _graph.BindingBox(welcome);
         _graph.EmitSignal(GraphEdit.SignalName.ConnectionRequest, "C" + constant, 0, welcomeBox.Name, welcomeBox.InputPort(WireBindingBox.Value, "0"));
         await Frames(3);
-        _graph.ScrollOffset = (_graph.BindingBox(welcome).PositionOffset - new Vector2(420, 120)) * 0.7f;
+        var resourceBox = _graph.GetChildren().OfType<WireConstantBox>().FirstOrDefault(c => c.ValueEditor is EditorResourcePicker);
+        _graph.ScrollOffset = ((resourceBox?.PositionOffset ?? Vector2.Zero) - new Vector2(80, 80)) * 0.7f;
         await Frames(5);
         _panel.CustomMinimumSize = new Vector2(0, 640);
         _graph.Zoom = 0.7f;

@@ -15,6 +15,13 @@ public partial class MissGraphConstant : MissResource {
     [Export]
     public Variant Value { get; set; } = "";
 
+    /// <summary>
+    /// Whether the constant is a resource — the step gets the resource itself. Kept apart from the
+    /// value, which is empty until one is picked.
+    /// </summary>
+    [Export]
+    public bool HoldsResource { get; set; }
+
     /// <summary>Where the graph editor shows the box. The game ignores it.</summary>
     [Export]
     public Vector2 GraphPosition { get; set; }

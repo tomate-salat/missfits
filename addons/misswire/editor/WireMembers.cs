@@ -45,7 +45,7 @@ public static class WireMembers {
         return [
             .. Properties(script.GetScriptPropertyList()),
             .. Signals(script.GetScriptSignalList()),
-            .. Methods(script.GetScriptMethodList()),
+            .. Methods(script.GetScriptMethodList(), MissDefaults.ClassOf(script)),
         ];
     }
 
@@ -55,7 +55,7 @@ public static class WireMembers {
         return [
             .. Properties(obj.GetPropertyList()).DistinctBy(m => m.Name),
             .. Signals(obj.GetSignalList()).DistinctBy(m => m.Name),
-            .. Methods(obj.GetMethodList()).DistinctBy(m => m.Name),
+            .. Methods(obj.GetMethodList(), MissDefaults.ClassOf(obj)).DistinctBy(m => m.Name),
         ];
     }
 
@@ -84,7 +84,7 @@ public static class WireMembers {
             Add(string.IsNullOrEmpty(name) ? script.ResourcePath.GetFile().GetBaseName() : name, [
                 .. Properties(script.GetScriptPropertyList()),
                 .. Signals(script.GetScriptSignalList()),
-                .. Methods(script.GetScriptMethodList()),
+                .. Methods(script.GetScriptMethodList(), MissDefaults.ClassOf(script)),
             ]);
         }
         for (StringName type = obj.GetClass(); !type.IsEmpty; type = ClassDB.GetParentClass(type)) {
@@ -138,9 +138,10 @@ public static class WireMembers {
     }
 
     /// <summary>A method's or signal's parameters as Godot writes them: <c>name: String, amount: int</c>.</summary>
-    static string ParametersOf(Godot.Collections.Array args) => string.Join(", ", args.Select(a => a.AsGodotDictionary()).Select(arg => {
+    static string ParametersOf(Godot.Collections.Array args, List<Variant?> defaults = null) => string.Join(", ", args.Select(a => a.AsGodotDictionary()).Select((arg, i) => {
         var name = arg["name"].AsString();
-        return $"{name}: {TypeName(arg)}";
+        var value = defaults != null && i < defaults.Count && defaults[i] is { } given ? $" = {GD.VarToStr(given)}" : "";
+        return $"{name}: {TypeName(arg)}{value}";
     }));
 
     static string TypeName(Dictionary arg) => TypeName((Variant.Type) arg["type"].AsInt32(), arg["class_name"].AsString());
@@ -170,12 +171,10 @@ public static class WireMembers {
         foreach (var entry in target.GetMethodList()) {
             if (entry["name"].AsStringName() != step.Member) continue;
             var args = entry["args"].AsGodotArray();
-            var defaults = entry["default_args"].AsGodotArray();
-            var firstDefault = args.Count - defaults.Count;
+            var defaults = Defaults(entry, MissDefaults.ClassOf(target));
             return [.. args.Select((a, i) => {
                 var arg = a.AsGodotDictionary();
-                return new WireParameter(arg["name"].AsString(), (Variant.Type) arg["type"].AsInt32(), arg["class_name"].AsString(),
-                    i >= firstDefault ? defaults[i - firstDefault] : (Variant?) null);
+                return new WireParameter(arg["name"].AsString(), (Variant.Type) arg["type"].AsInt32(), arg["class_name"].AsString(), defaults[i]);
             })];
         }
         return [];
@@ -196,16 +195,32 @@ public static class WireMembers {
         return [];
     }
 
-    static IEnumerable<WireMember> Methods(Array<Dictionary> list) {
+    /// <param name="csharp">The C# class the methods belong to, if any: its defaults count too.</param>
+    static IEnumerable<WireMember> Methods(Array<Dictionary> list, System.Type csharp = null) {
         foreach (var entry in list) {
             var name = entry["name"].AsString();
             var flags = (MethodFlags) entry["flags"].AsInt64();
             if (name.StartsWith('_') || (flags & MethodFlags.Virtual) != 0) continue;
             var args = entry["args"].AsGodotArray();
+            var defaults = Defaults(entry, csharp);
             // A mediator passes one value at most; a method that needs more is not wired here.
-            if (args.Count - entry["default_args"].AsGodotArray().Count > 1) continue;
-            yield return new WireMember(WireMember.Method, name, args.Count, false, ParametersOf(args));
+            if (defaults.Count(d => d == null) > 1) continue;
+            yield return new WireMember(WireMember.Method, name, args.Count, false, ParametersOf(args, defaults));
         }
+    }
+
+    /// <summary>
+    /// The defaults of a method's parameters, null where there is none: Godot's, and for a C#
+    /// method the ones only C# knows (see <see cref="MissDefaults"/>).
+    /// </summary>
+    static List<Variant?> Defaults(Dictionary entry, System.Type csharp) {
+        var args = entry["args"].AsGodotArray();
+        var godot = entry["default_args"].AsGodotArray();
+        var first = args.Count - godot.Count;
+        var defaults = Enumerable.Range(0, args.Count).Select(i => i >= first ? godot[i - first] : (Variant?) null).ToList();
+        if (godot.Count > 0 || csharp == null) return defaults;
+        var known = MissDefaults.DefaultsOf(MissDefaults.MethodOf(csharp, entry["name"].AsString(), args.Count));
+        return known.Count == args.Count ? known : defaults;
     }
 }
 #endif

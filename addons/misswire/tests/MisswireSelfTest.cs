@@ -26,6 +26,7 @@ public partial class MisswireSelfTest : Node {
         await APropertyInsideAResourceFollowsBoth();
         await AStepCanActOnAResource();
         await AStepTakesItsValueThroughThePort();
+        await ACSharpDefaultFillsInTheRest();
         await LeavingTheTreeDisconnectsAndComingBackReconnects();
         await ProblemsAreReportedOnceAndTheRestRuns();
         await AFreedSourceOrTargetIsNoProblem();
@@ -255,6 +256,27 @@ public partial class MisswireSelfTest : Node {
         f.Log.Clear();
         f.Model.EmitSignal(WireProbeModel.SignalName.Hit, 5, "orc");
         Check("a constant of type Node hands on the node", f.Log.Count == 2 && f.Log[1] == $"seen <Node#{f.Controller.GetInstanceId()}>");
+
+        var cape = Outfit("cape");
+        f.Mediator.Graph.Constants[0].Value = cape;
+        f.Mediator.Graph.Constants[0].HoldsResource = true;
+        f.Mediator.Graph.Bindings[0].Steps[1].Kind = MissStepKind.Set;
+        f.Mediator.Graph.Bindings[0].Steps[1].Member = "Outfit";
+        f.Model.EmitSignal(WireProbeModel.SignalName.Hit, 5, "orc");
+        Check("a constant of type Resource hands on the resource", f.Controller.Outfit == cape);
+        f.Mediator.Graph.Constants[0].Value = default;
+        f.Log.Clear();
+        f.Model.EmitSignal(WireProbeModel.SignalName.Hit, 5, "orc");
+        Check("and without one the step is skipped and reported", f.Log.Count == 1 && f.Warnings.Any(w => w.Contains("no resource yet")));
+        f.Root.QueueFree();
+    }
+
+    async Task ACSharpDefaultFillsInTheRest() {
+        var f = Build(Binding(new MissBinding { Kind = MissSourceKind.Property, Source = "../Model", Property = "Outfit:Hair" }, Call("Greet")));
+        f.Model.Outfit = Outfit("Bob");
+        AddChild(f.Root);
+        await Frames();
+        Check("a C# method gets its own default for what the step leaves out", f.Log.SequenceEqual(["greet Bob x1"]) && f.Warnings.Count == 0);
         f.Root.QueueFree();
     }
 

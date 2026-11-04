@@ -111,6 +111,11 @@ public static class MissWiring {
                     // Passed on as it came, the input may hold more than the method takes: a value
                     // for ApplyOutfit(), say. The rest is dropped, as Callable.unbind would.
                     if (step.Arguments.Count == 0 && arguments.Count > total) arguments = arguments.Slice(0, total);
+                    // A C# method called by name needs every argument; its defaults fill in what is left out.
+                    if (arguments.Count >= required && arguments.Count < total) {
+                        arguments = arguments.Duplicate();
+                        MissDefaults.Fill(target, step.Member, total, arguments);
+                    }
                     if (arguments.Count < required) {
                         warn($"{where}: '{step.Member}' needs {required} arguments, gets {arguments.Count}");
                         break;
@@ -178,7 +183,7 @@ public static class MissWiring {
         foreach (var entry in target.GetMethodList()) {
             if (entry["name"].AsStringName() != method) continue;
             var total = entry["args"].AsGodotArray().Count;
-            return (total - entry["default_args"].AsGodotArray().Count, total);
+            return (MissDefaults.Required(target, method, total, total - entry["default_args"].AsGodotArray().Count), total);
         }
         return null;
     }
@@ -195,6 +200,10 @@ public static class MissWiring {
 
         if (step.ValueConstant != "") {
             if (graph?.Constants.FirstOrDefault(c => c != null && c.Id == step.ValueConstant) is { } constant) {
+                if (constant.HoldsResource && constant.Value.AsGodotObject() == null) {
+                    missing = "its constant has no resource yet";
+                    return [];
+                }
                 // A constant of type Node holds the path to a node of the scene; the step gets the node.
                 if (constant.Value.VariantType != Variant.Type.NodePath) return [constant.Value];
                 if (mediator.GetNodeOrNull(constant.Value.AsNodePath()) is { } picked) return [picked];

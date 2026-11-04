@@ -27,8 +27,11 @@ public partial class EditorProbeController : Node {
 
     public string Greeting { get; set; } = "";
 
-    /// <summary>Two parameters: a mediator does not offer it. (Godot does not know C# defaults.)</summary>
+    /// <summary>One value and a C# default, which Godot does not know but misswire reads.</summary>
     public void Greet(string name, int times = 1) => Greeting = $"{name} x{times}";
+
+    /// <summary>Two values needed: a mediator does not offer it.</summary>
+    public void Pair(string first, string second) => Greeting = first + second;
 
     /// <summary>A method with one typed parameter.</summary>
     public void Welcome(string name) => Greeting = name;

@@ -51,4 +51,5 @@ public partial class WireProbeController : Node {
     public void Damage(int amount, string by) => Log.Add($"damage {amount} by {by}");
     public void Note(Variant first, Variant second) => Log.Add($"note {first} {second}");
     public void Seen(Variant value) => Log.Add($"seen {value}");
+    public void Greet(string name, int times = 1) => Log.Add($"greet {name} x{times}");
 }
