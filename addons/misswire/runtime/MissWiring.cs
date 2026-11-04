@@ -61,6 +61,43 @@ public static class MissWiring {
         return new StringName();
     }
 
+    /// <summary>
+    /// The signals that say a node's property holds another resource now, as paths
+    /// (<c>../Model:UpdateOutfit</c>), each marked whether misswire found it itself:
+    /// <list type="bullet">
+    /// <item>by name, <c>&lt;Property&gt;Changed</c> or <c>&lt;property&gt;_changed</c>, and a change
+    /// signal named by a binding on that resource;</item>
+    /// <item>the triggers of property bindings on that very property — they fire when it is set;</item>
+    /// <item>and, not found but wired by hand, the graph's <see cref="MissBindingGraph.ReplaceWatches"/>.</item>
+    /// </list>
+    /// </summary>
+    public static List<(NodePath Path, bool Found)> ReplaceSignals(Node mediator, MissBindingGraph graph, NodePath node, StringName property) {
+        var signals = new List<(NodePath, bool)>();
+        void Add(NodePath path, bool found) {
+            if (!path.IsEmpty && path.GetSubNameCount() > 0 && signals.All(s => s.Item1.ToString() != path.ToString())) signals.Add((path, found));
+        }
+        if (graph == null || node.IsEmpty || property.IsEmpty) return signals;
+        var source = mediator.GetNodeOrNull(NodePart(node));
+
+        var first = property.ToString().Split(':')[0];
+        foreach (var candidate in new[] { $"{first}Changed", $"{first.ToSnakeCase()}_changed" }) {
+            if (source?.HasSignal(candidate) == true) Add($"{node}:{candidate}", true);
+        }
+        foreach (var binding in graph.Bindings.Where(b => b != null && b.Source.ToString() == node.ToString())) {
+            if (binding.Kind == MissSourceKind.ResourceSignal && binding.Property == property && !binding.ChangeSignal.IsEmpty) {
+                Add($"{node}:{binding.ChangeSignal}", true);
+            }
+            if (binding.Kind == MissSourceKind.Property && binding.Property == property) {
+                if (!binding.ChangeSignal.IsEmpty) Add($"{node}:{binding.ChangeSignal}", true);
+                foreach (var trigger in binding.Triggers) Add(trigger, true);
+            }
+        }
+        foreach (var watch in graph.ReplaceWatches.Where(w => w != null && w.Node.ToString() == node.ToString() && w.Property == property)) {
+            foreach (var signal in watch.Signals) Add(signal, false);
+        }
+        return signals;
+    }
+
     /// <summary>What the steps get: the property's value, or the signal's arguments.</summary>
     public static Array Input(Node source, MissBinding binding, Array signalArguments) =>
         binding.Kind == MissSourceKind.Property ? [Read(source, binding.Property)] : signalArguments;

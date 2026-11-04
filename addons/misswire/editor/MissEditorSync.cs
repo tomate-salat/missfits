@@ -1,5 +1,6 @@
 #if TOOLS
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 using Godot.Collections;
 
@@ -67,6 +68,12 @@ public partial class MissEditorSync : RefCounted {
     public void Fired(GodotObject mediator, int binding, Array arguments) {
         if (mediator is not Node node || Graph(node) is not { } graph || binding >= graph.Bindings.Count) return;
         if (graph.Bindings[binding] is not { EditorActive: true } b || MissWiring.SourceNode(node, b) is not { } source) return;
+        // A resource the property no longer holds does not count; the next sync listens to the new one.
+        if (b.Kind == MissSourceKind.ResourceSignal
+            && !_relays.Any(r => r.Context == node && r.Binding == binding && r.Emitter == MissWiring.HeldResource(source, b))) {
+            Request();
+            return;
+        }
         Run(node, b, MissWiring.Input(source, b, arguments));
         // What the steps set may feed a binding that is compared rather than listened to.
         Request();

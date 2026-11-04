@@ -261,6 +261,19 @@ public partial class MisswireGraphEdit : MissGraphEdit {
         return (box.Property == "" ? box : box.Main with { Property = "" }, changed.ToString());
     }
 
+    /// <summary>
+    /// Of the boxes of a node that show a signal, the one nearest to where a wire from it is to go:
+    /// a wire misswire found itself is not tied to a box, so it takes the shortest way. Null if no
+    /// box shows the signal.
+    /// </summary>
+    WireNodeBox Nearest(string node, string signal, GraphNode target) {
+        var to = target.PositionOffset + new Vector2(0, target.Size.Y / 2);
+        return NodeBoxes()
+            .Where(b => b.Path == node && b.Property == "" && b.OutputPort(WireMember.Signal, signal) >= 0)
+            .OrderBy(b => (b.PositionOffset + new Vector2(b.Size.X, b.Size.Y / 2)).DistanceSquaredTo(to))
+            .FirstOrDefault();
+    }
+
     /// <summary>Keeps the dashed wires right above the plain ones and the live overlay, beneath the boxes.</summary>
     void PlaceDashOverlay() {
         var dash = DashOverlay;
@@ -350,6 +363,7 @@ public partial class MisswireGraphEdit : MissGraphEdit {
             text.Append('\n');
         }
         foreach (var c in graph.Constants.Where(c => c != null)) text.Append($"{c.Id}|{c.Value.VariantType}|{GD.VarToStr(c.Value)}|{c.GraphPosition}|{c.HoldsResource}\n");
+        foreach (var w in graph.ReplaceWatches.Where(w => w != null)) text.Append($"{w.Node}|{w.Property}|{string.Join(",", w.Signals)}\n");
         foreach (var i in graph.Boxes.Where(i => i != null)) text.Append($"{i.Id}|{i.Node}|{i.Property}|{i.Position}|{i.ShowDeclared}|{string.Join(",", i.Rows)}\n");
         foreach (var g in graph.Groups.Where(g => g != null)) text.Append($"{g.Id}|{g.Title}|{g.Color}|{string.Join(",", g.Members)}\n");
         return text.ToString();
@@ -392,6 +406,13 @@ public partial class MisswireGraphEdit : MissGraphEdit {
             if (ValueOf(graph, step) is var (valueBox, row)) Use(valueBox, WireMember.Property, row);
         }
 
+        // What says a resource box's property holds another resource now shows as a row of its node.
+        foreach (var resource in boxes.Where(b => b.Property != "").ToList()) {
+            foreach (var (path, _) in MissWiring.ReplaceSignals(mediator, graph, resource.Node, resource.Property)) {
+                Use(new BoxRef(MissWiring.NodePart(path).ToString(), "", ""), WireMember.Signal, path.GetConcatenatedSubNames());
+            }
+        }
+
         var spot = 0;
         foreach (var reference in boxes) {
             var box = new WireNodeBox { Name = reference.Name };
@@ -431,7 +452,7 @@ public partial class MisswireGraphEdit : MissGraphEdit {
 
         foreach (var binding in graph.Bindings.Where(b => b != null)) {
             var box = BindingBox(binding.Id);
-            if (ImplicitTrigger(mediator, graph, binding) is var (signalBox, changed) && BoxNamed(signalBox.Name) is { } changer
+            if (ImplicitTrigger(mediator, graph, binding) is var (signalBox, changed) && (Nearest(signalBox.Node, changed, box) ?? BoxNamed(signalBox.Name)) is { } changer
                 && changer.OutputPort(WireMember.Signal, changed) is var changePort and >= 0) {
                 _dashed.Add(new DashedWire(changer.Name, changePort, box.Name, box.InputPort(WireBindingBox.Trigger, "")));
             }
@@ -458,6 +479,19 @@ public partial class MisswireGraphEdit : MissGraphEdit {
                 else if (step.ValueConstant != "" && GetNodeOrNull<WireConstantBox>(ConstantBoxName(step.ValueConstant)) is { } constant) {
                     ConnectNode(constant.Name, 0, box.Name, valuePort);
                 }
+            }
+        }
+
+        foreach (var resourceBox in NodeBoxes().Where(b => b.Property != "").ToList()) {
+            var port = resourceBox.InputPort(WireNodeBox.Replace, "");
+            foreach (var (path, found) in MissWiring.ReplaceSignals(mediator, graph, resourceBox.Path, resourceBox.Property)) {
+                // A wire misswire found itself may leave whichever box of the node is nearest; one wired by hand leaves the main box.
+                var main = BoxNamed(new BoxRef(MissWiring.NodePart(path).ToString(), "", "").Name);
+                if ((found ? Nearest(MissWiring.NodePart(path).ToString(), path.GetConcatenatedSubNames(), resourceBox) ?? main : main) is not { } emitter) continue;
+                var output = emitter.OutputPort(WireMember.Signal, path.GetConcatenatedSubNames());
+                if (output < 0 || port < 0) continue;
+                if (found) _dashed.Add(new DashedWire(emitter.Name, output, resourceBox.Name, port));
+                else ConnectNode(emitter.Name, output, resourceBox.Name, port);
             }
         }
 
@@ -497,6 +531,9 @@ public partial class MisswireGraphEdit : MissGraphEdit {
         else if (isResource) {
             title = $"{node.Name}.{reference.Property.Replace(':', '.')}";
             subtitle = obj == null ? "empty" : $"{TypeName(obj)}{(MissEditorSync.Runs(obj) ? "" : " · no [Tool]")}";
+            if (Graph is { } current && UsesReplacement(current, reference) && MissWiring.ReplaceSignals(Mediator, current, reference.Node, reference.Property).Count == 0) {
+                warning = $"nothing says when {node.Name} gets another {reference.Property.Replace(':', '.')}: in the game the bindings keep the old one. Wire a signal into this box";
+            }
         }
         else {
             title = node.Name;
@@ -778,6 +815,15 @@ public partial class MisswireGraphEdit : MissGraphEdit {
     /// </summary>
     internal void DeleteWire(StringName fromNode, int fromPort, StringName toNode, int toPort) {
         switch (GetNodeOrNull<WireBox>(fromNode.ToString()), GetNodeOrNull<WireBox>(toNode.ToString())) {
+            case (WireNodeBox source, WireNodeBox resource) when resource.AtInput(toPort).Kind == WireNodeBox.Replace:
+                var (_, replacedBy) = source.AtOutput(fromPort);
+                var signalPath = new NodePath($"{source.Path}:{replacedBy}");
+                Commit("Misswire: take the replace signal away", graph => {
+                    foreach (var watch in graph.ReplaceWatches.Where(w => w != null && w.Node.ToString() == resource.Path && w.Property.ToString() == resource.Property)) {
+                        watch.Signals.Remove(signalPath);
+                    }
+                });
+                break;
             case (WireBindingBox binding, WireNodeBox):
                 EditStep(binding.BindingId, fromPort, MenuDeleteStep);
                 break;
@@ -827,6 +873,9 @@ public partial class MisswireGraphEdit : MissGraphEdit {
                 break;
             case (WireNodeBox source, WireBindingBox binding):
                 SetSource(binding.BindingId, source, (int) fromPort);
+                break;
+            case (WireNodeBox source, WireNodeBox resource) when resource.AtInput((int) toPort).Kind == WireNodeBox.Replace:
+                AddReplaceSignal(source, (int) fromPort, resource);
                 break;
             case (WireNodeBox source, WireNodeBox target):
                 AddBinding(source, (int) fromPort, target, (int) toPort, BesideOf(source));
@@ -934,6 +983,26 @@ public partial class MisswireGraphEdit : MissGraphEdit {
                 (step.Kind, step.Target, step.Member, step.TargetBox) = (wanted.Kind, wanted.Target, wanted.Member, wanted.TargetBox);
             }
             else binding.Steps.Add(wanted);
+        });
+    }
+
+    /// <summary>Whether a binding listens to the resource a box stands for, so that it must notice when the property holds another.</summary>
+    static bool UsesReplacement(MissBindingGraph graph, BoxRef box) => graph.Bindings.Any(b => b != null && b.Source.ToString() == box.Node && (
+        (b.Kind == MissSourceKind.ResourceSignal && b.Property.ToString() == box.Property)
+        || (b.Kind == MissSourceKind.Property && b.Property.ToString().StartsWith(box.Property + ":"))));
+
+    /// <summary>Wires a signal into a resource box: it says the property holds another resource now.</summary>
+    void AddReplaceSignal(WireNodeBox source, int fromPort, WireNodeBox resource) {
+        var (kind, name) = source.AtOutput(fromPort);
+        if (kind != WireMember.Signal || source.Property != "") {
+            Reject("what says a property holds another resource is a signal of a node");
+            return;
+        }
+        var path = new NodePath($"{source.Path}:{name}");
+        Commit($"Misswire: {resource.Property} replaced by {name}", graph => {
+            var watch = graph.ReplaceWatches.FirstOrDefault(w => w != null && w.Node.ToString() == resource.Path && w.Property.ToString() == resource.Property);
+            if (watch == null) graph.ReplaceWatches.Add(watch = new MissReplaceWatch { Node = resource.Path, Property = resource.Property });
+            if (!watch.Signals.Contains(path)) watch.Signals.Add(path);
         });
     }
 

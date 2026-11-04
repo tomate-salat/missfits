@@ -10,6 +10,9 @@ namespace Misswire.Editor;
 /// </summary>
 [Tool]
 public partial class WireNodeBox : WireBox {
+    /// <summary>The input of a resource box for signals that say its property holds another resource now.</summary>
+    public const string Replace = "replace";
+
     /// <summary>The node, relative to the mediator.</summary>
     public string Path { get; private set; } = "";
 
@@ -25,7 +28,9 @@ public partial class WireNodeBox : WireBox {
         Property = property;
         InfoId = infoId;
         BuildFrame(title, subtitle, warning, PropertyColor);
-        SetSlot(0, false, 0, Colors.White, false, 0, Colors.White);
+        // A resource box takes, on its header, the signals that say the property holds another resource now.
+        if (property != "") SetPorts(0, $"{Replace}:", true, SignalColor, false, Colors.White);
+        else SetSlot(0, false, 0, Colors.White, false, 0, Colors.White);
         foreach (var (member, rowWarning) in rows) {
             var color = member.Kind switch {
                 WireMember.Signal => SignalColor,

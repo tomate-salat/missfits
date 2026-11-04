@@ -27,6 +27,7 @@ public partial class MisswireSelfTest : Node {
         await AStepCanActOnAResource();
         await AStepTakesItsValueThroughThePort();
         await ACSharpDefaultFillsInTheRest();
+        await AResourceSignalNoticesANewResourceBySignal();
         await LeavingTheTreeDisconnectsAndComingBackReconnects();
         await ProblemsAreReportedOnceAndTheRestRuns();
         await AFreedSourceOrTargetIsNoProblem();
@@ -269,6 +270,46 @@ public partial class MisswireSelfTest : Node {
         f.Model.EmitSignal(WireProbeModel.SignalName.Hit, 5, "orc");
         Check("and without one the step is skipped and reported", f.Log.Count == 1 && f.Warnings.Any(w => w.Contains("no resource yet")));
         f.Root.QueueFree();
+    }
+
+    async Task AResourceSignalNoticesANewResourceBySignal() {
+        var swap = Binding(new MissBinding { Kind = MissSourceKind.Property, Source = "../Model", Property = "Cape", PushInitial = false }, Call("Seen"));
+        swap.Triggers.Add("../Model:CapeSwapped");
+        var inside = Binding(new MissBinding {
+            Kind = MissSourceKind.ResourceSignal, Source = "../Model", Property = "Cape", Signal = "changed", PushInitial = false,
+        }, Call("ApplyOutfit"));
+        var f = Build(swap, inside);
+        var first = Outfit("first");
+        f.Model.Cape = first;
+        AddChild(f.Root);
+        await Frames();
+        f.Log.Clear();
+        first.Change("x");
+        Check("a change inside the resource runs the steps", f.Log.Count(l => l.StartsWith("apply")) == 1);
+
+        var second = Outfit("second");
+        f.Model.Cape = second;
+        f.Log.Clear();
+        first.Change("y");
+        Check("after a new resource, the old one sets nothing off", f.Log.Count(l => l.StartsWith("apply")) == 0);
+        second.Change("z");
+        Check("the new one does: a trigger of a binding on the same property says it was swapped", f.Log.Count(l => l.StartsWith("apply")) == 1);
+        f.Root.QueueFree();
+
+        var g = Build(Binding(new MissBinding {
+            Kind = MissSourceKind.ResourceSignal, Source = "../Model", Property = "Hat", Signal = "changed", PushInitial = false,
+        }, Call("ApplyOutfit")));
+        var old = Outfit("old");
+        g.Model.Hat = old;
+        AddChild(g.Root);
+        await Frames();
+        g.Model.Hat = Outfit("new");
+        g.Log.Clear();
+        old.Change("y");
+        Check("with nothing saying so, a resource no longer held still sets nothing off", g.Log.Count == 0);
+        g.Model.Hat.Change("z");
+        Check("and the binding has moved over to the new one by then", g.Log.Count == 1);
+        g.Root.QueueFree();
     }
 
     async Task ACSharpDefaultFillsInTheRest() {

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 using Godot.Collections;
 
@@ -58,19 +59,20 @@ public partial class MissMediator : Node {
             return;
         }
 
+        // A nested property reads through resources that may be swapped: whatever sets it off
+        // listens to the resources it passes through afresh.
+        var nested = binding.Kind == MissSourceKind.Property && MissWiring.IsNested(binding);
         if (binding.Kind == MissSourceKind.Property) {
-            foreach (var trigger in binding.Triggers) {
-                if (GetNodeOrNull(MissWiring.NodePart(trigger)) is { } emitter && trigger.GetSubNameCount() > 0) Listen(emitter, trigger.GetConcatenatedSubNames(), MethodName.Trigger, index);
-                else Warn($"{MissWiring.Describe(binding)}: no signal at '{trigger}'");
-            }
+            foreach (var trigger in binding.Triggers) ListenAt(trigger, nested ? MethodName.Refresh : MethodName.Trigger, index);
         }
         switch (binding.Kind) {
             case MissSourceKind.Property when !binding.FollowChanges:
                 // The first value only: PushInitialValues sends it, nothing is listened to.
                 break;
-            case MissSourceKind.Property when MissWiring.IsNested(binding):
+            case MissSourceKind.Property when nested:
                 // Outfit:Hair changes when the node gets another outfit, or the outfit says changed.
-                if (MissWiring.ChangeSignalOf(source, binding) is { IsEmpty: false } replaced) Listen(source, replaced, MethodName.Refresh, index);
+                var outer = binding.Property.ToString().Split(':')[0];
+                foreach (var (path, _) in MissWiring.ReplaceSignals(this, Graph, binding.Source, outer)) ListenAt(path, MethodName.Refresh, index);
                 ListenToChain(source, binding, index);
                 break;
             case MissSourceKind.Property:
@@ -81,14 +83,36 @@ public partial class MissMediator : Node {
                 break;
             case MissSourceKind.ResourceSignal:
                 ListenToResource(source, binding, index);
-                if (MissWiring.ChangeSignalOf(source, binding) is { IsEmpty: false } swapped) Listen(source, swapped, MethodName.Rewire, index);
+                foreach (var (path, _) in MissWiring.ReplaceSignals(this, Graph, binding.Source, binding.Property)) ListenAt(path, MethodName.Rewire, index);
                 break;
         }
     }
 
+    /// <summary>Listens to a signal given as a path, <c>../Model:UpdateOutfit</c>.</summary>
+    void ListenAt(NodePath path, StringName method, int index) {
+        if (path.GetSubNameCount() > 0 && GetNodeOrNull(MissWiring.NodePart(path)) is { } emitter) Listen(emitter, path.GetConcatenatedSubNames(), method, index);
+        else Warn($"{MissWiring.Describe(Graph.Bindings[index])}: no signal at '{path}'");
+    }
+
     void ListenToResource(Node source, MissBinding binding, int index) {
         // An empty property is fine: there is nothing to listen to until it gets a resource.
-        if (MissWiring.HeldResource(source, binding) is { } resource) Listen(resource, binding.Signal, MethodName.Trigger, index);
+        if (MissWiring.HeldResource(source, binding) is { } resource) Listen(resource, binding.Signal, MethodName.ResourceFired, index);
+    }
+
+    /// <summary>
+    /// The resource of a <see cref="MissSourceKind.ResourceSignal"/> binding fired. If the property
+    /// holds another one by now, the old one no longer counts: the binding listens to the new one
+    /// instead and runs nothing.
+    /// </summary>
+    public void ResourceFired(int binding, Array arguments) {
+        if (Graph == null || binding < 0 || binding >= Graph.Bindings.Count || Graph.Bindings[binding] is not { } b) return;
+        if (MissWiring.SourceNode(this, b) is not { } source) return;
+        var listened = _relays.FirstOrDefault(r => r.Binding == binding && r.Method == MethodName.ResourceFired)?.Emitter;
+        if (listened != MissWiring.HeldResource(source, b)) {
+            Rewire(binding, []);
+            return;
+        }
+        Trigger(binding, arguments);
     }
 
     void ListenToChain(Node source, MissBinding binding, int index) {
@@ -125,7 +149,7 @@ public partial class MissMediator : Node {
     /// <summary>The property of a <see cref="MissSourceKind.ResourceSignal"/> binding holds another resource now.</summary>
     public void Rewire(int binding, Array arguments) {
         for (var i = _relays.Count - 1; i >= 0; i--) {
-            if (_relays[i].Binding != binding || _relays[i].Method != MethodName.Trigger) continue;
+            if (_relays[i].Binding != binding || _relays[i].Method != MethodName.ResourceFired) continue;
             _relays[i].Disconnect();
             _relays.RemoveAt(i);
         }

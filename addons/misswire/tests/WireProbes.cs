@@ -8,6 +8,22 @@ public partial class WireProbeModel : Node {
     [Signal] public delegate void OutfitChangedEventHandler();
     [Signal] public delegate void HitEventHandler(int amount, string by);
     [Signal] public delegate void CrowdedEventHandler(int a, int b, int c, int d, int e, int f, int g);
+    [Signal] public delegate void CapeSwappedEventHandler();
+
+    WireProbeOutfit _cape;
+
+    /// <summary>Says when it gets another resource, but not by the name misswire looks for.</summary>
+    [Export]
+    public WireProbeOutfit Cape {
+        get => _cape;
+        set {
+            _cape = value;
+            EmitSignal(SignalName.CapeSwapped);
+        }
+    }
+
+    /// <summary>Says nothing when it gets another resource.</summary>
+    [Export] public WireProbeOutfit Hat { get; set; }
 
     WireProbeOutfit _outfit;
 

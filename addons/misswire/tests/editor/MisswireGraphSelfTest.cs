@@ -72,6 +72,7 @@ public partial class MisswireGraphSelfTest : Node {
         await ValuesComeFromTheBindingOrAPort();
         await AConstantCanBeANodeOfTheScene();
         await AConstantCanBeAResource();
+        await AResourceBoxSaysWhatReplacesItsResource();
         await ShortcutsDuplicateAndAddMembers();
         TheGraphIsSavedWithTheScene(root);
         await Screenshot();
@@ -558,6 +559,48 @@ public partial class MisswireGraphSelfTest : Node {
         SetProperty(_model, "Health", 95);
         await Frames(4);
         Check("and the step gets the resource itself", _controller.Outfit?.Hair == "cape");
+    }
+
+    async Task AResourceBoxSaysWhatReplacesItsResource() {
+        var outfit = Box("Model", "Outfit");
+        var input = outfit.InputPort(WireNodeBox.Replace, "");
+        Check("a resource box takes signals that say it was replaced", input >= 0);
+        Check("the change signal found by its name runs into it dashed", _graph.DashOverlay.Wires.Any(w => w.To == outfit.Name && w.ToPort == input
+            && w.From == Box("Model").Name && w.FromPort == Box("Model").OutputPort(WireMember.Signal, "OutfitChanged")));
+
+        _graph.DuplicateBox(new MisswireGraphEdit.BoxRef("../Model", "Outfit", ""));
+        _graph.DuplicateBox(new MisswireGraphEdit.BoxRef("../Model", "", ""));
+        await Frames(3);
+        var farOutfit = _graph.NodeBoxes().Last(b => b.Path == "../Model" && b.Property == "Outfit" && b.InfoId != "");
+        var farModel = _graph.NodeBoxes().Last(b => b.Path == "../Model" && b.Property == "" && b.InfoId != "");
+        farOutfit.PositionOffset = new Vector2(3000, 3000);
+        farModel.PositionOffset = new Vector2(2600, 3000);
+        _graph.EmitSignal(GraphEdit.SignalName.EndNodeMove);
+        await Frames(4);
+        farOutfit = _graph.NodeBoxes().Last(b => b.Path == "../Model" && b.Property == "Outfit" && b.InfoId != "");
+        farModel = _graph.NodeBoxes().Last(b => b.Path == "../Model" && b.Property == "" && b.InfoId != "");
+        Check("a dashed wire leaves the nearest box of its node", _graph.DashOverlay.Wires.Any(w => w.To == farOutfit.Name && w.From == farModel.Name)
+            && _graph.DashOverlay.Wires.Any(w => w.To == Box("Model", "Outfit").Name && w.From == Box("Model").Name));
+
+        _graph.ShowResource(new MisswireGraphEdit.BoxRef("../Model", "", ""), "Extra");
+        await Frames(3);
+        Drag(Box("Model", "Extra"), WireMember.Signal, "changed", Box("Controller"), WireMember.Method, "ApplyOutfit");
+        await Frames(4);
+        Check("a resource nothing says is replaced warns", Box("Model", "Extra").Warning.Contains("nothing says when"));
+
+        var model = Box("Model");
+        var extra = Box("Model", "Extra");
+        _graph.EmitSignal(GraphEdit.SignalName.ConnectionRequest, model.Name, model.OutputPort(WireMember.Signal, "Hit"),
+            extra.Name, extra.InputPort(WireNodeBox.Replace, ""));
+        await Frames(4);
+        extra = Box("Model", "Extra");
+        Check("a signal wired in by hand says it", Data.ReplaceWatches.Any(w => w.Property == "Extra" && w.Signals.Contains("../Model:Hit"))
+            && extra.Warning == ""
+            && _graph.GetConnectionList().Any(c => c["to_node"].AsStringName() == extra.Name && c["to_port"].AsInt32() == extra.InputPort(WireNodeBox.Replace, "")));
+
+        _graph.DeleteWire(Box("Model").Name, Box("Model").OutputPort(WireMember.Signal, "Hit"), extra.Name, extra.InputPort(WireNodeBox.Replace, ""));
+        await Frames(3);
+        Check("and is taken away like any wire", Data.ReplaceWatches.All(w => !w.Signals.Contains("../Model:Hit")) && Box("Model", "Extra").Warning != "");
     }
 
     async Task ShortcutsDuplicateAndAddMembers() {

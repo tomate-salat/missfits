@@ -16,6 +16,10 @@ public partial class MissBindingGraph : MissResource {
     [Export]
     public Godot.Collections.Array<MissGraphBoxInfo> Boxes { get; set; } = [];
 
+    /// <summary>Signals wired by hand that say a property holds another resource now.</summary>
+    [Export]
+    public Godot.Collections.Array<MissReplaceWatch> ReplaceWatches { get; set; } = [];
+
     /// <summary>The fixed values steps can take through their value port.</summary>
     [Export]
     public Godot.Collections.Array<MissGraphConstant> Constants { get; set; } = [];
