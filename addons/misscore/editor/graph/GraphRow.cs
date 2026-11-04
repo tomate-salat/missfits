@@ -71,13 +71,36 @@ public partial class GraphRow : PanelContainer {
         _warning = new Label { Name = "Warning", MouseFilter = MouseFilterEnum.Pass };
         _warning.AddThemeColorOverride("font_color", new Color("#ffd24a"));
         line.AddChild(_text);
+        _rich = new RichTextLabel {
+            Name = "Rich", Visible = false, BbcodeEnabled = true, FitContent = true, ScrollActive = false,
+            AutowrapMode = TextServer.AutowrapMode.Off, SizeFlagsHorizontal = SizeFlags.ExpandFill, MouseFilter = MouseFilterEnum.Ignore,
+        };
+        foreach (var size in new[] { "normal_font_size", "bold_font_size", "italics_font_size" }) _rich.AddThemeFontSizeOverride(size, 12);
+        line.AddChild(_rich);
         line.AddChild(_warning);
         AddChild(line);
 
         Show("", "", picked: false);
     }
 
+    RichTextLabel _rich;
+
+    /// <summary>The row's text as plain text, whether it is shown plain or with <see cref="ShowRich"/>.</summary>
     public string Text => _text.Text;
+
+    /// <summary>The BBCode the row shows, or empty while it shows plain text.</summary>
+    public string RichText => _rich.Visible ? _rich.Text : "";
+
+    /// <summary>
+    /// Shows the text with BBCode — some words bold, say — instead of plain. <see cref="Text"/>
+    /// keeps the plain version; <see cref="Show"/> afterwards changes the looks and keeps this.
+    /// </summary>
+    public void ShowRich(string bbcode, string plain) {
+        _text.Text = plain;
+        _text.Visible = false;
+        _rich.Text = bbcode;
+        _rich.Visible = true;
+    }
 
     public string Warning => _warning.TooltipText;
 
