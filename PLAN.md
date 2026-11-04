@@ -12,6 +12,7 @@ Missfits ist eine Sammlung eigenständiger Godot-Addons (C#). Jedes Addon funkti
 | Dialog | `addons/misspeak` | Runtime, i18n und Beispiel-UI existieren, Graph-Editor fehlt | misspeak |
 | Quests | `addons/mission` | geplant | miss-ion |
 | Übersetzungen | `addons/misspell` | PO-Editor als Tabelle mit Plural-Zeilen existiert | misspell |
+| Verdrahtung | `addons/misswire` | Runtime, Abgleich im Editor und Graph existieren, Praxistest fehlt | miswire |
 
 Alle Addons liegen in diesem einen Godot-Projekt (Monorepo). Demos liegen außerhalb von `addons/`.
 
@@ -23,6 +24,7 @@ misscore  ←  misstate
 misscore  ←  misspeak
 misscore  ←  mission
 misscore  ←  misspell
+misscore  ←  misswire
 ```
 
 Geschwister-Addons kennen sich nie gegenseitig, alle kennen nur den Core.
@@ -118,6 +120,120 @@ Offen:
 - **Mehrere Zellen** markieren, kopieren und einfügen (z. B. aus Excel) geht noch nicht, nur einzelne Zellen.
 - **Template erzeugen** bleibt bei Godot (*Template Generation*); ein Knopf dafür fehlt.
 
+## Was misswire werden soll
+
+Verdrahtung von Nodes per Klicken: Eine Quelle (Property oder Signal) löst eine Folge von Schritten aus (Methode aufrufen oder Property setzen), im Spiel und auf Wunsch schon im Editor. Kein Visual Scripting: keine Bedingungen, keine Schleifen, keine eigene Logik, nur Weitergabe.
+
+Der Anlass sind C#-Spiele, deren Nodes kein `[Tool]` haben sollen, weil `[Tool]`-Code beim Assembly-Reload bricht. Die Regel dahinter:
+
+- Nodes sind dumm: Sie emittieren Signale und bieten Methoden an, verbinden aber nichts selbst.
+- Nur der Mediator hält Verbindungen, ausschließlich name-basiert (`new Callable(obj, MethodName.X)` mit `IsConnected`-Check). Zustand nur in Variant-Feldern.
+- Ein Ziel, das im Editor etwas tun soll (z. B. Meshes setzen), braucht weiter `[Tool]`, bleibt aber zustandslos und ohne eigene Verbindungen.
+
+Erster Anwendungsfall (Projekt Gladiator): `CharacterModel` (ohne `[Tool]`) mit `Outfit` und `OutfitChanged`, `CharacterOutfitController` (`[Tool]`) mit `Outfit` und `ApplyOutfit()`. Zwei Drähte: `CharacterModel.Outfit` → `Controller.Outfit` gibt die Referenz weiter, `Outfit.changed` → `ApplyOutfit()` wendet innere Änderungen an.
+
+### Bausteine
+
+| Teil | Aufgabe |
+|---|---|
+| `MissBindingGraph` (`MissResource`) | eingebettet in den Mediator, also Teil der `.tscn`; Liste der Bindungen und Positionen der Boxen |
+| `MissBinding` | Quelle (NodePath, Property oder Signal, optional Pfad in eine ausgeklappte Resource), im Editor aktiv, Auslöser im Editor, Startwert übertragen, Schritte |
+| `MissBindingStep` | Ziel (NodePath, Methode oder Property), Argumente (Wert der Quelle, Signal-Argumente, feste Werte) |
+| `MissMediator` (Node, ohne `[Tool]`) | verdrahtet im Spiel |
+| `MisswireEditorPlugin` | verdrahtet im Editor, Graph im unteren Panel |
+
+Die Klassen tragen das Präfix `Miss`, weil `[GlobalClass]`-Namen im ganzen Projekt gelten und ein bloßes `Mediator` leicht mit Klassen des Spiels kollidiert.
+
+### Im Spiel
+
+- `_Ready` verbindet. Dann ist die ganze Szene im Baum, auch wenn spätere Geschwister noch nicht fertig sind.
+- Der Startwert geht per `CallDeferred` raus, damit jedes Ziel fertig ist.
+- `_ExitTree` trennt symmetrisch. Kommt der Mediator wieder in den Baum, verbindet `_EnterTree` neu, aber nur wenn `IsNodeReady()` gilt, weil `_Ready` dann nicht noch einmal läuft.
+- Pro Quelle genau eine Verbindung, vom Signal zu einer Methode des Mediators. Der ruft die Schritte nacheinander auf und baut die Argumente selbst. So ist die Reihenfolge fest.
+- C# kennt kein `Callable.Bind`, und eine per Name verbundene Methode muss genau die Argumente des Signals nehmen. Deshalb hängt jede Verbindung an einem `MissSignalRelay` (`RefCounted`, nur Godot-Felder), das einen Handler pro Argumentzahl hat (0 bis 6) und `receiver.method(binding, arguments)` aufruft. Das Plugin wird dieselben Relays benutzen.
+- Ein Schritt ohne eigene Argumente gibt weiter, was die Bindung bekam, aber höchstens so viel, wie die Methode nimmt (wie `unbind`). So geht `Outfit` → `ApplyOutfit()` ohne Anpassung. Bekommt sie zu wenig, gibt es eine Warnung.
+- Die Logik der Schritte liegt zustandslos in `MissWiring`, damit Mediator und Plugin dasselbe tun.
+- Warnungen gehen per `push_warning` und zusätzlich als Signal `Warned` raus, jede nur einmal.
+- Eine ausgeklappte Resource (z. B. `CharacterModel:Outfit`) wird neu verbunden, wenn die Property eine andere Resource bekommt.
+- Fehlt ein Node, eine Methode oder ein Signal: einmal `push_warning`, die Bindung wird übersprungen.
+
+### Im Editor
+
+`MissMediator` hat kein `[Tool]` und ist im Editor nur ein Platzhalter; alles macht das Plugin. Es liest dieselben Bindungen.
+
+- **Quelle mit `[Tool]`** (echte Instanz): Das Plugin hört auf ihr Signal, wie im Spiel.
+- **Quelle ohne `[Tool]`** (Platzhalter, sendet nie): Fallback über die Undo-Historie des Editors, danach `Get()`. Dafür braucht es zwei Signale von `EditorUndoRedoManager`: `HistoryChanged` meldet jede neue Aktion (Inspector, Gizmos, Sub-Resources), `VersionChanged` nur Undo und Redo. Auslöser pro Bindung: *Wert geändert* (Vergleich mit dem letzten Wert) oder *jede Editor-Aktion* (für Resources ohne `[Tool]`, deren Inneres sich ändert, ohne dass sich die Referenz ändert).
+- Eine Quelle läuft immer nur über einen der beiden Wege, sonst liefen die Schritte doppelt.
+- **Nichts merken, immer abgleichen:** Bei `scene_changed`, nach jedem Reload (`ISerializationListener.OnAfterDeserialize`) und bei jeder Änderung der Historie prüft das Plugin pro Quelle, ob sie gerade Tool ist, und verbindet oder trennt entsprechend (`IsConnected`-Check). Damit sind Reload, Szenenwechsel und ein Wechsel zwischen Tool und Nicht-Tool derselbe Fall.
+- Verbindungen im Editor ohne `ConnectFlags.Persist`, sonst landen sie in der `.tscn`.
+- Das Plugin setzt Werte direkt, nicht über UndoRedo, also meldet die Historie danach nichts. Ketten (A → B → C) laufen deshalb über einen erneuten Vergleich, bis sich nichts mehr ändert, mit Obergrenze gegen Zyklen.
+- Vergleichswerte in einem `Godot.Collections.Dictionary` (Instanz-ID des Mediators + Index der Bindung).
+- Meldungen der Historie werden pro Frame zu einem deferred Abgleich zusammengefasst: Fünf Edits einer Property im selben Frame ergeben fünf `HistoryChanged`.
+- Vor einem Aufruf prüft das Plugin, ob das Ziel ein Platzhalter ist. Ein `Call` auf einen Platzhalter tut nichts und schreibt einen Fehler ins Log.
+- Ziel ohne `[Tool]` bei einer im Editor aktiven Bindung: Der Aufruf geht ins Leere, der Graph warnt.
+- Was Ziele im Editor setzen (z. B. Meshes), wird mit der Szene gespeichert. Gewollt: Es ist abgeleitet, und Undo der Quelle stellt es über den nächsten Abgleich wieder her.
+- Änderungen am Graph laufen über `EditorUndoRedoManager`; die Szene wird dadurch ungespeichert, einen eigenen Speichern-Knopf gibt es nicht.
+
+### Graph
+
+Auf `MissGraphEdit` (links nach rechts):
+
+- Eine Box pro Node, links Properties und Signale als Ausgänge, rechts Methoden und Properties als Eingänge. Die Listen kommen aus `get_script_property_list`, `get_script_signal_list` und `get_script_method_list`; das geht auch bei Scripts ohne `[Tool]`. Die Kopfzeile zeigt, ob der Node im Editor läuft.
+- Eine Resource-Property lässt sich ausklappen und wird eine eigene Quell-Box mit den Signalen der Resource, die gerade darin steckt.
+- Mehrere Schritte stehen als Zeilen einer Sequenz-Box (wie die Action-Liste eines States), sortierbar per Drag. Ein einfacher Draht ist eine Sequenz mit einem Schritt.
+- Nur Nodes der eigenen Szene, keine Pfade in instanzierte Teilszenen.
+- Passt eine Signatur nicht, warnt die Zeile (`GraphRow`); verhindert wird nichts.
+
+### Phasen
+
+0. **Erledigt: Spike im echten Editor** (`tests/spike/`, `godot --headless -e --path . -- --misswire-spike`). Ergebnisse:
+   - Platzhalter erkennen: `Script.IsTool()` ist `false`, und die C#-Instanz ist der native Typ (`Godot.Node`) statt der Script-Klasse. Ein Tool-Node ist die echte Klasse.
+   - `Get()` auf Platzhaltern liefert gespeicherte Werte und Defaults aus dem Script (`Health` = 100, ohne Eintrag in der Szene). `Set()` speichert. Eine Node-Export liefert den `NodePath`, nicht den Node. Eine Tool-Resource darin ist die echte C#-Klasse, eine Resource ohne Tool nur `Godot.Resource`, aber `Get()` geht auch dort.
+   - Script-Listen (Signale, Methoden, Properties) gehen bei Platzhaltern. `HasMethod`/`HasSignal` sind `true`.
+   - `Call` auf einen Platzhalter tut nichts, gibt einen Fehlertext zurück und schreibt einen Fehler ins Log. `Connect` geht, `EmitSignal` von außen erreicht den Handler auch.
+   - **`VersionChanged` feuert nicht bei neuen Aktionen**, auch nicht bei Edits im Inspector, nur bei Undo/Redo über den Editor (Strg+Z, einen Frame verzögert). Neue Aktionen melden sich über `HistoryChanged`, auch an Sub-Resources und an per `_Set` erzeugten Properties. Ein `Undo()` direkt auf dem `UndoRedo` einer Historie meldet nichts.
+   - **`changed` sendet Godot nie von selbst**, weder bei Aktionen noch bei Edits im Inspector, auch nicht an einem normalen Export. Für den Draht `Outfit.changed` → `ApplyOutfit()` muss die Resource selbst `EmitChanged()` rufen.
+   - Offen bleibt, was passiert, wenn ein Script zwischen Tool und Nicht-Tool wechselt. Das braucht einen Rebuild und bleibt der Handtest aus Phase 4.
+1. **Erledigt: Runtime.** `MissBindingGraph`, `MissBinding`, `MissBindingStep`, `MissStepArgument`, `MissMediator`, `MissSignalRelay`, `MissWiring`. Selbsttest `tests/self_test.tscn` (30 Checks): Startwert erst nach dem Bereitmachen, Reihenfolge der Schritte, Signal-Argumente auswählen oder fest setzen, Resource-Signal folgt der Property, Verlassen und Wiederkommen ohne doppelte Verbindungen, Probleme einmal gemeldet, Speichern und Laden. Das Zip kompiliert allein mit dem Core.
+2. **Erledigt: Abgleich im Editor.** `MissEditorSync` (gehalten vom `MisswireEditorPlugin`) hört auf `HistoryChanged`, `VersionChanged`, `scene_changed` und den Reload (`OnAfterDeserialize`), fasst pro Frame zu einem Abgleich zusammen und benutzt dieselben `MissSignalRelay` wie der Mediator, mit dem Mediator als Kontext. Bearbeitet wird vorerst im Inspector am Mediator. Entschieden beim Bau:
+   - Ein Objekt läuft im Editor, wenn es kein Script hat oder sein Script `[Tool]` ist. Nur dann wird es gehört und gerufen; `Set` auf einen Platzhalter ist erlaubt und landet in der Szene.
+   - Verglichen wird bei einer Property die Referenz (bei Objekten) bzw. der Wert, bei einem Resource-Signal ohne Tool der Inhalt der Resource (`var_to_str`).
+   - Beim Öffnen einer Szene, beim Zurückwechseln auf sie und wenn der Graph neu ist, laufen Bindungen mit *Startwert übertragen* einmal.
+   - Auch Mediatoren in instanzierten Teilszenen laufen mit.
+   - Editor-Selbsttest `godot --headless -e --path . -- --misswire-editor-test` (30 Checks), unter anderem: Platzhalter-Edits werden verglichen und weitergegeben, gleicher Wert läuft nicht, fünf Edits in einem Frame sind ein Abgleich, Resource-Signal folgt der Property, Strg+Z wird weitergegeben, Tool-Quellen laufen genau einmal über ihr Signal, Ketten laufen im selben Abgleich, nichts davon wird in der Szene gespeichert, eine andere Szene vorn trennt alles.
+   - Nicht automatisch prüfbar und offen für Phase 4: ein echter Reload mit offener Szene.
+3. **Erledigt: Graph** im Dock „Misswire“ (unten), auf `MissGraphEdit`. Wie gebaut:
+   - Eine Box pro Node (`WireNodeBox`): Properties und Signale als Ausgänge, Methoden und Properties als Eingänge. Sie zeigt, was das Script deklariert, dazu was benutzt wird; alles Weitere (auch Engine-Members) per Rechtsklick „Add a member...“. Die Kopfzeile sagt, ob der Node `[Tool]` hat.
+   - Eine Box pro Bindung (`WireBindingBox`), immer, auch bei einem Schritt: Quelle links in die Kopfzeile, rechts ein Ausgang pro Schritt und „+ step“. Reihenfolge und Löschen per Rechtsklick, ebenso „im Editor aktiv“ und „Startwert“; alles andere im Inspector, der sich beim Klick auf die Bindung oder einen Schritt öffnet.
+   - Draht von Property/Signal auf Methode/Property macht Bindung plus Schritt, Draht ins Leere eine Bindung ohne Schritte. Das Änderungs-Signal bleibt leer und wird bei jedem Verbinden über den Namen gesucht (`OutfitChanged`, `outfit_changed`), zur Laufzeit wie im Editor; ein später ins Script geschriebenes Signal greift so ohne Neuverdrahten. Ein eingetragenes Signal geht vor.
+   - Drähte löschen: Ende am Eingang greifen und ins Leere ziehen, oder Rechtsklick auf den Draht „Delete wire“. Ein Schritt-Draht nimmt den Schritt mit, ein Quellen-Draht lässt die Bindung ohne Quelle (Warnung). Auf einen anderen Eingang gezogen, wird der Draht umgehängt. Property- und Resource-Bindungen sind sofort im Editor aktiv, Signal-Bindungen nicht.
+   - Resource-Property per Rechtsklick „Show the signals of …“ als eigene Box mit `changed` und den Signalen ihres Scripts.
+   - Nodes kommen per Drag aus dem Szenenbaum oder „Add selected nodes“; Nodes aus instanzierten Teilszenen werden abgelehnt.
+   - Jede Änderung ersetzt den `Graph` des Mediators durch eine bearbeitete Kopie über die Undo-Historie: Szene wird ungespeichert, Strg+Z geht, gespeichert wird mit der Szene. Positionen liegen in `MissBinding.GraphPosition` und `MissBindingGraph.Boxes` (`MissGraphBoxInfo`).
+   - Warnungen an Bindung und Schritt: fehlender Node, Member oder Signal, kein Änderungs-Signal, Aufruf auf Node ohne `[Tool]` bei aktiver Bindung, zu wenige Argumente.
+   - Graph-Selbsttest `godot --headless -e --path . -- --misswire-graph-test` (36 Checks); mit Fenster und `--misswire-screenshot=<datei.png>` speichert er ein Bild des Docks.
+   - **In Resources hinein:** Eine Resource-Box zeigt wie eine Node-Box Properties (lesen und setzen), Signale und Methoden ihres Scripts, dazu `changed`; „Open … as a box“ geht auch auf Resources in Resources. Gespeichert wird das in Godots Pfadschreibweise: eine Quelle `Property = "Outfit:Hair"`, ein Ziel `Target = "../Model:Outfit"`. Im Spiel hört eine solche Quelle auf das Änderungs-Signal des Nodes (neue Resource) und auf `changed` jeder Resource auf dem Weg (innere Änderung), im Editor wird sie verglichen. Methoden einer Resource laufen im Editor nur mit `[Tool]`, Setzen geht immer.
+   - **Mehrere Boxen pro Node** („Another box of this“): eine weitere Box startet leer und bekommt Zeilen per „Add a member...“ oder durch Drähte. Welche Box ein Draht meint, steht in `MissBinding.SourceBox` und `MissBindingStep.TargetBox` (nur Editor); fehlt die Box, springt die Hauptbox ein.
+   - **Gruppen** als `GraphFrame` (`MissGraphGroupInfo`: Titel, Farbe, Mitglieder): Boxen markieren, „Group the selected boxes“; Boxen auf den Rahmen ziehen nimmt sie auf, „Out of the group“ und „Ungroup“ per Rechtsklick; Titel und Farbe im Inspector nach Klick auf den Rahmen. Zuklappen gibt es nicht.
+   - Neue Bindungen ohne Abwurfstelle suchen rechts neben ihrer Quelle den nächsten freien Platz.
+   - Ein Node, der schon eine Box hat, bekommt per Drag & Drop aus dem Szenenbaum eine weitere (der Knopf „Add selected nodes“ legt nur fehlende an).
+   - „Add a member...“ öffnet ein Fenster (`WireMemberDialog`): Suchfeld, darüber die Members nach der Klasse gruppiert, die sie deklariert, vom eigenen Script bis `Object`; nur die oberste Gruppe ist offen, beim Suchen alle; Mehrfachauswahl, Doppelklick nimmt einen; schon gezeigte stehen ausgegraut dabei.
+   - **Ein Wert pro Schritt** (verworfen: eine Zeile pro Parameter; nahm zu viel Platz und brauchte für alles außer Text und Zahlen den Inspector). Angeboten werden nur Methoden, die höchstens einen Wert brauchen; ein Mediator ist keine Programmiersprache. Godot meldet für C#-Methoden keine Defaults, dort zählt jeder Parameter.
+     - Der Schritt nimmt den Wert der Bindung (`Note(← Health)`). Passt der Typ nicht oder liefert die Bindung nichts, warnt der Schritt; im Spiel und im Editor wird er dann übersprungen statt mit falschem Typ gerufen.
+     - Rechtsklick „Value via port“ gibt der Schritt-Zeile links einen eigenen Eingang (`MissBindingStep.ValueFrom = Port`). Hinein geht eine Property irgendeiner Box, auch aus einer Resource (`ValueSource = "../Model:Outfit:Hair"`), oder eine **Konstanten-Box** (`MissGraphConstant` in `MissBindingGraph.Constants`, `ValueConstant`): Typ (Text, ganze Zahl, Zahl, Ja/Nein, Farbe) und Wert direkt in der Box, mehrfach nutzbar.
+     - **Ein Wert-Draht liefert nur den Wert und löst nie etwas aus.** Gelesen wird, wenn die Bindung feuert. Sonst würde ein Schritt unberechenbar, sobald mehrere Felder den Ablauf anstoßen können, und ein Schritt, der so ein Feld ändert, könnte sich selbst wieder anstoßen.
+     - `Arguments` (eins pro Parameter) gibt es nur noch für alte Szenen; die Laufzeit liest es, der Graph legt es nicht mehr an.
+     - Verworfen: Bindungen verketten („nach A läuft B“). Schleifen, unklar wann B läuft, und es reicht trotzdem keine Daten weiter; der Weg zum Visual Scripting.
+   - **„Follow … in the game“** (Rechtsklick auf eine Property-Bindung, `MissBinding.FollowChanges`): aus, bekommt das Spiel nur den ersten Wert; im Editor läuft die Bindung weiter bei jeder Änderung.
+   - Property-Zeilen zeigen ihren Typ, blasser als der Name (`Text  String`, `Res  MedRes ▸`); bei Resources ohne `[GlobalClass]` den Script-Namen der Resource, die gerade darin steckt. Werte in Schritt-Zeilen sind fett (`MedUser.Res = **Res**`), Konstanten nicht. Dafür kann `GraphRow` (Core, additiv) seinen Text mit BBCode zeigen (`ShowRich`).
+   - Konstanten können auch ein Node der Szene sein: Typ „Node“, Auswahl über Godots Node-Auswahl, gespeichert als Pfad vom Mediator aus; der Schritt bekommt den Node selbst.
+   - Strg+D dupliziert die markierten Boxen (Node-Box als weitere Box mit denselben Zeilen, Bindung samt Schritten, Konstante). Strg+A öffnet für die eine markierte Box „Add a member...“.
+   - **Trigger-Eingang an Property-Bindungen (gebaut, ohne gestrichelten Draht: das automatische Signal steht als „(auto)“ in der Trigger-Zeile).** Die Kopfzeile bekommt einen zweiten Eingang für Signale, bei denen die Bindung die Property neu liest und ihre Schritte ausführt (`MissBinding.Triggers`, Pfade wie `../CharacterModel:UpdateOutfit`; Argumente der Signale werden ignoriert). Das per Konvention gefundene Änderungs-Signal ist ein gestrichelter Draht (implizit, abschaltbar über „Follow … in the game“), weitere Signale auch anderer Nodes durchgezogene Drähte. GraphEdit kann keine einzelnen Drähte stricheln: den impliziten selbst zeichnen, über das Overlay der Live-Drähte. Mit mindestens einem Trigger entfällt die Warnung „no change signal“. Signal-Bindungen bekommen keinen Trigger-Eingang, dort sind die Argumente der Wert.
+   - Offen: Reroutes, automatisch anordnen.
+4. **Gladiator:** nur das Addon ins Projekt bringen (wie die anderen Missfits-Addons, samt `misscore`) und das Plugin aktivieren. Verdrahten macht der Nutzer selbst, dabei auch die Handtests: Szene offen lassen und mehrfach bauen (keine doppelten Aufrufe, keine Unload-Fehler); `[Tool]` an einer Quelle setzen und wieder entfernen (feuert genau einmal, danach greift der Fallback).
+
+Später, nicht jetzt: Live-Ansicht im Spiel über den Debug-Kanal des Core. Core-Actions als Schritt würden misswire mit BT und FSM verbinden, ziehen das Addon aber Richtung Visual Scripting.
+
 Der Core bekommt kein `plugin.cfg`. Als reine Bibliothek muss ihn niemand aktivieren; Editor-Widgets dürfen darin liegen, registriert werden sie vom jeweiligen Addon-Plugin.
 
 ## Namespaces
@@ -152,3 +268,4 @@ Verworfen:
 7. **Umgesetzt:** `misspeak`, mit Actions und Conditions für BT und FSM.
 8. **Umgesetzt:** `misspell`, PO-Editor mit Plural-Unterstützung.
 9. `mission`.
+10. `misswire`, Phasen siehe oben.
