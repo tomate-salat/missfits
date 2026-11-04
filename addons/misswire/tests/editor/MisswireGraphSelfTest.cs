@@ -353,6 +353,14 @@ public partial class MisswireGraphSelfTest : Node {
         Check("the frame holds them", frame != null && _graph.GetAttachedNodesOfFrame(frame.Name).Select(n => n.ToString()).ToHashSet().SetEquals(names));
         Check("picking the frame shows the group in the Inspector", await PickFrame(frame) == group);
 
+        // GraphEdit queues moves of a frame it was just given; a frame thrown away before then made a
+        // scene reload print "Child is not a child of this node".
+        _graph.RebuildGraph();
+        _graph.RebuildGraph();
+        await Frames(3);
+        Check("a rebuild keeps the frame and hangs the boxes in it again", _graph.Frame(group?.Id ?? "") == frame
+            && _graph.Frames().Count() == 1 && frame != null && _graph.GetAttachedNodesOfFrame(frame.Name).Select(n => n.ToString()).ToHashSet().SetEquals(names));
+
         var controller = Box("Controller").Name.ToString();
         _graph.EmitSignal(GraphEdit.SignalName.GraphElementsLinkedToFrameRequest, new Godot.Collections.Array { controller }, frame?.Name);
         await Frames(4);

@@ -17,19 +17,24 @@ namespace Misswire;
 public partial class MissSignalRelay : RefCounted {
     public const int MaxArguments = 6;
 
-    GodotObject _emitter;
+    // Kept by instance id: a reload serializes every field, and a reference to a node that is gone by
+    // then (a scene reloaded or closed) throws.
+    ulong _emitter;
     StringName _signal;
-    GodotObject _receiver;
+    ulong _receiver;
     StringName _method;
     StringName _handler;
-    GodotObject _context;
+    ulong _context;
     int _binding;
 
     public int Binding => _binding;
     public StringName Method => _method;
-    public GodotObject Emitter => _emitter;
+    public GodotObject Emitter => Find(_emitter);
     public StringName Signal => _signal;
-    public GodotObject Context => _context;
+    public GodotObject Context => Find(_context);
+
+    /// <summary>The object of an id, or null once it is gone.</summary>
+    static GodotObject Find(ulong id) => id == 0 ? null : InstanceFromId(id);
 
     /// <summary>
     /// Connects <paramref name="signal"/> of <paramref name="emitter"/> to
@@ -47,17 +52,17 @@ public partial class MissSignalRelay : RefCounted {
         if (problem != null) return null;
 
         var relay = new MissSignalRelay {
-            _emitter = emitter, _signal = signal, _receiver = receiver, _method = method,
-            _handler = HandlerFor(arguments), _binding = binding, _context = context,
+            _emitter = emitter.GetInstanceId(), _signal = signal, _receiver = receiver.GetInstanceId(), _method = method,
+            _handler = HandlerFor(arguments), _binding = binding, _context = context?.GetInstanceId() ?? 0,
         };
         emitter.Connect(signal, new Callable(relay, relay._handler));
         return relay;
     }
 
     public void Disconnect() {
-        if (!IsInstanceValid(_emitter)) return;
+        if (Emitter is not { } emitter) return;
         var callable = new Callable(this, _handler);
-        if (_emitter.IsConnected(_signal, callable)) _emitter.Disconnect(_signal, callable);
+        if (emitter.IsConnected(_signal, callable)) emitter.Disconnect(_signal, callable);
     }
 
     /// <returns>The number of arguments, or -1 if the object has no such signal.</returns>
@@ -87,9 +92,9 @@ public partial class MissSignalRelay : RefCounted {
     public void Relay6(Variant a, Variant b, Variant c, Variant d, Variant e, Variant f) => Forward([a, b, c, d, e, f]);
 
     void Forward(Array arguments) {
-        if (!IsInstanceValid(_receiver)) return;
-        if (_context == null) _receiver.Call(_method, _binding, arguments);
-        else if (IsInstanceValid(_context)) _receiver.Call(_method, _context, _binding, arguments);
+        if (Find(_receiver) is not { } receiver) return;
+        if (_context == 0) receiver.Call(_method, _binding, arguments);
+        else if (Context is { } context) receiver.Call(_method, context, _binding, arguments);
     }
 
     internal static string Describe(GodotObject obj) => obj switch {

@@ -58,7 +58,8 @@ public partial class MisswireGraphEdit : MissGraphEdit {
     /// <summary>How far apart boxes added side by side are: room for a binding in between.</summary>
     const float ColumnWidth = 520;
 
-    Node _mediator;
+    // By instance id: a reload serializes every field, and a mediator whose scene is gone throws.
+    ulong _mediator;
     GodotObject _builtGraph;
     string _builtShape = "";
     bool _rebuilding;
@@ -68,6 +69,7 @@ public partial class MisswireGraphEdit : MissGraphEdit {
     GodotObject _members;
     GodotObject _dash;
     readonly List<DashedWire> _dashed = [];
+    readonly HashSet<string> _usedFrames = [];
 
     /// <summary>Draws the wires misswire found by itself, dashed; see <see cref="WireDashOverlay"/>.</summary>
     public WireDashOverlay DashOverlay => ReloadSafe.Get<WireDashOverlay>(ref _dash);
@@ -84,7 +86,7 @@ public partial class MisswireGraphEdit : MissGraphEdit {
     string _pickedId = "";
     GodotObject _pickedPart;
 
-    public Node Mediator => IsInstanceValid(_mediator) ? _mediator : null;
+    public Node Mediator => _mediator == 0 ? null : InstanceFromId(_mediator) as Node;
 
     public MissBindingGraph Graph => Mediator is { } mediator ? MissEditorSync.Graph(mediator) : null;
 
@@ -296,8 +298,8 @@ public partial class MisswireGraphEdit : MissGraphEdit {
     // ---- opening and building --------------------------------------------------------------
 
     public void Open(Node mediator) {
-        if (mediator == _mediator && Graph == _builtGraph) return;
-        _mediator = mediator;
+        if (mediator == Mediator && Graph == _builtGraph) return;
+        _mediator = mediator?.GetInstanceId() ?? 0;
         _pickedBox = null;
         _pickedPart = null;
         RebuildGraph();
@@ -320,10 +322,27 @@ public partial class MisswireGraphEdit : MissGraphEdit {
 
     void ClearGraph() {
         ClearConnections();
-        // RemoveChild before QueueFree, or a new box of the same name would be renamed "<name>@2".
+        // GraphEdit remembers which box hangs in which frame, and later moves those frames about.
         foreach (var element in GetChildren().OfType<GraphElement>().ToList()) {
+            if (GetElementFrame(element.Name) != null) DetachGraphElementFromFrame(element.Name);
+        }
+        // RemoveChild before QueueFree, or a new box of the same name would be renamed "<name>@2".
+        // Frames stay: see RemoveUnusedFrames.
+        foreach (var element in GetChildren().OfType<GraphElement>().Where(e => e is not GraphFrame).ToList()) {
             RemoveChild(element);
             element.QueueFree();
+        }
+    }
+
+    /// <summary>
+    /// Takes away the frames this build did not use. A frame is kept from build to build because
+    /// GraphEdit, on adding one, queues moves of it for later: a frame taken away before then
+    /// makes those fail with "Child is not a child of this node", as two builds in one frame do.
+    /// </summary>
+    void RemoveUnusedFrames(HashSet<string> used) {
+        foreach (var frame in GetChildren().OfType<GraphFrame>().Where(f => !used.Contains(f.Name)).ToList()) {
+            RemoveChild(frame);
+            frame.QueueFree();
         }
     }
 
@@ -342,7 +361,9 @@ public partial class MisswireGraphEdit : MissGraphEdit {
         _builtGraph = graph;
         _builtShape = Shape(graph);
         _dashed.Clear();
+        _usedFrames.Clear();
         if (mediator != null && graph != null) Build(mediator, graph);
+        RemoveUnusedFrames(_usedFrames);
         DashOverlay?.ShowWires(_dashed);
 
         UpdateFlips();
@@ -498,12 +519,15 @@ public partial class MisswireGraphEdit : MissGraphEdit {
         foreach (var group in graph.Groups.Where(g => g != null)) {
             var members = group.Members.Where(m => GetNodeOrNull<GraphElement>(m) != null).ToList();
             if (members.Count == 0) continue;
-            var frame = new WireGroupFrame { Name = FrameName(group.Id) };
-            AddChild(frame);
-            // Frames lie beneath the boxes.
-            MoveChild(frame, 0);
+            var name = FrameName(group.Id);
+            if (!_usedFrames.Add(name)) continue;
+            if (GetNodeOrNull<WireGroupFrame>(name) is not { } frame) {
+                frame = new WireGroupFrame { Name = name };
+                // GraphEdit moves a new frame beneath the boxes by itself.
+                AddChild(frame);
+                frame.Connect(WireGroupFrame.SignalName.MenuRequested, new Callable(this, MethodName.OnFrameMenu));
+            }
             frame.Build(group);
-            frame.Connect(WireGroupFrame.SignalName.MenuRequested, new Callable(this, MethodName.OnFrameMenu));
             foreach (var member in members) AttachGraphElementToFrame(member, frame.Name);
         }
         PlaceWireOverlay();
