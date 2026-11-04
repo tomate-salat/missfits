@@ -11,36 +11,38 @@
 [ext_resource type="Script" uid="uid://cbdsvsl6481jw" path="res://addons/misswire/runtime/MissGraphBoxInfo.cs" id="8_pfm6k"]
 [ext_resource type="Script" uid="uid://bhcxid7yq2rqt" path="res://addons/misswire/runtime/MissBindingGraph.cs" id="9_0vt71"]
 [ext_resource type="Script" uid="uid://c3fgnkikr0p0m" path="res://addons/misswire/runtime/MissGraphGroupInfo.cs" id="9_vxfnk"]
+[ext_resource type="Script" uid="uid://cigjhp0ts4j7o" path="res://addons/misswire/runtime/MissReplaceWatch.cs" id="11_m4iko"]
 
-[sub_resource type="Resource" id="Resource_fl6r0"]
+[sub_resource type="Resource" id="Resource_lsarg"]
 script = ExtResource("6_au0pd")
 Kind = 1
 Target = NodePath("../MedUser")
 Member = &"Res"
 
-[sub_resource type="Resource" id="Resource_m4iko"]
+[sub_resource type="Resource" id="Resource_au0pd"]
 script = ExtResource("6_au0pd")
 Target = NodePath("../MedUser")
 Member = &"Greet"
 ValueFrom = 1
 ValueSource = NodePath("..:Res:Text")
 
-[sub_resource type="Resource" id="Resource_lsarg"]
+[sub_resource type="Resource" id="Resource_g8354"]
 script = ExtResource("5_lsarg")
 Id = "8ea1719ad7884c60b9fff03627d01ec3"
 Source = NodePath("..")
 Property = &"Res"
+FollowChanges = false
 EditorActive = true
-Steps = Array[ExtResource("6_au0pd")]([SubResource("Resource_fl6r0"), SubResource("Resource_m4iko")])
+Steps = Array[ExtResource("6_au0pd")]([SubResource("Resource_lsarg"), SubResource("Resource_au0pd")])
 GraphPosition = Vector2(-380, 20)
 
-[sub_resource type="Resource" id="Resource_au0pd"]
+[sub_resource type="Resource" id="Resource_pfm6k"]
 script = ExtResource("6_au0pd")
 Target = NodePath("../MedUser")
 Member = &"Apply"
 TargetBox = "8ea0e344dcc841a0be474e87d678c43a"
 
-[sub_resource type="Resource" id="Resource_g8354"]
+[sub_resource type="Resource" id="Resource_0vt71"]
 script = ExtResource("5_lsarg")
 Id = "e50fb93dc81949dc8f7cbfa7e9536301"
 Kind = 2
@@ -48,36 +50,36 @@ Source = NodePath("..")
 Property = &"Res"
 Signal = &"changed"
 EditorActive = true
-Steps = Array[ExtResource("6_au0pd")]([SubResource("Resource_au0pd")])
+Steps = Array[ExtResource("6_au0pd")]([SubResource("Resource_pfm6k")])
 GraphPosition = Vector2(-380, 280)
 
-[sub_resource type="Resource" id="Resource_pfm6k"]
+[sub_resource type="Resource" id="Resource_23vhe"]
 script = ExtResource("8_pfm6k")
 Node = NodePath("..")
 Position = Vector2(-680, 20)
 
-[sub_resource type="Resource" id="Resource_0vt71"]
+[sub_resource type="Resource" id="Resource_q7ld5"]
 script = ExtResource("8_pfm6k")
 Node = NodePath("../MedUser")
 Position = Vector2(0, 40)
 
-[sub_resource type="Resource" id="Resource_23vhe"]
+[sub_resource type="Resource" id="Resource_edbpa"]
 script = ExtResource("8_pfm6k")
 Node = NodePath("..")
 Property = &"Res"
 Position = Vector2(-660, 220)
 
-[sub_resource type="Resource" id="Resource_q7ld5"]
+[sub_resource type="Resource" id="Resource_c6ugn"]
 script = ExtResource("8_pfm6k")
 Id = "8ea0e344dcc841a0be474e87d678c43a"
 Node = NodePath("../MedUser")
 Position = Vector2(0, 280)
 Rows = Array[StringName]([&"property:Res", &"method:Apply", &"method:Greet"])
 
-[sub_resource type="Resource" id="Resource_edbpa"]
+[sub_resource type="Resource" id="Resource_bevyu"]
 script = ExtResource("9_0vt71")
-Bindings = Array[ExtResource("5_lsarg")]([SubResource("Resource_lsarg"), SubResource("Resource_g8354")])
-Boxes = Array[ExtResource("8_pfm6k")]([SubResource("Resource_pfm6k"), SubResource("Resource_0vt71"), SubResource("Resource_23vhe"), SubResource("Resource_q7ld5")])
+Bindings = Array[ExtResource("5_lsarg")]([SubResource("Resource_g8354"), SubResource("Resource_0vt71")])
+Boxes = Array[ExtResource("8_pfm6k")]([SubResource("Resource_23vhe"), SubResource("Resource_q7ld5"), SubResource("Resource_edbpa"), SubResource("Resource_c6ugn")])
 metadata/_custom_type_script = "uid://bhcxid7yq2rqt"
 
 [node name="MedActor" type="Node" unique_id=1609281946]
@@ -92,5 +94,5 @@ metadata/_custom_type_script = "uid://dpxy4prfsh00i"
 
 [node name="Actor -> User" type="Node" parent="." unique_id=184354788]
 script = ExtResource("4_m4iko")
-Graph = SubResource("Resource_edbpa")
+Graph = SubResource("Resource_bevyu")
 metadata/_custom_type_script = "uid://bwn6fatydwn6x"
