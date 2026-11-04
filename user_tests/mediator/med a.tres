@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="MedRes" format=3 uid="uid://bin0cm8d6jxbn"]
+
+[ext_resource type="Script" uid="uid://hcbov8mtwyii" path="res://user_tests/mediator/MedRes.cs" id="1_1b0i4"]
+
+[resource]
+script = ExtResource("1_1b0i4")
+Text = "alpha"
+metadata/_custom_type_script = "uid://hcbov8mtwyii"

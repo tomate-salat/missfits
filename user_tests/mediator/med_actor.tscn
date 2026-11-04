@@ -1,0 +1,96 @@
+[gd_scene format=3 uid="uid://d0d2vd4qjcg5"]
+
+[ext_resource type="Script" uid="uid://cixe467eylw5x" path="res://user_tests/mediator/MedActor.cs" id="1_jsf4o"]
+[ext_resource type="Resource" uid="uid://bin0cm8d6jxbn" path="res://user_tests/mediator/med a.tres" id="2_vxfnk"]
+[ext_resource type="Script" uid="uid://dpxy4prfsh00i" path="res://user_tests/mediator/MedUser.cs" id="3_fl6r0"]
+[ext_resource type="Script" uid="uid://bwn6fatydwn6x" path="res://addons/misswire/runtime/MissMediator.cs" id="4_m4iko"]
+[ext_resource type="Script" uid="uid://b22hurcaaqfu5" path="res://addons/misswire/runtime/MissBinding.cs" id="5_lsarg"]
+[ext_resource type="Script" uid="uid://bgj5ulehp7rog" path="res://addons/misswire/runtime/MissBindingStep.cs" id="6_au0pd"]
+[ext_resource type="Script" uid="uid://v46wr7ejrpfh" path="res://addons/misswire/runtime/MissStepArgument.cs" id="7_g8354"]
+[ext_resource type="Script" uid="uid://d1x52qvjcpsdp" path="res://addons/misswire/runtime/MissGraphConstant.cs" id="7_jsf4o"]
+[ext_resource type="Script" uid="uid://cbdsvsl6481jw" path="res://addons/misswire/runtime/MissGraphBoxInfo.cs" id="8_pfm6k"]
+[ext_resource type="Script" uid="uid://bhcxid7yq2rqt" path="res://addons/misswire/runtime/MissBindingGraph.cs" id="9_0vt71"]
+[ext_resource type="Script" uid="uid://c3fgnkikr0p0m" path="res://addons/misswire/runtime/MissGraphGroupInfo.cs" id="9_vxfnk"]
+
+[sub_resource type="Resource" id="Resource_fl6r0"]
+script = ExtResource("6_au0pd")
+Kind = 1
+Target = NodePath("../MedUser")
+Member = &"Res"
+
+[sub_resource type="Resource" id="Resource_m4iko"]
+script = ExtResource("6_au0pd")
+Target = NodePath("../MedUser")
+Member = &"Greet"
+ValueFrom = 1
+ValueSource = NodePath("..:Res:Text")
+
+[sub_resource type="Resource" id="Resource_lsarg"]
+script = ExtResource("5_lsarg")
+Id = "8ea1719ad7884c60b9fff03627d01ec3"
+Source = NodePath("..")
+Property = &"Res"
+EditorActive = true
+Steps = Array[ExtResource("6_au0pd")]([SubResource("Resource_fl6r0"), SubResource("Resource_m4iko")])
+GraphPosition = Vector2(-380, 20)
+
+[sub_resource type="Resource" id="Resource_au0pd"]
+script = ExtResource("6_au0pd")
+Target = NodePath("../MedUser")
+Member = &"Apply"
+TargetBox = "8ea0e344dcc841a0be474e87d678c43a"
+
+[sub_resource type="Resource" id="Resource_g8354"]
+script = ExtResource("5_lsarg")
+Id = "e50fb93dc81949dc8f7cbfa7e9536301"
+Kind = 2
+Source = NodePath("..")
+Property = &"Res"
+Signal = &"changed"
+EditorActive = true
+Steps = Array[ExtResource("6_au0pd")]([SubResource("Resource_au0pd")])
+GraphPosition = Vector2(-380, 280)
+
+[sub_resource type="Resource" id="Resource_pfm6k"]
+script = ExtResource("8_pfm6k")
+Node = NodePath("..")
+Position = Vector2(-680, 20)
+
+[sub_resource type="Resource" id="Resource_0vt71"]
+script = ExtResource("8_pfm6k")
+Node = NodePath("../MedUser")
+Position = Vector2(0, 40)
+
+[sub_resource type="Resource" id="Resource_23vhe"]
+script = ExtResource("8_pfm6k")
+Node = NodePath("..")
+Property = &"Res"
+Position = Vector2(-660, 220)
+
+[sub_resource type="Resource" id="Resource_q7ld5"]
+script = ExtResource("8_pfm6k")
+Id = "8ea0e344dcc841a0be474e87d678c43a"
+Node = NodePath("../MedUser")
+Position = Vector2(0, 280)
+Rows = Array[StringName]([&"property:Res", &"method:Apply", &"method:Greet"])
+
+[sub_resource type="Resource" id="Resource_edbpa"]
+script = ExtResource("9_0vt71")
+Bindings = Array[ExtResource("5_lsarg")]([SubResource("Resource_lsarg"), SubResource("Resource_g8354")])
+Boxes = Array[ExtResource("8_pfm6k")]([SubResource("Resource_pfm6k"), SubResource("Resource_0vt71"), SubResource("Resource_23vhe"), SubResource("Resource_q7ld5")])
+metadata/_custom_type_script = "uid://bhcxid7yq2rqt"
+
+[node name="MedActor" type="Node" unique_id=1609281946]
+script = ExtResource("1_jsf4o")
+Res = ExtResource("2_vxfnk")
+metadata/_custom_type_script = "uid://cixe467eylw5x"
+
+[node name="MedUser" type="Node" parent="." unique_id=1622234335]
+script = ExtResource("3_fl6r0")
+Res = ExtResource("2_vxfnk")
+metadata/_custom_type_script = "uid://dpxy4prfsh00i"
+
+[node name="Actor -> User" type="Node" parent="." unique_id=184354788]
+script = ExtResource("4_m4iko")
+Graph = SubResource("Resource_edbpa")
+metadata/_custom_type_script = "uid://bwn6fatydwn6x"
