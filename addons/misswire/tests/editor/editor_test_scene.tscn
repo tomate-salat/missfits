@@ -1,0 +1,36 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://addons/misswire/runtime/MissMediator.cs" id="1_mediator"]
+[ext_resource type="Script" path="res://addons/misswire/tests/editor/EditorProbeModel.cs" id="2_model"]
+[ext_resource type="Script" path="res://addons/misswire/tests/editor/EditorProbeOutfit.cs" id="3_outfit"]
+[ext_resource type="Script" path="res://addons/misswire/tests/editor/EditorProbeNoToolResource.cs" id="4_notool"]
+[ext_resource type="Script" path="res://addons/misswire/tests/editor/EditorProbeController.cs" id="5_ctrl"]
+[ext_resource type="Script" path="res://addons/misswire/tests/editor/EditorProbeToolModel.cs" id="6_toolmodel"]
+[ext_resource type="Script" path="res://addons/misswire/tests/editor/EditorProbeNoToolTarget.cs" id="7_notooltarget"]
+
+[sub_resource type="Resource" id="Resource_outfit"]
+script = ExtResource("3_outfit")
+Hair = "red"
+
+[sub_resource type="Resource" id="Resource_extra"]
+script = ExtResource("4_notool")
+Value = 1
+
+[node name="EditorTestScene" type="Node"]
+
+[node name="Mediator" type="Node" parent="."]
+script = ExtResource("1_mediator")
+
+[node name="Model" type="Node" parent="."]
+script = ExtResource("2_model")
+Outfit = SubResource("Resource_outfit")
+Extra = SubResource("Resource_extra")
+
+[node name="Controller" type="Node" parent="."]
+script = ExtResource("5_ctrl")
+
+[node name="ToolModel" type="Node" parent="."]
+script = ExtResource("6_toolmodel")
+
+[node name="NoToolTarget" type="Node" parent="."]
+script = ExtResource("7_notooltarget")
